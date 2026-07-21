@@ -1,0 +1,35 @@
+import type { Metadata, Viewport } from "next";
+import { Assistant } from "next/font/google";
+import "./globals.css";
+
+const assistant = Assistant({
+  subsets: ["hebrew", "latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-assistant",
+  display: "swap",
+});
+
+export const metadata: Metadata = {
+  title: "ALTMAN Group — ניהול נכסים ושכירויות",
+  description:
+    "מערכת ניהול נכסים ושכירויות של ALTMAN Group — דשבורד למנהל, למשכיר ולשוכר.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#14285a",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="he" dir="rtl" className={`${assistant.variable} h-full`}>
+      <body className="min-h-full antialiased">{children}</body>
+    </html>
+  );
+}
