@@ -1,33 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, PenLine } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { useData } from "@/lib/store";
+import type { AppDocument } from "@/types";
 
 interface SignatureDialogProps {
   open: boolean;
   onClose: () => void;
-  documentName?: string;
+  /** The document being signed. When provided, the signature is recorded. */
+  document?: AppDocument | null;
+  /** Name pre-filled / used as the legal signer. */
+  signerName?: string;
+  onSigned?: () => void;
 }
 
-/** Mock digital-signature flow: type name, confirm, success state. */
+/** Digital-signature flow: type name, confirm, and record the signature. */
 export function SignatureDialog({
   open,
   onClose,
-  documentName = "נספח חידוש חוזה",
+  document,
+  signerName = "",
+  onSigned,
 }: SignatureDialogProps) {
-  const [name, setName] = useState("");
+  const { signDocument } = useData();
+  const [name, setName] = useState(signerName);
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (open) setName(signerName);
+  }, [open, signerName]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const documentName = document?.name ?? "מסמך לחתימה";
 
   const handleClose = () => {
     onClose();
     setTimeout(() => {
-      setName("");
       setAgreed(false);
       setSigned(false);
     }, 200);
+  };
+
+  const handleSign = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !agreed) return;
+    if (document) signDocument(document.id, name.trim());
+    setSigned(true);
+    onSigned?.();
   };
 
   return (
@@ -41,21 +65,13 @@ export function SignatureDialog({
         <div className="flex flex-col items-center gap-3 py-6 text-center">
           <CheckCircle2 className="h-14 w-14 text-success" />
           <h4 className="text-lg font-bold text-navy">המסמך נחתם בהצלחה</h4>
-          <p className="text-sm text-text-muted">
-            עותק חתום נשמר בכספת המסמכים שלך.
-          </p>
+          <p className="text-sm text-text-muted">עותק חתום נשמר בכספת המסמכים שלך.</p>
           <Button onClick={handleClose} fullWidth className="mt-2">
             סגירה
           </Button>
         </div>
       ) : (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (name.trim() && agreed) setSigned(true);
-          }}
-          className="space-y-4"
-        >
+        <form onSubmit={handleSign} className="space-y-4">
           <div className="rounded-xl bg-surface-muted p-4 text-sm text-text-muted">
             אני מאשר/ת כי קראתי את המסמך <b className="text-navy">{documentName}</b>{" "}
             וכי חתימתי הדיגיטלית מהווה הסכמה מחייבת לתנאיו.
@@ -86,12 +102,7 @@ export function SignatureDialog({
             אני מסכים/ה לתנאי המסמך
           </label>
 
-          <Button
-            type="submit"
-            fullWidth
-            size="lg"
-            disabled={!name.trim() || !agreed}
-          >
+          <Button type="submit" fullWidth size="lg" disabled={!name.trim() || !agreed}>
             חתום ואשר
           </Button>
         </form>

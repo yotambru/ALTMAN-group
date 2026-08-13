@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="viewport-fit=cover, width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <meta name="theme-color" content="#14285a" />
+    <title>ALTMAN Group</title>
+    <style>
+      :root {
+        --navy: #14285a;
+        --orange: #f26a21;
+        --muted: #7c89a1;
+        --bg: #ffffff;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        font-family: "Assistant", "Segoe UI", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--navy);
+      }
+      body {
+        display: grid;
+        place-items: center;
+        padding: 2rem 1.5rem;
+        padding-top: max(2rem, env(safe-area-inset-top));
+        padding-bottom: max(2rem, env(safe-area-inset-bottom));
+      }
+      .card {
+        width: min(100%, 22rem);
+        text-align: center;
+      }
+      .mark {
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        font-size: 1.75rem;
+      }
+      .group {
+        margin-top: 0.25rem;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.28em;
+        color: rgba(20, 40, 90, 0.7);
+      }
+      h1 {
+        margin: 2rem 0 0.75rem;
+        font-size: 1.35rem;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+        font-size: 0.95rem;
+      }
+      button {
+        margin-top: 1.75rem;
+        border: 0;
+        border-radius: 9999px;
+        background: var(--orange);
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        padding: 0.9rem 1.75rem;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="mark" dir="ltr">ALTMAN</div>
+      <div class="group" dir="ltr">GROUP</div>
+      <h1>אין חיבור לרשת</h1>
+      <p>בדקו את החיבור לאינטרנט ונסו שוב כדי להיכנס למערכת ניהול הנכסים.</p>
+      <button type="button" id="retry">נסו שוב</button>
+    </div>
+    <script>
+      document.getElementById("retry").addEventListener("click", function () {
+        window.location.href = "https://altman-group.vercel.app/";
+      });
+      // If online, jump straight to production.
+      if (navigator.onLine) {
+        window.location.replace("https://altman-group.vercel.app/");
+      }
+    </script>
+  </body>
+</html>

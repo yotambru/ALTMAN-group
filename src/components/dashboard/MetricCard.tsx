@@ -10,7 +10,10 @@ interface MetricCardProps {
   onClick?: () => void;
 }
 
-/** Compact stat card: orange icon, large value, muted label. */
+/**
+ * Stat card matching the reference: muted label + plain line icon on top,
+ * large navy value below. Soft white card with light border.
+ */
 export function MetricCard({
   icon: Icon,
   value,
@@ -24,18 +27,24 @@ export function MetricCard({
     <Comp
       onClick={onClick}
       className={cn(
-        "card flex flex-col items-center gap-1 px-3 py-4 text-center",
+        "card flex w-full flex-col gap-2 p-4 text-start shadow-sm",
         onClick && "transition-shadow hover:shadow",
         className,
       )}
     >
-      <Icon className="mb-1 h-6 w-6 text-orange" strokeWidth={2} />
-      <span className="text-2xl font-extrabold leading-none text-navy">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[0.78rem] font-semibold leading-tight text-text-muted">
+          {label}
+        </span>
+        <Icon className="h-5 w-5 shrink-0 text-navy/80" strokeWidth={1.7} />
+      </div>
+      <span className="text-[1.7rem] font-extrabold leading-none tracking-tight text-navy">
         {value}
       </span>
-      <span className="text-xs font-semibold text-text">{label}</span>
       {sublabel && (
-        <span className="text-[0.7rem] text-text-muted">{sublabel}</span>
+        <span className="text-[0.72rem] leading-tight text-text-muted">
+          {sublabel}
+        </span>
       )}
     </Comp>
   );

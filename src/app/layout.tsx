@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Assistant } from "next/font/google";
 import "./globals.css";
+import { DataProvider } from "@/lib/store";
+import { CapacitorBootstrap } from "@/components/native/CapacitorBootstrap";
+import { OfflineBanner } from "@/components/native/OfflineBanner";
 
 const assistant = Assistant({
   subsets: ["hebrew", "latin"],
@@ -13,6 +16,11 @@ export const metadata: Metadata = {
   title: "ALTMAN Group — ניהול נכסים ושכירויות",
   description:
     "מערכת ניהול נכסים ושכירויות של ALTMAN Group — דשבורד למנהל, למשכיר ולשוכר.",
+  appleWebApp: {
+    capable: true,
+    title: "ALTMAN Group",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export const viewport: Viewport = {
@@ -20,6 +28,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -29,7 +38,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="he" dir="rtl" className={`${assistant.variable} h-full`}>
-      <body className="min-h-full antialiased">{children}</body>
+      <body className="min-h-full antialiased">
+        <DataProvider>
+          <CapacitorBootstrap />
+          <OfflineBanner />
+          {children}
+        </DataProvider>
+      </body>
     </html>
   );
 }

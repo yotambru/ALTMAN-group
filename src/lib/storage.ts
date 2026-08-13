@@ -1,21 +1,24 @@
 import type { Role } from "@/types";
 
 /**
- * Thin, SSR-safe localStorage wrapper for prototype persistence.
- * All access is guarded so it is a no-op during server rendering.
+ * Thin, SSR-safe localStorage wrapper for session + UI flags.
+ * Domain data lives in Supabase (`src/lib/store.tsx`). All access is guarded
+ * so it is a no-op during server rendering.
  */
 
 const KEYS = {
   session: "altman.session",
-  tickets: "altman.tickets",
-  clients: "altman.clients",
   remember: "altman.remember",
 } as const;
 
 export interface Session {
   role: Role;
+  userId: string;
   fullName: string;
   loginAt: string;
+  landlordId?: string;
+  tenantId?: string;
+  professionalId?: string;
 }
 
 function isBrowser(): boolean {

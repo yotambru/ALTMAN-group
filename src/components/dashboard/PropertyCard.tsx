@@ -1,6 +1,7 @@
 import {
   Bath,
   Building2,
+  ChevronLeft,
   FileText,
   ReceiptText,
   Users,
@@ -9,12 +10,17 @@ import {
 import type { Property } from "@/types";
 import { PropertyImage } from "@/components/brand/PropertyImage";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
+import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES } from "@/lib/portfolio";
 
-const statusLabels: Record<Property["status"], string> = {
-  rented: "מושכר",
-  vacant: "פנוי",
-  maintenance: "בטיפול",
+const statusLabels = PROPERTY_STATUS_LABELS;
+
+const statusRing: Record<string, string> = {
+  success: "ring-navy/20",
+  warning: "ring-navy/20",
+  navy: "ring-navy/20",
+  danger: "ring-navy/20",
+  neutral: "ring-border",
 };
 
 function Stat({
@@ -52,11 +58,6 @@ export function PropertyCard({
   return (
     <div className="card overflow-hidden">
       <div className="flex items-start gap-3 p-4">
-        <PropertyImage
-          variant={property.imageId}
-          className="h-20 w-24 shrink-0"
-          rounded="rounded-xl"
-        />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <h3 className="flex items-center gap-1.5 text-base font-bold text-navy">
@@ -71,9 +72,16 @@ export function PropertyCard({
             {property.floor}
           </p>
           <div className="mt-2">
-            <StatusBadge tone="navy">{statusLabels[property.status]}</StatusBadge>
+            <StatusBadge tone={PROPERTY_STATUS_TONES[property.status]}>
+              {statusLabels[property.status]}
+            </StatusBadge>
           </div>
         </div>
+        <PropertyImage
+          variant={property.imageId}
+          className="h-20 w-24 shrink-0"
+          rounded="rounded-xl"
+        />
       </div>
 
       <div className="grid grid-cols-3 gap-x-3 gap-y-3 border-t border-border px-4 py-3">
@@ -114,6 +122,96 @@ export function PropertyCard({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * Polished property row — circular thumb, status, clear value hierarchy.
+ */
+export function PropertyRow({
+  property,
+  meta,
+  rent,
+  tenantName,
+  onClick,
+}: {
+  property: Property;
+  /** Fallback secondary line when rent/tenant aren't provided. */
+  meta?: string;
+  rent?: number;
+  tenantName?: string;
+  onClick?: () => void;
+}) {
+  const tone = PROPERTY_STATUS_TONES[property.status];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-center gap-3 rounded-2xl px-2.5 py-3 text-start transition-all hover:bg-surface-muted/90 active:scale-[0.995]"
+    >
+      <span
+        className={cn(
+          "relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full bg-surface-muted ring-[3px] ring-offset-2 ring-offset-surface",
+          statusRing[tone] ?? statusRing.neutral,
+        )}
+      >
+        <PropertyImage
+          variant={property.imageId}
+          className="h-full w-full"
+          rounded="rounded-full"
+          muted
+        />
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <p className="truncate text-[0.98rem] font-extrabold tracking-tight text-navy">
+            {property.address}, {property.city}
+          </p>
+          <StatusBadge tone={tone} className="shrink-0 px-2 py-0.5 text-[0.65rem]">
+            {statusLabels[property.status]}
+          </StatusBadge>
+        </div>
+
+        {rent !== undefined || tenantName || meta ? (
+          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[0.78rem]">
+            <span className="font-bold tabular-nums text-navy/85">
+              {formatCurrency(property.value)}
+            </span>
+            {rent !== undefined && (
+              <>
+                <span className="text-border">·</span>
+                <span className="font-semibold text-orange">
+                  {formatCurrency(rent)}
+                  <span className="font-medium text-text-muted"> / חודש</span>
+                </span>
+              </>
+            )}
+            {rent === undefined && !tenantName && meta && (
+              <>
+                <span className="text-border">·</span>
+                <span className="text-text-muted">{meta}</span>
+              </>
+            )}
+            {tenantName && (
+              <>
+                <span className="text-border">·</span>
+                <span className="text-text-muted">{tenantName}</span>
+              </>
+            )}
+          </div>
+        ) : (
+          <p className="mt-1 text-[0.78rem] text-text-muted">
+            דירה {property.apartmentNumber} · {property.sizeSqm} מ&quot;ר
+          </p>
+        )}
+      </div>
+
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-muted text-navy/35 transition-colors group-hover:bg-orange-soft group-hover:text-orange">
+        <ChevronLeft className="h-4 w-4" strokeWidth={2} />
+      </span>
+    </button>
   );
 }
 

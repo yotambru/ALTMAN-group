@@ -9,10 +9,7 @@ interface LogoProps {
   size?: "sm" | "md" | "lg";
 }
 
-/**
- * Temporary reusable ALTMAN Group wordmark built from styled text.
- * Isolated on purpose so it can be swapped for the official SVG/PNG later.
- */
+/** Temporary ALTMAN Group wordmark — Focus Strip style. */
 export function Logo({
   tone = "dark",
   className,
@@ -21,9 +18,14 @@ export function Logo({
 }: LogoProps) {
   const word = tone === "light" ? "text-white" : "text-navy";
   const sizes = {
-    sm: "text-xl",
+    sm: "text-[1.15rem]",
     md: "text-2xl",
     lg: "text-3xl",
+  } as const;
+  const groupSizes = {
+    sm: "text-[0.55rem]",
+    md: "text-[0.65rem]",
+    lg: "text-xs",
   } as const;
 
   return (
@@ -32,24 +34,24 @@ export function Logo({
       className={cn("inline-flex flex-col items-center leading-none", className)}
       aria-label="ALTMAN Group"
     >
-      <div className="flex items-end gap-1">
-        <span
-          className={cn(
-            "font-extrabold tracking-tight text-orange",
-            sizes[size],
-          )}
-        >
-          A
-        </span>
-        <span className={cn("font-extrabold tracking-tight", word, sizes[size])}>
-          LTMAN
-        </span>
-        <span className="mb-[2px] text-[0.6em] font-bold text-orange">Group</span>
-      </div>
+      <span className={cn("font-extrabold tracking-[0.04em]", word, sizes[size])}>
+        ALTMAN
+      </span>
+      <span
+        className={cn(
+          "mt-0.5 flex items-center gap-1.5 font-bold tracking-[0.28em]",
+          tone === "light" ? "text-white/80" : "text-navy/70",
+          groupSizes[size],
+        )}
+      >
+        <span className={cn("h-px w-3", tone === "light" ? "bg-white/50" : "bg-navy/30")} />
+        GROUP
+        <span className={cn("h-px w-3", tone === "light" ? "bg-white/50" : "bg-navy/30")} />
+      </span>
       {withTagline && (
         <span
           className={cn(
-            "mt-0.5 text-[0.6rem] font-semibold tracking-wide",
+            "mt-1 text-[0.6rem] font-semibold tracking-wide",
             tone === "light" ? "text-white/75" : "text-text-muted",
           )}
         >

@@ -12,26 +12,39 @@ import {
   Settings,
   Wrench,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
+import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { storage } from "@/lib/storage";
+import { roleLabels } from "@/lib/permissions";
 import type { Role } from "@/types";
 import { cn } from "@/lib/utils";
+
+export interface MobileMenuItem {
+  icon: LucideIcon;
+  label: string;
+  onClick?: () => void;
+}
 
 interface MobileMenuProps {
   open: boolean;
   onClose: () => void;
   role: Role;
   userName: string;
+  avatarUrl?: string;
+  /** Extra tools shown under the defaults (Focus Strip secondary actions). */
+  extraItems?: MobileMenuItem[];
 }
 
-const roleLabels: Record<Role, string> = {
-  manager: "מנהל",
-  landlord: "משכיר",
-  tenant: "שוכר",
-};
-
-export function MobileMenu({ open, onClose, role, userName }: MobileMenuProps) {
+export function MobileMenu({
+  open,
+  onClose,
+  role,
+  userName,
+  avatarUrl,
+  extraItems = [],
+}: MobileMenuProps) {
   const router = useRouter();
 
   useEffect(() => {
@@ -43,7 +56,7 @@ export function MobileMenu({ open, onClose, role, userName }: MobileMenuProps) {
 
   if (!open) return null;
 
-  const items = [
+  const defaults: MobileMenuItem[] = [
     { icon: LayoutDashboard, label: "דשבורד" },
     { icon: Building2, label: "הנכסים שלי" },
     { icon: FileSignature, label: "מסמכים וחתימות" },
@@ -52,6 +65,8 @@ export function MobileMenu({ open, onClose, role, userName }: MobileMenuProps) {
     { icon: Bell, label: "התראות" },
     { icon: Settings, label: "הגדרות" },
   ];
+
+  const items = extraItems.length > 0 ? extraItems : defaults;
 
   const handleLogout = () => {
     storage.clearSession();
@@ -78,9 +93,7 @@ export function MobileMenu({ open, onClose, role, userName }: MobileMenuProps) {
         </div>
 
         <div className="flex items-center gap-3 border-b border-border p-4">
-          <span className="grid h-11 w-11 place-items-center rounded-full bg-navy text-base font-bold text-white">
-            {userName.charAt(0)}
-          </span>
+          <UserAvatar name={userName} avatarUrl={avatarUrl} size="md" />
           <div>
             <p className="font-bold text-navy">{userName}</p>
             <p className="text-xs text-text-muted">{roleLabels[role]}</p>
@@ -91,7 +104,10 @@ export function MobileMenu({ open, onClose, role, userName }: MobileMenuProps) {
           {items.map((item) => (
             <button
               key={item.label}
-              onClick={onClose}
+              onClick={() => {
+                item.onClick?.();
+                onClose();
+              }}
               className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-semibold text-text transition-colors hover:bg-surface-muted"
             >
               <item.icon className="h-5 w-5 text-navy" />
@@ -104,7 +120,7 @@ export function MobileMenu({ open, onClose, role, userName }: MobileMenuProps) {
           <button
             onClick={handleLogout}
             className={cn(
-              "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-bold text-danger transition-colors hover:bg-[#fdecea]",
+              "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-bold text-danger transition-colors hover:bg-danger/10",
             )}
           >
             <LogOut className="h-5 w-5" />

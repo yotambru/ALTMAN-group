@@ -25,3 +25,18 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.vercel
+
+# Capacitor / native
+*.keystore
+*.jks
+android/.gradle/
+android/app/build/
+android/build/
+android/captures/
+android/local.properties
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+ios/App/App/public/
+.capacitor/

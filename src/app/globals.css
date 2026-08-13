@@ -15,17 +15,17 @@
   --orange-soft: #fff1e8;
 
   /* Surfaces */
-  --background: #eef2f8;
+  --background: #ffffff;
   --surface: #ffffff;
   --surface-muted: #f5f7fb;
 
   /* Text */
   --text: #16233f;
-  --text-muted: #75839c;
+  --text-muted: #7c89a1;
   --text-invert: #ffffff;
 
   /* Lines */
-  --border: #e5eaf2;
+  --border: #eaeef5;
 
   /* Status */
   --success: #1f9d57;
@@ -35,15 +35,16 @@
   --danger: #e0483a;
 
   /* Radius */
-  --radius-sm: 0.625rem;
-  --radius: 1rem;
-  --radius-lg: 1.25rem;
-  --radius-xl: 1.5rem;
+  --radius-sm: 0.75rem;
+  --radius: 1.25rem;
+  --radius-lg: 1.5rem;
+  --radius-xl: 1.75rem;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(20, 40, 90, 0.06);
-  --shadow: 0 6px 18px rgba(20, 40, 90, 0.08);
-  --shadow-lg: 0 18px 40px rgba(20, 40, 90, 0.16);
+  /* Shadows — soft & airy */
+  --shadow-sm: 0 1px 2px rgba(20, 40, 90, 0.04);
+  --shadow: 0 8px 24px -12px rgba(20, 40, 90, 0.14);
+  --shadow-lg: 0 24px 48px -20px rgba(20, 40, 90, 0.22);
+  --shadow-hero: 0 20px 40px -18px rgba(20, 40, 90, 0.45);
 }
 
 @theme inline {
@@ -77,6 +78,7 @@
   --shadow-sm: var(--shadow-sm);
   --shadow-DEFAULT: var(--shadow);
   --shadow-lg: var(--shadow-lg);
+  --shadow-hero: var(--shadow-hero);
 
   --font-sans: var(--font-assistant), "Segoe UI", system-ui, sans-serif;
 }
@@ -104,8 +106,20 @@ body {
   max-width: 30rem; /* ~480px mobile canvas */
   margin-inline: auto;
   min-height: 100dvh;
+  min-height: 100svh;
   background: var(--background);
   position: relative;
+  /* Native notch / home-indicator insets (Capacitor + iOS/Android) */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-inline-start: env(safe-area-inset-left);
+  padding-inline-end: env(safe-area-inset-right);
+}
+
+/* Native Capacitor shell: full-bleed mobile canvas */
+html[data-capacitor="true"] .app-shell,
+html.plt-capacitor .app-shell {
+  max-width: none;
 }
 
 @media (min-width: 480px) {
@@ -124,6 +138,72 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
+}
+
+/* Dark navy gradient surface for hero / focal cards */
+.hero-navy {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(90% 120% at 100% 0%, rgba(242, 106, 33, 0.28) 0%, rgba(242, 106, 33, 0) 48%),
+    radial-gradient(70% 80% at 0% 100%, rgba(35, 66, 127, 0.9) 0%, rgba(35, 66, 127, 0) 55%),
+    linear-gradient(160deg, #1a3570 0%, var(--navy) 48%, var(--navy-dark) 100%);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hero);
+}
+
+/* Dusk Glass — immersive navy header band */
+.dusk-header {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(90% 80% at 100% 0%, rgba(242, 106, 33, 0.18) 0%, rgba(242, 106, 33, 0) 50%),
+    linear-gradient(165deg, #1a3570 0%, var(--navy) 45%, var(--navy-dark) 100%);
+}
+
+/* Frosted glass metric card on dusk header */
+.glass-card {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.06) 55%,
+    rgba(8, 18, 42, 0.35) 100%
+  );
+  box-shadow: 0 16px 40px -18px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* Soft light content sheet that sits under a dark header band */
+.dash-sheet {
+  position: relative;
+  z-index: 1;
+  margin-top: -1rem;
+  border-radius: 1.5rem 1.5rem 0 0;
+  background: var(--surface-muted);
+  box-shadow: 0 -8px 28px -18px rgba(20, 40, 90, 0.35);
+}
+
+/* Floating action button */
+.fab {
+  position: absolute;
+  inset-inline-start: 1.25rem;
+  bottom: 1.25rem;
+  display: grid;
+  place-items: center;
+  height: 3.5rem;
+  width: 3.5rem;
+  border-radius: 9999px;
+  background: var(--orange);
+  color: #fff;
+  box-shadow: 0 12px 24px -8px rgba(242, 106, 33, 0.6);
 }
 
 /* Hide scrollbars on horizontal scrollers */
