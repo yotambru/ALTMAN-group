@@ -5,14 +5,9 @@ import { Capacitor } from "@capacitor/core";
 import { Network } from "@capacitor/network";
 import { WifiOff } from "lucide-react";
 
-function initialOffline(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return !navigator.onLine;
-}
-
 /** Compact offline notice for the native shell (and browsers). */
 export function OfflineBanner() {
-  const [offline, setOffline] = useState(initialOffline);
+  const [offline, setOffline] = useState(false);
 
   useEffect(() => {
     let remove: { remove: () => void } | undefined;

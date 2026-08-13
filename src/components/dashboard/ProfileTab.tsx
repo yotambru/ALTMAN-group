@@ -37,12 +37,21 @@ export function ProfileTab({
   const avatarUrl = users.find((u) => u.id === userId)?.avatarUrl;
 
   const pickPhoto = async (file: File | undefined) => {
-    if (!file || !file.type.startsWith("image/")) return;
+    if (!file) return;
+    const mime = file.type.toLowerCase();
+    const looksLikeImage =
+      mime.startsWith("image/") || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name);
+    if (!looksLikeImage) return;
     setBusy(true);
     setError("");
     try {
-      const url = await uploadImageFile(file, `avatars/${userId}`, { maxEdge: 720 });
+      const previous = avatarUrl;
+      const preview = URL.createObjectURL(file);
+      updateUser(userId, { avatarUrl: preview });
+      const url = await uploadImageFile(file, `avatars/${userId}-${Date.now()}`, { maxEdge: 720 });
+      URL.revokeObjectURL(preview);
       if (!url) {
+        updateUser(userId, { avatarUrl: previous });
         setError("לא הצלחנו לשמור את התמונה. בדקו את החיבור ונסו שוב.");
         return;
       }

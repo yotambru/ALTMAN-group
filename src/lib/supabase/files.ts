@@ -30,29 +30,66 @@ function parseDataUrl(dataUrl: string): { blob: Blob; contentType: string; ext: 
   }
 }
 
-async function compressToJpeg(source: Blob, maxEdge: number, quality: number): Promise<Blob> {
+async function canvasToJpeg(
+  width: number,
+  height: number,
+  paint: (ctx: CanvasRenderingContext2D, w: number, h: number) => void,
+  maxEdge: number,
+  quality: number,
+): Promise<Blob | null> {
+  const scale = Math.min(1, maxEdge / Math.max(width, height, 1));
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  paint(ctx, w, h);
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), "image/jpeg", quality);
+  });
+}
+
+async function compressToJpeg(source: Blob, maxEdge: number, quality: number): Promise<Blob | null> {
   try {
     const bitmap = await createImageBitmap(source);
-    const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      bitmap.close();
-      return source;
-    }
-    ctx.drawImage(bitmap, 0, 0, width, height);
+    const blob = await canvasToJpeg(
+      bitmap.width,
+      bitmap.height,
+      (ctx, w, h) => ctx.drawImage(bitmap, 0, 0, w, h),
+      maxEdge,
+      quality,
+    );
     bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((next) => resolve(next), "image/jpeg", quality);
-    });
-    return blob ?? source;
+    if (blob) return blob;
   } catch {
-    return source;
+    /* Safari / HEIC: fall through to Image() */
   }
+
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(source);
+    const img = new Image();
+    img.onload = () => {
+      void canvasToJpeg(
+        img.naturalWidth,
+        img.naturalHeight,
+        (ctx, w, h) => ctx.drawImage(img, 0, 0, w, h),
+        maxEdge,
+        quality,
+      ).then((blob) => {
+        URL.revokeObjectURL(url);
+        resolve(blob);
+      });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    img.src = url;
+  });
 }
 
 async function putObject(path: string, body: Blob, contentType: string): Promise<string | null> {
@@ -61,7 +98,7 @@ async function putObject(path: string, body: Blob, contentType: string): Promise
   const { error } = await supabase.storage.from(BUCKET).upload(path, body, {
     upsert: true,
     contentType,
-    cacheControl: "3600",
+    cacheControl: "0",
   });
   if (error) return null;
   return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
@@ -83,20 +120,21 @@ export async function uploadImageFile(
   options?: { maxEdge?: number; quality?: number },
 ): Promise<string | null> {
   const blob = await compressToJpeg(file, options?.maxEdge ?? 720, options?.quality ?? 0.82);
+  if (!blob) return null;
   return putObject(`${pathWithoutExt}.jpg`, blob, "image/jpeg");
+}
+
+function isEmbedded(value: unknown): boolean {
+  return typeof value === "string" && (value.startsWith("data:") || value.startsWith("blob:"));
 }
 
 function stillEmbedded(item: Record<string, unknown>): boolean {
   const fields = ["avatarUrl", "fileDataUrl", "photoDataUrl"] as const;
   for (const field of fields) {
-    const value = item[field];
-    if (typeof value === "string" && value.startsWith("data:")) return true;
+    if (isEmbedded(item[field])) return true;
   }
   const photos = item.photoDataUrls;
-  return (
-    Array.isArray(photos) &&
-    photos.some((url) => typeof url === "string" && url.startsWith("data:"))
-  );
+  return Array.isArray(photos) && photos.some(isEmbedded);
 }
 
 export async function hydrateFileFields<T extends Record<string, unknown>>(

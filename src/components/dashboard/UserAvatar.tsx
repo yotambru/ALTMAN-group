@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 type AvatarSize = "sm" | "md" | "lg" | "xl";
@@ -28,18 +29,21 @@ export function UserAvatar({
   className,
   tone = "solid",
 }: UserAvatarProps) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const initial = name.trim().charAt(0) || "?";
   const base =
     tone === "gradient"
       ? "bg-gradient-to-br from-navy to-navy-light shadow-[0_8px_18px_-10px_rgba(20,40,90,0.55)]"
       : "bg-navy";
 
-  if (avatarUrl) {
+  if (avatarUrl && failedUrl !== avatarUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- data URLs / remote URLs in prototype
       <img
+        key={avatarUrl}
         src={avatarUrl}
         alt={name}
+        onError={() => setFailedUrl(avatarUrl)}
         className={cn(
           "shrink-0 rounded-full object-cover",
           sizeClass[size],
