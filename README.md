@@ -36,7 +36,7 @@ Without Supabase keys the UI still runs on in-memory seed data (refresh resets i
 1. Create a free project at [supabase.com](https://supabase.com) — region **Frankfurt (eu-central-1)**.
 2. Copy Project URL + `anon` key into `.env.local` (see `.env.example`).
    Add the `service_role` key too (seed script only — never ship it to the browser).
-3. In the SQL editor, run [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql).
+3. In the SQL editor, run [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql), then [`supabase/migrations/002_user_password.sql`](supabase/migrations/002_user_password.sql) if the project already existed before login accounts.
 4. Seed the demo portfolio:
 
 ```bash

@@ -56,6 +56,7 @@ import {
   formatDateSlashes,
   formatCurrency,
   humanizeUntil,
+  isValidIsoDate,
 } from "@/lib/utils";
 import type { AppNotification, UtilityKind } from "@/types";
 
@@ -167,8 +168,11 @@ export default function TenantDashboard() {
 
   if (!property) return null;
 
-  const paymentDays = lease ? daysUntil(lease.nextPaymentDate) : 0;
-  const contractDays = lease ? daysUntil(lease.endDate) : 0;
+  const paymentDays = lease && isValidIsoDate(lease.nextPaymentDate)
+    ? daysUntil(lease.nextPaymentDate)
+    : Number.POSITIVE_INFINITY;
+  const leaseEnd = lease && isValidIsoDate(lease.endDate) ? lease.endDate : undefined;
+  const contractDays = leaseEnd ? daysUntil(leaseEnd) : Number.POSITIVE_INFINITY;
   const acLast = onboarding?.acFilterLastCleaned ?? onboarding?.moveInDate;
   const acNext = acLast ? new Date(new Date(acLast).getTime() + 90 * 86400000).toISOString() : undefined;
 
@@ -300,8 +304,8 @@ export default function TenantDashboard() {
               <MetricCard
                 icon={CalendarClock}
                 label="סיום חוזה"
-                value={lease ? humanizeUntil(lease.endDate) : "—"}
-                sublabel={lease ? formatDateSlashes(lease.endDate) : "אין חוזה"}
+                value={leaseEnd ? humanizeUntil(leaseEnd) : "—"}
+                sublabel={leaseEnd ? formatDateSlashes(leaseEnd) : "אין תאריך סיום"}
                 onClick={() => setDialog("contract")}
               />
               <MetricCard
@@ -484,9 +488,11 @@ export default function TenantDashboard() {
                   <CalendarClock className="h-4 w-4" /> סיום חוזה
                 </p>
                 <p className="mt-1 text-base font-extrabold text-navy">
-                  {lease ? formatDateSlashes(lease.endDate) : "—"}
+                  {leaseEnd ? formatDateSlashes(leaseEnd) : "—"}
                 </p>
-                <p className="text-[0.7rem] text-orange">{lease ? humanizeUntil(lease.endDate) : ""}</p>
+                <p className="text-[0.7rem] text-orange">
+                  {leaseEnd ? humanizeUntil(leaseEnd) : "אין תאריך סיום"}
+                </p>
               </button>
               <button
                 onClick={() => markAcFilterCleaned(tenantId)}

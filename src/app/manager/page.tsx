@@ -11,6 +11,7 @@ import {
   FileText,
   History,
   Home,
+  KeyRound,
   ListChecks,
   MessagesSquare,
   Repeat,
@@ -39,6 +40,7 @@ import { ChatPanel, type ChatPeer } from "@/features/chat/ChatPanel";
 import { DocumentsDialog } from "@/features/documents/DocumentsDialog";
 import { SendForSignatureDialog } from "@/features/documents/SendForSignatureDialog";
 import { AddClientModal } from "@/features/manager/AddClientModal";
+import { AddTenantModal } from "@/features/landlord/AddTenantModal";
 import { PropertyDetailDialog } from "@/features/properties/PropertyDetailDialog";
 import { PropertyListDialog } from "@/features/properties/PropertyListDialog";
 import { EditPropertyModal } from "@/features/properties/EditPropertyModal";
@@ -56,14 +58,18 @@ import { useData } from "@/lib/store";
 import { can } from "@/lib/permissions";
 import { getCriticalDates } from "@/lib/alerts";
 import {
-  buildPortfolioYieldHistory,
+  buildPortfolioYieldSeries,
+  formatPercent,
   occupancyPercent,
+  portfolioIncomeGrowth,
+  portfolioJoinDate,
 } from "@/lib/portfolio";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatMonthYear } from "@/lib/utils";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
 type Dialog =
   | "add"
+  | "addTenant"
   | "send"
   | "landlords"
   | "tenants"
@@ -111,17 +117,12 @@ export default function ManagerDashboard() {
   const activeLeases = leases.filter((l) => l.active);
   const monthlyIncome = activeLeases.reduce((sum, l) => sum + l.monthlyRent, 0);
   const occupancy = occupancyPercent(properties);
-  const yieldHistory = buildPortfolioYieldHistory(activeLeases);
-  const incomeSeries = yieldHistory.map((p) => p.annualIncome);
-  const incomeTrend =
-    yieldHistory.length >= 2
-      ? Math.round(
-          ((yieldHistory[yieldHistory.length - 1].annualIncome /
-            yieldHistory[yieldHistory.length - 2].annualIncome) -
-            1) *
-            1000,
-        ) / 10
-      : undefined;
+  const yieldSeries = buildPortfolioYieldSeries(activeLeases);
+  const incomeSeries = yieldSeries.map((p) => p.annualIncome);
+  const incomeGrowth = portfolioIncomeGrowth(activeLeases);
+  const joinDate = portfolioJoinDate(activeLeases);
+  const firstYield = yieldSeries[0];
+  const lastYield = yieldSeries.at(-1);
   const openTicketCount = tickets.filter((t) => t.status === "open" || t.status === "in_progress").length;
   const rentedCount = properties.filter((p) => p.status === "rented").length;
 
@@ -248,6 +249,7 @@ export default function ManagerDashboard() {
 
   const menuItems: MobileMenuItem[] = [
     { icon: UserPlus, label: "משכיר חדש", onClick: () => { setAddForLandlordId(null); setDialog("add"); } },
+    { icon: KeyRound, label: "שוכר חדש", onClick: () => setDialog("addTenant") },
     { icon: UsersRound, label: "תצוגת לקוחות", onClick: () => { setSelectedClientId(null); openPanel("clients"); } },
     { icon: Users, label: "תצוגת שוכרים", onClick: () => setDialog("tenants") },
     { icon: Building2, label: "כל הנכסים", onClick: () => setDialog("properties") },
@@ -265,6 +267,7 @@ export default function ManagerDashboard() {
   ].filter((item) => {
     const map: Record<string, boolean> = {
       "משכיר חדש": can(role, "clients.create"),
+      "שוכר חדש": can(role, "clients.create"),
       "תצוגת לקוחות": can(role, "clients.view") || can(role, "people.view"),
       "תצוגת שוכרים": can(role, "people.view"),
       "כל הנכסים": true,
@@ -331,7 +334,22 @@ export default function ManagerDashboard() {
               value={formatCurrency(monthlyIncome)}
               subtitle={`תפוסה ${occupancy}% · ${rentedCount}/${properties.length} מושכרים · ${landlords.length} לקוחות`}
               data={incomeSeries.length > 1 ? incomeSeries : undefined}
-              trendPercent={incomeTrend}
+              trendPercent={incomeGrowth}
+              trendLabel={
+                joinDate
+                  ? `גידול בהכנסות מאז תחילת הניהול · ${formatMonthYear(joinDate)}`
+                  : "לפי מחשבון תשואה"
+              }
+              chartStartLabel={
+                firstYield && joinDate
+                  ? `התחלה ${formatMonthYear(joinDate)} · ${formatPercent(firstYield.yieldPercent)}`
+                  : undefined
+              }
+              chartEndLabel={
+                lastYield
+                  ? `${lastYield.incomeGrowthPercent >= 0 ? "+" : ""}${formatPercent(lastYield.incomeGrowthPercent)} · תשואה ${formatPercent(lastYield.yieldPercent)}`
+                  : undefined
+              }
             />
           </div>
         </div>
@@ -621,6 +639,11 @@ export default function ManagerDashboard() {
           setAddForLandlordId(null);
         }}
         existingLandlordId={addForLandlordId}
+      />
+      <AddTenantModal
+        open={dialog === "addTenant"}
+        onClose={() => setDialog(null)}
+        properties={properties}
       />
       <SendForSignatureDialog open={dialog === "send"} onClose={() => setDialog(null)} />
       <PeopleListDialog open={dialog === "landlords"} onClose={() => setDialog(null)} mode="landlords" />

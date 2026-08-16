@@ -17,6 +17,12 @@ export interface User {
   landlordId?: string;
   tenantId?: string;
   professionalId?: string;
+  /**
+   * SHA-256 hex of the login password.
+   * Missing / empty means the account was opened by email only and still
+   * needs a first-time password setup.
+   */
+  passwordHash?: string;
 }
 
 /**

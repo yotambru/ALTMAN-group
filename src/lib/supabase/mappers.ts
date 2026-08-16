@@ -81,6 +81,7 @@ function userToRow(u: User): Row {
     landlord_id: u.landlordId ?? null,
     tenant_id: u.tenantId ?? null,
     professional_id: u.professionalId ?? null,
+    password_hash: u.passwordHash ?? null,
   };
 }
 
@@ -95,6 +96,7 @@ function userFromRow(row: Row): User {
     landlordId: opt(row.landlord_id as string | null),
     tenantId: opt(row.tenant_id as string | null),
     professionalId: opt(row.professional_id as string | null),
+    passwordHash: opt(row.password_hash as string | null) || undefined,
   };
 }
 

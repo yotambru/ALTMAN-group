@@ -45,9 +45,11 @@ export async function fetchAll(): Promise<DataState | null> {
   return next;
 }
 
-export async function persistDiff(prev: DataState, next: DataState): Promise<void> {
+export async function persistDiff(prev: DataState, next: DataState): Promise<string[]> {
   const supabase = getSupabase();
-  if (!supabase) return;
+  if (!supabase) return [];
+
+  const errors: string[] = [];
 
   for (const col of COLLECTIONS) {
     const prevList = prev[col.key] as unknown[];
@@ -63,7 +65,9 @@ export async function persistDiff(prev: DataState, next: DataState): Promise<voi
       if (stillEmbedded(prepared)) continue;
       const { error } = await supabase.from(col.table).upsert(col.toRow(prepared as never));
       if (error) {
-        console.error(`[supabase] upsert ${col.table}/${id}`, error.message);
+        const message = `${col.table}/${id}: ${error.message}`;
+        console.error(`[supabase] upsert ${message}`);
+        errors.push(message);
       }
     }
 
@@ -71,10 +75,14 @@ export async function persistDiff(prev: DataState, next: DataState): Promise<voi
       if (nextMap.has(id)) continue;
       const { error } = await supabase.from(col.table).delete().eq(col.idColumn, id);
       if (error) {
-        console.error(`[supabase] delete ${col.table}/${id}`, error.message);
+        const message = `${col.table}/${id}: ${error.message}`;
+        console.error(`[supabase] delete ${message}`);
+        errors.push(message);
       }
     }
   }
+
+  return errors;
 }
 
 export function applyRealtimeChange(

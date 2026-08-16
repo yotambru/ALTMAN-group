@@ -4,6 +4,7 @@ import "./globals.css";
 import { DataProvider } from "@/lib/store";
 import { CapacitorBootstrap } from "@/components/native/CapacitorBootstrap";
 import { OfflineBanner } from "@/components/native/OfflineBanner";
+import { PersistBanner } from "@/components/native/PersistBanner";
 
 const assistant = Assistant({
   subsets: ["hebrew", "latin"],
@@ -42,6 +43,7 @@ export default function RootLayout({
         <DataProvider>
           <CapacitorBootstrap />
           <OfflineBanner />
+          <PersistBanner />
           {children}
         </DataProvider>
       </body>

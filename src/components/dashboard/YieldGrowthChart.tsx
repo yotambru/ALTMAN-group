@@ -47,7 +47,7 @@ export function YieldGrowthChart({ points, className }: YieldGrowthChartProps) {
         <div>
           <p className="text-sm font-semibold text-navy">גידול בתשואה</p>
           <p className="mt-0.5 text-xs text-text-muted">
-            ממועד תחילת הניהול · שווי מעוגן לפי תשואה ממוצעת בישראל (3%)
+            ממועד ההצטרפות לחברה · לפי מחשבון תשואה (שווי מעוגן ב-3%)
           </p>
         </div>
         <div className="text-end">
@@ -59,39 +59,41 @@ export function YieldGrowthChart({ points, className }: YieldGrowthChartProps) {
         </div>
       </div>
 
-      <svg viewBox={`0 0 ${w} ${h}`} className="mt-3 h-28 w-full" role="img" aria-label="גרף תשואה לפי שנים">
-        <path d={area} fill="var(--orange)" fillOpacity={0.12} />
-        <path
-          d={line}
-          fill="none"
-          stroke="var(--orange)"
-          strokeWidth={2.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle cx={first.x} cy={first.y} r={3.5} fill="var(--navy)" />
-        <circle cx={last.x} cy={last.y} r={4} fill="var(--orange)" />
-        {coords.map((c) => (
-          <text
-            key={c.year}
-            x={c.x}
-            y={h - 8}
-            textAnchor="middle"
-            className="fill-[var(--text-muted)]"
-            fontSize="10"
-          >
-            {c.year}
-          </text>
-        ))}
-      </svg>
+      <div dir="ltr">
+        <svg viewBox={`0 0 ${w} ${h}`} className="mt-3 h-28 w-full" role="img" aria-label="גרף תשואה ממועד ההצטרפות">
+          <path d={area} fill="var(--orange)" fillOpacity={0.12} />
+          <path
+            d={line}
+            fill="none"
+            stroke="var(--orange)"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx={first.x} cy={first.y} r={3.5} fill="var(--navy)" />
+          <circle cx={last.x} cy={last.y} r={4} fill="var(--orange)" />
+          {coords.map((c, i) => (
+            <text
+              key={c.date}
+              x={c.x}
+              y={h - 8}
+              textAnchor="middle"
+              className="fill-[var(--text-muted)]"
+              fontSize="10"
+            >
+              {i === 0 ? "הצטרפות" : c.year}
+            </text>
+          ))}
+        </svg>
 
-      <div className="mt-1 flex justify-between text-[0.7rem] text-text-muted">
-        <span>
-          התחלה {formatPercent(first.yieldPercent)} · {formatCurrency(first.annualIncome)}/שנה
-        </span>
-        <span>
-          היום {formatPercent(last.yieldPercent)} · {formatCurrency(last.annualIncome)}/שנה
-        </span>
+        <div className="mt-1 flex justify-between text-[0.7rem] text-text-muted">
+          <span>
+            הצטרפות {formatPercent(first.yieldPercent)} · {formatCurrency(first.annualIncome)}/שנה
+          </span>
+          <span>
+            היום {formatPercent(last.yieldPercent)} · {formatCurrency(last.annualIncome)}/שנה
+          </span>
+        </div>
       </div>
     </div>
   );

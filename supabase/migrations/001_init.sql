@@ -12,8 +12,13 @@ create table if not exists public.app_users (
   avatar_url text,
   landlord_id text,
   tenant_id text,
-  professional_id text
+  professional_id text,
+  password_hash text
 );
+
+create unique index if not exists app_users_email_lower
+  on public.app_users (lower(email))
+  where email is not null and email <> '';
 
 create table if not exists public.landlords (
   id text primary key,

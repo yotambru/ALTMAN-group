@@ -10,8 +10,24 @@ export function formatCurrency(value: number): string {
   return `₪${value.toLocaleString("en-US")}`;
 }
 
+/** Hebrew month + year, e.g. "ספט׳ 2024". */
+export function formatMonthYear(iso: string): string {
+  const [y, m] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, 1).toLocaleDateString("he-IL", {
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/** True when `iso` parses to a real calendar date. */
+export function isValidIsoDate(iso: string | undefined | null): boolean {
+  if (!iso?.trim()) return false;
+  return Number.isFinite(new Date(iso).getTime());
+}
+
 /** Format an ISO date as DD.MM.YYYY (used across dashboards). */
 export function formatDateDots(iso: string): string {
+  if (!isValidIsoDate(iso)) return "—";
   const d = new Date(iso);
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -20,6 +36,7 @@ export function formatDateDots(iso: string): string {
 
 /** Format an ISO date as DD/MM/YYYY. */
 export function formatDateSlashes(iso: string): string {
+  if (!isValidIsoDate(iso)) return "—";
   const d = new Date(iso);
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -28,6 +45,7 @@ export function formatDateSlashes(iso: string): string {
 
 /** Whole days from today until an ISO date (negative if past). */
 export function daysUntil(iso: string, from: Date = new Date()): number {
+  if (!isValidIsoDate(iso)) return Number.POSITIVE_INFINITY;
   const target = new Date(iso);
   const ms = target.getTime() - from.getTime();
   return Math.ceil(ms / (1000 * 60 * 60 * 24));
@@ -66,6 +84,7 @@ export function formatChatListTime(iso: string, from: Date = new Date()): string
 
 /** Hebrew relative phrase, e.g. "בעוד 5 ימים" / "בעוד 3 חודשים". */
 export function humanizeUntil(iso: string, from: Date = new Date()): string {
+  if (!isValidIsoDate(iso)) return "—";
   const days = daysUntil(iso, from);
   if (days < 0) return "עבר התאריך";
   if (days === 0) return "היום";

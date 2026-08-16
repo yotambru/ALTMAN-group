@@ -15,6 +15,7 @@ import {
   persistDiff,
   subscribeToData,
 } from "@/lib/supabase/sync";
+import { accountDisplayName, normalizeEmail } from "@/lib/auth";
 import { generateId } from "@/lib/utils";
 import type {
   ActivityLogEntry,
@@ -112,6 +113,17 @@ export interface NewClientInput {
   managementAgreementFileName?: string;
 }
 
+export interface NewTenantInput {
+  propertyId: string;
+  email: string;
+  name?: string;
+  phone?: string;
+  idNumber?: string;
+  monthlyRent?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
 const ALL_UTILITIES: UtilityKind[] = ["arnona", "water", "electricity", "gas", "vaad"];
 
 function recomputeCompleted(ob: TenantOnboarding): TenantOnboarding {
@@ -126,6 +138,9 @@ interface DataContextValue extends DataState {
   ready: boolean;
   actor: Actor;
   setActor: (a: Actor) => void;
+  /** Last Supabase write error, if a mutation did not persist. */
+  persistError: string | null;
+  retryPersist: () => void;
 
   // audit
   log: (action: string, entity?: string, entityId?: string, details?: string) => void;
@@ -137,6 +152,12 @@ interface DataContextValue extends DataState {
     leaseId?: string;
     tenantId?: string;
   };
+  addTenant: (input: NewTenantInput) => {
+    tenantId: string;
+    leaseId: string;
+    userId?: string;
+  };
+  setUserPassword: (userId: string, passwordHash: string) => void;
 
   // properties / leases / people
   updateUser: (id: string, patch: Partial<User>) => void;
@@ -220,6 +241,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<DataState>(seedState);
   const [ready, setReady] = useState(false);
   const [actor, setActorState] = useState<Actor>(DEFAULT_ACTOR);
+  const [persistError, setPersistError] = useState<string | null>(null);
+  const [persistNonce, setPersistNonce] = useState(0);
   const actorRef = useRef<Actor>(DEFAULT_ACTOR);
   const prevRef = useRef<DataState | null>(null);
 
@@ -255,17 +278,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     const prev = prevRef.current;
-    prevRef.current = state;
     if (!prev) return;
-    void persistDiff(prev, state);
-  }, [state, ready]);
+    let cancelled = false;
+    void (async () => {
+      const errors = await persistDiff(prev, state);
+      if (cancelled) return;
+      if (errors.length === 0) {
+        prevRef.current = state;
+        setPersistError(null);
+        return;
+      }
+      setPersistError(errors[0] ?? "שמירה לשרת נכשלה");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state, ready, persistNonce]);
 
   useEffect(() => {
     if (!ready) return;
     return subscribeToData((table, event, row) => {
       setState((prev) => {
         const next = applyRealtimeChange(prev, table, event, row);
-        prevRef.current = next;
+        if (prevRef.current) {
+          prevRef.current = applyRealtimeChange(prevRef.current, table, event, row);
+        }
         return next;
       });
     });
@@ -274,6 +311,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const setActor = useCallback((a: Actor) => {
     actorRef.current = a;
     setActorState(a);
+  }, []);
+
+  const retryPersist = useCallback(() => {
+    setPersistNonce((n) => n + 1);
   }, []);
 
   const makeLog = useCallback(
@@ -438,37 +479,170 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      setState((p) => ({
-        ...p,
-        landlords: landlord
-          ? [landlord, ...p.landlords]
-          : p.landlords.map((l) =>
-              l.id === landlordId
-                ? {
-                    ...l,
-                    propertyIds: [propertyId, ...l.propertyIds],
-                    idPhotoUploaded: input.landlordIdPhotoDataUrl ? true : l.idPhotoUploaded,
-                  }
-                : l,
-            ),
-        properties: [property, ...p.properties],
-        tenants: tenant ? [tenant, ...p.tenants] : p.tenants,
-        leases: lease ? [lease, ...p.leases] : p.leases,
-        onboardings: onboarding ? [onboarding, ...p.onboardings] : p.onboardings,
-        documents: docs.length ? [...docs, ...p.documents] : p.documents,
-        activityLog: [
+      const loginUsers: User[] = [];
+      const landlordEmail = input.landlordEmail.trim();
+      if (!attaching && landlordEmail) {
+        loginUsers.push({
+          id: generateId("u"),
+          fullName: accountDisplayName(input.landlordName, landlordEmail),
+          role: "landlord",
+          email: normalizeEmail(landlordEmail),
+          phone: input.landlordPhone.trim() || undefined,
+          landlordId,
+        });
+      }
+      const tenantEmail = input.tenantEmail?.trim();
+      if (tenant && tenantId && tenantEmail) {
+        loginUsers.push({
+          id: generateId("u"),
+          fullName: accountDisplayName(input.tenantName, tenantEmail),
+          role: "tenant",
+          email: normalizeEmail(tenantEmail),
+          phone: input.tenantPhone?.trim() || undefined,
+          tenantId,
+        });
+      }
+
+      setState((p) => {
+        const taken = new Set(
+          p.users
+            .map((u) => (u.email ? normalizeEmail(u.email) : ""))
+            .filter(Boolean),
+        );
+        const uniqueLogins = loginUsers.filter(
+          (u) => u.email && !taken.has(normalizeEmail(u.email)),
+        );
+        const accountLogs = uniqueLogins.map((u) =>
           makeLog(
-            attaching ? "הוספת נכס ללקוח קיים" : "הוספת משכיר חדש",
-            "property",
-            propertyId,
-            `${property.address}, ${property.city}`,
+            u.role === "landlord" ? "פתיחת חשבון משכיר" : "פתיחת חשבון שוכר",
+            "user",
+            u.id,
+            u.email,
           ),
-          ...docs.map((d) => makeLog("העלאת מסמך", "document", d.id, d.name)),
-          ...p.activityLog,
-        ],
-      }));
+        );
+        return {
+          ...p,
+          users: uniqueLogins.length ? [...uniqueLogins, ...p.users] : p.users,
+          landlords: landlord
+            ? [landlord, ...p.landlords]
+            : p.landlords.map((l) =>
+                l.id === landlordId
+                  ? {
+                      ...l,
+                      propertyIds: [propertyId, ...l.propertyIds],
+                      idPhotoUploaded: input.landlordIdPhotoDataUrl ? true : l.idPhotoUploaded,
+                    }
+                  : l,
+              ),
+          properties: [property, ...p.properties],
+          tenants: tenant ? [tenant, ...p.tenants] : p.tenants,
+          leases: lease ? [lease, ...p.leases] : p.leases,
+          onboardings: onboarding ? [onboarding, ...p.onboardings] : p.onboardings,
+          documents: docs.length ? [...docs, ...p.documents] : p.documents,
+          activityLog: [
+            makeLog(
+              attaching ? "הוספת נכס ללקוח קיים" : "הוספת משכיר חדש",
+              "property",
+              propertyId,
+              `${property.address}, ${property.city}`,
+            ),
+            ...accountLogs,
+            ...docs.map((d) => makeLog("העלאת מסמך", "document", d.id, d.name)),
+            ...p.activityLog,
+          ],
+        };
+      });
 
       return { propertyId, leaseId, tenantId, landlordId };
+    },
+    [makeLog],
+  );
+
+  const addTenant = useCallback<DataContextValue["addTenant"]>(
+    (input) => {
+      const tenantId = generateId("t");
+      const leaseId = generateId("ls");
+      const userId = generateId("u");
+      const nowIso = new Date().toISOString();
+      const email = normalizeEmail(input.email);
+      const fullName = accountDisplayName(input.name, email);
+
+      setState((p) => {
+        const property = p.properties.find((it) => it.id === input.propertyId);
+        if (!property || property.tenantId) return p;
+
+        const tenant: Tenant = {
+          id: tenantId,
+          fullName,
+          phone: input.phone?.trim() ?? "",
+          email,
+          propertyId: property.id,
+          leaseId,
+          idNumber: input.idNumber,
+          idPhotoUploaded: Boolean(input.idNumber),
+        };
+        const lease: Lease = {
+          id: leaseId,
+          propertyId: property.id,
+          tenantId,
+          landlordId: property.landlordId,
+          monthlyRent: input.monthlyRent ?? property.listedRent ?? 0,
+          startDate: input.startDate || property.entryDate || nowIso.slice(0, 10),
+          endDate: input.endDate || "",
+          nextPaymentDate: input.startDate || property.entryDate || nowIso.slice(0, 10),
+          active: true,
+        };
+        const onboarding: TenantOnboarding = {
+          tenantId,
+          leaseId,
+          moveInDate: lease.startDate,
+          utilities: ALL_UTILITIES.map((utility) => ({ utility, status: "pending" })),
+          insurance: { status: "pending" },
+          completed: false,
+        };
+        const loginUser: User = {
+          id: userId,
+          fullName,
+          role: "tenant",
+          email,
+          phone: input.phone?.trim() || undefined,
+          tenantId,
+        };
+        const emailTaken = p.users.some(
+          (u) => u.email && normalizeEmail(u.email) === email,
+        );
+
+        return {
+          ...p,
+          users: emailTaken ? p.users : [loginUser, ...p.users],
+          tenants: [tenant, ...p.tenants],
+          leases: [lease, ...p.leases],
+          onboardings: [onboarding, ...p.onboardings],
+          properties: p.properties.map((it) =>
+            it.id === property.id ? { ...it, tenantId, status: "rented" as const } : it,
+          ),
+          activityLog: [
+            makeLog("הוספת שוכר", "tenant", tenantId, fullName),
+            ...(emailTaken
+              ? []
+              : [makeLog("פתיחת חשבון שוכר", "user", userId, email)]),
+            ...p.activityLog,
+          ],
+        };
+      });
+
+      return { tenantId, leaseId, userId };
+    },
+    [makeLog],
+  );
+
+  const setUserPassword = useCallback<DataContextValue["setUserPassword"]>(
+    (userId, passwordHash) => {
+      setState((p) => ({
+        ...p,
+        users: p.users.map((it) => (it.id === userId ? { ...it, passwordHash } : it)),
+        activityLog: [makeLog("קביעת סיסמת כניסה", "user", userId), ...p.activityLog],
+      }));
     },
     [makeLog],
   );
@@ -1095,8 +1269,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     ready,
     actor,
     setActor,
+    persistError,
+    retryPersist,
     log,
     addClient,
+    addTenant,
+    setUserPassword,
     updateUser,
     updateProperty,
     updateLease,

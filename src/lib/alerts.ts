@@ -45,9 +45,9 @@ export function getCriticalDates(
   const out: CriticalDate[] = [];
 
   const push = (lease: Lease, kind: CriticalKind, date?: string) => {
-    if (!date) return;
+    if (!date?.trim()) return;
     const daysLeft = daysUntil(date, from);
-    if (daysLeft < 0 || daysLeft > windowDays) return;
+    if (!Number.isFinite(daysLeft) || daysLeft < 0 || daysLeft > windowDays) return;
     const property = byId(lease.propertyId);
     out.push({
       id: `${lease.id}_${kind}`,

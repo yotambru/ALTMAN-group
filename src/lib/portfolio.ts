@@ -54,101 +54,179 @@ export function estimateMarketValue(
 
 export interface YieldPoint {
   year: number;
-  /** Annual rental income (ILS) at that year. */
+  /** 1–12 for monthly snapshots from the join date. */
+  month?: number;
+  /** ISO date of the snapshot (join date, month start, or Jan 1 of the year). */
+  date: string;
+  /** Annual rental income (ILS) at that snapshot. */
   annualIncome: number;
   /**
-   * Cash yield vs the management-start anchor value (%).
+   * Cash yield vs each lease's management-start anchor (%).
    * Starts near the Israel average and rises as rent grows.
    */
   yieldPercent: number;
-  /** Cumulative income growth vs the first year (%). */
+  /** Cumulative income growth vs the first snapshot (%). */
   incomeGrowthPercent: number;
 }
 
-function leaseStartYear(lease: Lease): number {
-  return new Date(lease.managementStartDate ?? lease.startDate).getFullYear();
+type YieldSeed = Omit<YieldPoint, "yieldPercent" | "incomeGrowthPercent">;
+
+function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
 }
 
-function leaseEndYear(lease: Lease, asOfYear: number): number {
-  if (lease.active) return asOfYear;
-  const iso = lease.managementEndDate ?? lease.endDate;
-  return new Date(iso).getFullYear();
+function isoDate(year: number, monthIndex: number, day = 1): string {
+  return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-/** Whether a lease contributed rental income during `year`. */
-function leaseActiveInYear(lease: Lease, year: number, asOfYear: number): boolean {
-  return year >= leaseStartYear(lease) && year <= leaseEndYear(lease, asOfYear);
+function leaseStartIso(lease: Lease): string {
+  return (lease.managementStartDate ?? lease.startDate).slice(0, 10);
 }
 
-/**
- * Estimated annual rent for a lease in a given calendar year.
- * Current `monthlyRent` is treated as today's rent and deflated by
- * `RENT_GROWTH_RATE` for past years (prototype; real ledger later).
- */
-function annualRentInYear(lease: Lease, year: number, asOfYear: number): number {
-  const yearsFromNow = Math.max(0, asOfYear - year);
-  const monthly = lease.monthlyRent / Math.pow(1 + RENT_GROWTH_RATE, yearsFromNow);
+function leaseStartDate(lease: Lease): Date {
+  return parseIsoDate(leaseStartIso(lease));
+}
+
+function leaseEndDate(lease: Lease, asOf: Date): Date {
+  if (lease.active) return asOf;
+  return parseIsoDate(lease.managementEndDate ?? lease.endDate);
+}
+
+/** Whether a lease contributed rental income during a calendar month (`monthIndex` 0–11). */
+function leaseActiveInMonth(lease: Lease, year: number, monthIndex: number, asOf: Date): boolean {
+  const start = leaseStartDate(lease);
+  const end = leaseEndDate(lease, asOf);
+  const monthStart = new Date(year, monthIndex, 1);
+  const monthEnd = new Date(year, monthIndex + 1, 0, 23, 59, 59);
+  return monthEnd >= start && monthStart <= end;
+}
+
+/** Annualized rent at a month, deflated from today's rent by `RENT_GROWTH_RATE`. */
+function annualRentInMonth(lease: Lease, year: number, monthIndex: number, asOf: Date): number {
+  const monthsFromNow = Math.max(0, (asOf.getFullYear() - year) * 12 + (asOf.getMonth() - monthIndex));
+  const monthly = lease.monthlyRent / Math.pow(1 + RENT_GROWTH_RATE, monthsFromNow / 12);
   return monthly * 12;
 }
 
+/** Market value locked in at the lease's management start (Israel avg yield). */
+function leaseStartAnchor(lease: Lease, asOf: Date): number {
+  const start = leaseStartDate(lease);
+  return estimateMarketValue(annualRentInMonth(lease, start.getFullYear(), start.getMonth(), asOf));
+}
+
+function roundTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
 /**
- * Portfolio yield / income history from the earliest management start through `asOf`.
- *
- * Income is summed **per lease per year** — only leases that were under management
- * in that year count. Adding or renting a property raises recent years more than
- * early ones, so "גידול בהכנסות" updates automatically with the portfolio.
- *
- * Value is anchored once (start income ÷ Israel avg yield) so yield % grows with rent.
+ * Yield-calculator metrics: each lease is valued at start-of-management
+ * (annual rent ÷ Israel avg yield). Rent growth then lifts cash yield
+ * without revaluing the asset 1:1. New leases add their own start anchor,
+ * so adding a property raises income without faking a yield spike.
+ */
+function annotateYield(points: YieldSeed[], leases: Lease[], asOf: Date): YieldPoint[] {
+  const baseIncome = points.find((p) => p.annualIncome > 0)?.annualIncome ?? 0;
+  if (baseIncome <= 0) return [];
+
+  return points.map((p) => {
+    const active = leases.filter((l) => leaseActiveInMonth(l, p.year, (p.month ?? 1) - 1, asOf));
+    const anchor = active.reduce((sum, l) => sum + leaseStartAnchor(l, asOf), 0);
+    return {
+      ...p,
+      yieldPercent: anchor > 0 ? roundTenth((p.annualIncome / anchor) * 100) : 0,
+      incomeGrowthPercent: roundTenth((p.annualIncome / baseIncome - 1) * 100),
+    };
+  });
+}
+
+/** Earliest management-start (when the landlord joined ALTMAN). */
+export function portfolioJoinDate(leases: Lease[]): string | undefined {
+  if (leases.length === 0) return undefined;
+  return [...leases.map(leaseStartIso)].sort()[0];
+}
+
+/**
+ * Yearly snapshots of the yield-calculator series: join month, then the
+ * last month of each following year (including today). Used by bar charts.
  */
 export function buildPortfolioYieldHistory(
   leases: Lease[],
   asOf: Date = new Date(),
 ): YieldPoint[] {
-  if (leases.length === 0) return [];
+  const series = buildPortfolioYieldSeries(leases, asOf);
+  if (series.length === 0) return [];
 
-  const endYear = asOf.getFullYear();
-  const startYear = Math.min(...leases.map(leaseStartYear));
-  if (endYear < startYear) return [];
+  const selected: YieldPoint[] = [];
+  const seen = new Set<string>();
+  const take = (p: YieldPoint) => {
+    if (seen.has(p.date)) return;
+    seen.add(p.date);
+    selected.push(p);
+  };
 
-  const points: YieldPoint[] = [];
-  for (let year = startYear; year <= endYear; year++) {
-    const annualIncome = Math.round(
-      leases
-        .filter((l) => leaseActiveInYear(l, year, endYear))
-        .reduce((sum, l) => sum + annualRentInYear(l, year, endYear), 0),
-    );
-    points.push({ year, annualIncome, yieldPercent: 0, incomeGrowthPercent: 0 });
+  take(series[0]);
+  const lastByYear = new Map<number, YieldPoint>();
+  for (const p of series) lastByYear.set(p.year, p);
+  for (const year of [...lastByYear.keys()].sort((a, b) => a - b)) {
+    take(lastByYear.get(year)!);
   }
-
-  const baseIncome = points.find((p) => p.annualIncome > 0)?.annualIncome ?? 0;
-  if (baseIncome <= 0) return [];
-
-  const anchorValue = estimateMarketValue(baseIncome);
-  return points.map((p) => ({
-    ...p,
-    yieldPercent:
-      anchorValue > 0 ? Math.round((p.annualIncome / anchorValue) * 1000) / 10 : 0,
-    incomeGrowthPercent:
-      baseIncome > 0
-        ? Math.round(((p.annualIncome / baseIncome) - 1) * 1000) / 10
-        : 0,
-  }));
+  take(series.at(-1)!);
+  return selected;
 }
 
-/** Cumulative income growth (%) from first management year → today. */
+/**
+ * Monthly yield-calculator series from the join date through `asOf`.
+ * First point = month the landlord joined; later points = income, yield %
+ * and cumulative income-growth % as the portfolio and rents change.
+ */
+export function buildPortfolioYieldSeries(
+  leases: Lease[],
+  asOf: Date = new Date(),
+): YieldPoint[] {
+  const joinIso = portfolioJoinDate(leases);
+  if (!joinIso) return [];
+  const join = parseIsoDate(joinIso);
+  if (asOf < join) return [];
+
+  const seeds: YieldSeed[] = [];
+  const cursor = new Date(join.getFullYear(), join.getMonth(), 1);
+  const last = new Date(asOf.getFullYear(), asOf.getMonth(), 1);
+
+  while (cursor.getTime() <= last.getTime()) {
+    const year = cursor.getFullYear();
+    const monthIndex = cursor.getMonth();
+    const annualIncome = Math.round(
+      leases
+        .filter((l) => leaseActiveInMonth(l, year, monthIndex, asOf))
+        .reduce((sum, l) => sum + annualRentInMonth(l, year, monthIndex, asOf), 0),
+    );
+    seeds.push({
+      year,
+      month: monthIndex + 1,
+      date: seeds.length === 0 ? joinIso : isoDate(year, monthIndex),
+      annualIncome,
+    });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return annotateYield(seeds, leases, asOf);
+}
+
+/** Cumulative income growth (%) from join date → today (yield calculator). */
 export function portfolioIncomeGrowth(
   leases: Lease[],
   asOf: Date = new Date(),
 ): number | undefined {
-  const history = buildPortfolioYieldHistory(leases, asOf);
+  const history = buildPortfolioYieldSeries(leases, asOf);
   if (history.length < 2) return undefined;
   return history.at(-1)!.incomeGrowthPercent;
 }
 
-/** Current portfolio yield vs the management-start anchor. */
+/** Current portfolio yield vs the management-start anchors. */
 export function currentPortfolioYield(leases: Lease[], asOf: Date = new Date()): number {
-  const history = buildPortfolioYieldHistory(leases, asOf);
-  return history.at(-1)?.yieldPercent ?? 0;
+  const series = buildPortfolioYieldSeries(leases, asOf);
+  return series.at(-1)?.yieldPercent ?? 0;
 }
 
 export function formatPercent(value: number, digits = 1): string {

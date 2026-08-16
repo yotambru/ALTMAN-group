@@ -22,7 +22,7 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
   const w = 320;
   const h = 132;
   const padX = 16;
-  const padTop = 18;
+  const padTop = 22;
   const padBottom = 30;
   const values = points.map((p) => p.annualIncome);
   const min = Math.min(...values) * 0.92;
@@ -46,55 +46,69 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
     <div className={cn("rounded-2xl border border-border bg-white p-4", className)}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-navy">גידול בהכנסות לפי שנה</p>
-          <p className="mt-0.5 text-xs text-text-muted">הכנסה שנתית מצטברת מאז תחילת הניהול</p>
+          <p className="text-sm font-semibold text-navy">גידול בהכנסות מאז ההצטרפות</p>
+          <p className="mt-0.5 text-xs text-text-muted">
+            לפי מחשבון תשואה · שווי מעוגן לפי תשואה ממוצעת בישראל (3%)
+          </p>
         </div>
         <div className="text-end">
           <p className="text-lg font-extrabold text-orange">{formatCurrency(last.annualIncome)}</p>
           <p className="text-[0.7rem] font-medium text-success">
             {growth >= 0 ? "+" : ""}
-            {formatPercent(growth)} מההתחלה
+            {formatPercent(growth)} הכנסה · תשואה {formatPercent(last.yieldPercent)}
           </p>
         </div>
       </div>
 
-      <svg
-        viewBox={`0 0 ${w} ${h}`}
-        className="mt-3 h-32 w-full"
-        role="img"
-        aria-label="גרף גידול בהכנסות לפי שנים"
-      >
-        {bars.map((b, i) => (
-          <g key={b.year}>
-            <rect
-              x={b.x}
-              y={b.y}
-              width={barW}
-              height={Math.max(b.barH, 4)}
-              rx={6}
-              fill={i === bars.length - 1 ? "var(--orange)" : "var(--navy)"}
-              opacity={i === bars.length - 1 ? 1 : 0.75}
-            />
-            <text
-              x={b.x + barW / 2}
-              y={h - 8}
-              textAnchor="middle"
-              className="fill-[var(--text-muted)]"
-              fontSize="10"
-            >
-              {b.year}
-            </text>
-          </g>
-        ))}
-      </svg>
+      <div dir="ltr">
+        <svg
+          viewBox={`0 0 ${w} ${h}`}
+          className="mt-3 h-32 w-full"
+          role="img"
+          aria-label="גרף גידול בהכנסות ממועד ההצטרפות"
+        >
+          {bars.map((b, i) => (
+            <g key={b.date}>
+              <rect
+                x={b.x}
+                y={b.y}
+                width={barW}
+                height={Math.max(b.barH, 4)}
+                rx={6}
+                fill={i === bars.length - 1 ? "var(--orange)" : "var(--navy)"}
+                opacity={i === bars.length - 1 ? 1 : 0.75}
+              />
+              <text
+                x={b.x + barW / 2}
+                y={Math.max(11, b.y - 4)}
+                textAnchor="middle"
+                className="fill-[var(--navy)]"
+                fontSize="9"
+                fontWeight="700"
+              >
+                {formatPercent(b.yieldPercent)}
+              </text>
+              <text
+                x={b.x + barW / 2}
+                y={h - 8}
+                textAnchor="middle"
+                className="fill-[var(--text-muted)]"
+                fontSize="10"
+              >
+                {i === 0 ? "הצטרפות" : b.year}
+              </text>
+            </g>
+          ))}
+        </svg>
 
-      <div className="mt-1 flex justify-between text-[0.7rem] text-text-muted">
-        <span>
-          {first.year}: {formatCurrency(first.annualIncome)}
-        </span>
-        <span>
-          {last.year}: {formatCurrency(last.annualIncome)}
-        </span>
+        <div className="mt-1 flex justify-between text-[0.7rem] text-text-muted">
+          <span>
+            הצטרפות: {formatCurrency(first.annualIncome)} · {formatPercent(first.yieldPercent)}
+          </span>
+          <span>
+            היום: {formatCurrency(last.annualIncome)} · {formatPercent(last.yieldPercent)}
+          </span>
+        </div>
       </div>
     </div>
   );

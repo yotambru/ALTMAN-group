@@ -20,6 +20,10 @@ interface HeroStatCardProps {
   trendLabel?: string;
   /** Companion metric in the glass hero (e.g. monthly income). */
   secondary?: HeroSecondaryStat;
+  /** Caption under the left (start) of the sparkline — time axis is LTR. */
+  chartStartLabel?: string;
+  /** Caption under the right (today) of the sparkline. */
+  chartEndLabel?: string;
   /**
    * `navy` — dark gradient card.
    * `focus` — light centered metric.
@@ -40,6 +44,8 @@ export function HeroStatCard({
   trendPercent,
   trendLabel = "לעומת חודש שעבר",
   secondary,
+  chartStartLabel,
+  chartEndLabel,
   tone = "navy",
   className,
 }: HeroStatCardProps) {
@@ -110,13 +116,21 @@ export function HeroStatCard({
           </SecondaryTag>
         )}
         {data && data.length > 1 && (
-          <div className="relative mt-3 -mx-1">
+          <div dir="ltr" className="relative mt-3 -mx-1">
             <Sparkline
               data={data}
               className="h-14 w-full"
               color="var(--orange)"
               fillOpacity={0.16}
+              showStartDot
+              startDotColor="white"
             />
+            {(chartStartLabel || chartEndLabel) && (
+              <div className="mt-1 flex justify-between gap-2 text-[0.65rem] font-medium text-white/50">
+                <span>{chartStartLabel}</span>
+                <span className="text-end">{chartEndLabel}</span>
+              </div>
+            )}
           </div>
         )}
       </section>

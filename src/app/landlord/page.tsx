@@ -10,6 +10,7 @@ import {
   MessagesSquare,
   PenLine,
   TrendingUp,
+  UserPlus,
   Vault,
   Wrench,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import { ChatPanel } from "@/features/chat/ChatPanel";
 import { DocumentsDialog } from "@/features/documents/DocumentsDialog";
 import { PropertyDetailDialog } from "@/features/properties/PropertyDetailDialog";
 import { PropertyListDialog } from "@/features/properties/PropertyListDialog";
+import { AddTenantModal } from "@/features/landlord/AddTenantModal";
 import { RentalsDialog } from "@/features/leases/RentalsDialog";
 import { AnnualReportDialog } from "@/features/reports/AnnualReportDialog";
 import { TicketsDialog } from "@/features/maintenance/TicketsDialog";
@@ -40,15 +42,17 @@ import { useData } from "@/lib/store";
 import { getCriticalDates } from "@/lib/alerts";
 import {
   buildPortfolioYieldHistory,
+  buildPortfolioYieldSeries,
   currentPortfolioYield,
   formatPercent,
   occupancyPercent,
   portfolioIncomeGrowth,
+  portfolioJoinDate,
 } from "@/lib/portfolio";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatMonthYear } from "@/lib/utils";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
-type Dialog = "list" | "rentals" | "critical" | null;
+type Dialog = "list" | "rentals" | "critical" | "addTenant" | null;
 type HomePanel = "properties" | "docs" | "report" | "chat" | "tickets";
 
 export default function LandlordDashboard() {
@@ -76,18 +80,12 @@ export default function LandlordDashboard() {
   const occupancy = occupancyPercent(myProperties);
   const portfolioYield = currentPortfolioYield(myLeases);
   const yieldHistory = buildPortfolioYieldHistory(myLeases);
-  const incomeSeries = yieldHistory.map((p) => p.annualIncome);
+  const yieldSeries = buildPortfolioYieldSeries(myLeases);
+  const incomeSeries = yieldSeries.map((p) => p.annualIncome);
   const incomeGrowth = portfolioIncomeGrowth(myLeases);
-  const incomeTrend =
-    yieldHistory.length >= 2
-      ? Math.round(
-          ((yieldHistory[yieldHistory.length - 1].annualIncome /
-            yieldHistory[yieldHistory.length - 2].annualIncome) -
-            1) *
-            1000,
-        ) / 10
-      : undefined;
-  const growthStartYear = yieldHistory[0]?.year;
+  const joinDate = portfolioJoinDate(myLeases);
+  const firstYield = yieldSeries[0];
+  const lastYield = yieldSeries.at(-1);
   const rentedCount = myProperties.filter((p) => p.status === "rented").length;
   const openTicketCount = tickets.filter(
     (t) =>
@@ -147,6 +145,7 @@ export default function LandlordDashboard() {
 
   const menuItems: MobileMenuItem[] = [
     { icon: Building2, label: "תצוגת נכסים", onClick: () => openPanel("properties") },
+    { icon: UserPlus, label: "שוכר חדש", onClick: () => setDialog("addTenant") },
     { icon: FileText, label: "שכירויות", onClick: () => setDialog("rentals") },
     { icon: Vault, label: "כספת מסמכים", onClick: () => setTab("documents") },
     { icon: FileText, label: "דוח שנתי", onClick: () => openPanel("report") },
@@ -202,11 +201,21 @@ export default function LandlordDashboard() {
               value={formatCurrency(portfolioValue)}
               subtitle={`תפוסה ${occupancy}% · תשואה ${formatPercent(portfolioYield)}`}
               data={incomeSeries.length > 1 ? incomeSeries : undefined}
-              trendPercent={incomeGrowth ?? incomeTrend}
+              trendPercent={incomeGrowth}
               trendLabel={
-                incomeGrowth != null && growthStartYear
-                  ? `גידול בהכנסות מאז ${growthStartYear}`
-                  : "לעומת שנה שעברה"
+                joinDate
+                  ? `גידול בהכנסות מאז ההצטרפות · ${formatMonthYear(joinDate)}`
+                  : "לפי מחשבון תשואה"
+              }
+              chartStartLabel={
+                firstYield && joinDate
+                  ? `הצטרפות ${formatMonthYear(joinDate)} · ${formatPercent(firstYield.yieldPercent)}`
+                  : undefined
+              }
+              chartEndLabel={
+                lastYield
+                  ? `${lastYield.incomeGrowthPercent >= 0 ? "+" : ""}${formatPercent(lastYield.incomeGrowthPercent)} · תשואה ${formatPercent(lastYield.yieldPercent)}`
+                  : undefined
               }
               secondary={{
                 label: "הכנסה חודשית",
@@ -245,9 +254,9 @@ export default function LandlordDashboard() {
                     : "—"
                 }
                 sublabel={
-                  incomeGrowth != null && growthStartYear
-                    ? `מאז תחילת הניהול · ${growthStartYear}`
-                    : "מחושב אוטומטית מהנכסים"
+                  incomeGrowth != null && joinDate
+                    ? `מאז ההצטרפות · ${formatMonthYear(joinDate)}`
+                    : "לפי מחשבון תשואה"
                 }
                 onClick={() => openPanel("report")}
               />
@@ -438,6 +447,11 @@ export default function LandlordDashboard() {
         }}
       />
       <RentalsDialog open={dialog === "rentals"} onClose={() => setDialog(null)} landlordId={landlordId} />
+      <AddTenantModal
+        open={dialog === "addTenant"}
+        onClose={() => setDialog(null)}
+        properties={myProperties}
+      />
       <CriticalDatesDialog open={dialog === "critical"} onClose={() => setDialog(null)} landlordId={landlordId} />
       <PropertyDetailDialog
         property={detailProperty}

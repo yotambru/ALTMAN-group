@@ -1,13 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
-import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
-import { RoleSelector } from "@/features/auth/RoleSelector";
-import { authenticateDemo, demoCredentials } from "@/lib/auth";
+import { LoginModal } from "@/features/auth/LoginModal";
 import { currentUsers } from "@/lib/mock-data";
 import { routeByRole } from "@/lib/permissions";
 import { storage } from "@/lib/storage";
@@ -15,29 +11,7 @@ import type { Role } from "@/types";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [role, setRole] = useState<Role>("manager");
-  const [identifier, setIdentifier] = useState(demoCredentials.manager);
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(false);
-  const [error, setError] = useState("");
   const [formOpen, setFormOpen] = useState(false);
-
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    const saved = storage.getRememberedIdentifier();
-    if (saved) {
-      setIdentifier(saved);
-      setRemember(true);
-    }
-  }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  const handleRoleChange = (next: Role) => {
-    setRole(next);
-    setError("");
-    if (!remember) setIdentifier(demoCredentials[next]);
-  };
 
   const enterAs = (nextRole: Role) => {
     const account = currentUsers[nextRole];
@@ -51,30 +25,6 @@ export default function LoginPage() {
       loginAt: new Date().toISOString(),
     });
     router.push(routeByRole[nextRole]);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const result = authenticateDemo(role, identifier, password);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-
-    if (remember) storage.setRememberedIdentifier(identifier.trim());
-    else storage.clearRememberedIdentifier();
-
-    const account = result.user;
-    storage.setSession({
-      role,
-      userId: account.id,
-      fullName: account.fullName,
-      landlordId: account.landlordId,
-      tenantId: account.tenantId,
-      professionalId: account.professionalId,
-      loginAt: new Date().toISOString(),
-    });
-    router.push(routeByRole[role]);
   };
 
   return (
@@ -124,82 +74,7 @@ export default function LoginPage() {
         </div>
       </section>
 
-      <Modal
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        title="כניסה למערכת"
-        description="בחרו את התפקיד והזדהו"
-      >
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <RoleSelector value={role} onChange={handleRoleChange} />
-
-          <div className="relative">
-            <Mail className="pointer-events-none absolute inset-y-0 end-3.5 my-auto h-5 w-5 text-text-muted" />
-            <input
-              type="text"
-              value={identifier}
-              onChange={(e) => {
-                setIdentifier(e.target.value);
-                setError("");
-              }}
-              placeholder="שם משתמש"
-              autoComplete="username"
-              aria-label="שם משתמש"
-              dir="ltr"
-              className="w-full rounded-xl border bg-surface px-3.5 py-3 pe-10 text-sm text-text focus:border-orange focus:outline-none"
-            />
-          </div>
-
-          <div className="relative">
-            <Lock className="pointer-events-none absolute inset-y-0 end-3.5 my-auto h-5 w-5 text-text-muted" />
-            <button
-              type="button"
-              onClick={() => setShowPassword((s) => !s)}
-              aria-label={showPassword ? "הסתר סיסמה" : "הצג סיסמה"}
-              className="absolute inset-y-0 start-2 my-auto grid h-8 w-8 place-items-center rounded-full text-text-muted hover:bg-surface-muted"
-            >
-              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-            </button>
-            <input
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setError("");
-              }}
-              placeholder="סיסמה"
-              autoComplete="current-password"
-              aria-label="סיסמה"
-              dir="ltr"
-              className="w-full rounded-xl border bg-surface px-3.5 py-3 pe-10 ps-10 text-sm text-text focus:border-orange focus:outline-none"
-            />
-          </div>
-
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-text">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-              className="h-4 w-4 accent-[color:var(--orange)]"
-            />
-            זכור אותי
-          </label>
-
-          <p className="text-center text-[0.7rem] leading-relaxed text-text-muted" dir="ltr">
-            demo: {demoCredentials[role]} / 1234
-          </p>
-
-          {error && (
-            <p className="rounded-lg bg-[#fdecea] px-3 py-2 text-xs font-medium text-danger">
-              {error}
-            </p>
-          )}
-
-          <Button type="submit" fullWidth size="lg">
-            כניסה
-          </Button>
-        </form>
-      </Modal>
+      <LoginModal open={formOpen} onClose={() => setFormOpen(false)} />
     </main>
   );
 }

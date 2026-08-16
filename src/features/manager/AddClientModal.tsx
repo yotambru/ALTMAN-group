@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { useData } from "@/lib/store";
+import { emailInUse, isValidEmail, normalizeEmail } from "@/lib/auth";
 import { fileToDataUrl } from "@/lib/utils";
 import type { AirDirection, PropertyImageId } from "@/types";
 
@@ -43,7 +44,7 @@ const triBool = (v: Tri): boolean | undefined => (v === "yes" ? true : v === "no
 
 /** New-landlord intake: owner + property details. All fields are optional / skippable. */
 export function AddClientModal({ open, onClose, onCreated, existingLandlordId }: AddClientModalProps) {
-  const { addClient, landlords } = useData();
+  const { addClient, landlords, tenants, users } = useData();
   const [done, setDone] = useState(false);
   const attaching = Boolean(existingLandlordId);
   const existing = landlords.find((l) => l.id === existingLandlordId);
@@ -59,6 +60,11 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
   const [landlordIdNumber, setLandlordIdNumber] = useState("");
   const [idPhoto, setIdPhoto] = useState<PickedFile | null>(null);
   const [managementAgreement, setManagementAgreement] = useState<PickedFile | null>(null);
+  const [includeTenant, setIncludeTenant] = useState(false);
+  const [tenantName, setTenantName] = useState("");
+  const [tenantPhone, setTenantPhone] = useState("");
+  const [tenantEmail, setTenantEmail] = useState("");
+  const [formError, setFormError] = useState("");
 
   // property
   const [hasInspectionReport, setHasInspectionReport] = useState<Tri>("");
@@ -104,6 +110,11 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     setLandlordIdNumber("");
     setIdPhoto(null);
     setManagementAgreement(null);
+    setIncludeTenant(false);
+    setTenantName("");
+    setTenantPhone("");
+    setTenantEmail("");
+    setFormError("");
     setHasInspectionReport("");
     setCity("");
     setAddress("");
@@ -160,6 +171,38 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     e.preventDefault();
     if (mode === "existing" && !effectiveLandlordId) return;
 
+    const openingLandlord = mode === "new" && !attaching;
+    const landlordMail = landlordEmail.trim();
+    if (openingLandlord) {
+      if (!isValidEmail(landlordMail)) {
+        setFormError("יש להזין מייל תקין כדי לפתוח חשבון משכיר.");
+        return;
+      }
+      if (emailInUse(landlordMail, [...users, ...landlords, ...tenants])) {
+        setFormError("המייל הזה כבר משויך למשתמש במערכת.");
+        return;
+      }
+    }
+
+    const tenantMail = tenantEmail.trim();
+    if (includeTenant) {
+      if (!isValidEmail(tenantMail)) {
+        setFormError("יש להזין מייל תקין כדי לפתוח חשבון שוכר.");
+        return;
+      }
+      if (
+        openingLandlord &&
+        normalizeEmail(tenantMail) === normalizeEmail(landlordMail)
+      ) {
+        setFormError("מייל השוכר חייב להיות שונה ממייל המשכיר.");
+        return;
+      }
+      if (emailInUse(tenantMail, [...users, ...landlords, ...tenants])) {
+        setFormError("מייל השוכר כבר משויך למשתמש במערכת.");
+        return;
+      }
+    }
+
     addClient({
       address: address.trim(),
       city: city.trim(),
@@ -205,6 +248,13 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
       managementAgreementDataUrl: managementAgreement?.dataUrl,
       managementAgreementFileName: managementAgreement?.name,
       existingLandlordId: effectiveLandlordId,
+      ...(includeTenant
+        ? {
+            tenantName: tenantName.trim() || undefined,
+            tenantPhone: tenantPhone.trim() || undefined,
+            tenantEmail: tenantMail,
+          }
+        : {}),
     });
     onCreated?.();
     setDone(true);
@@ -213,21 +263,32 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
   const title = attaching
     ? `הוספת נכס · ${existing?.fullName ?? "משכיר קיים"}`
     : "משכיר חדש";
+  const description = attaching || mode === "existing"
+    ? "אפשר לצרף שוכר לפי מייל — בלי סיסמה. שאר השדות אופציונליים"
+    : "פתיחת חשבון לפי מייל בלבד, בלי סיסמה. אפשר לצרף גם שוכר";
 
   return (
     <Modal
       open={open}
       onClose={handleClose}
       title={title}
-      description={done ? undefined : "כל השדות אופציונליים — אפשר להשאיר ריק ולשמור"}
+      description={done ? undefined : description}
     >
       {done ? (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
           <CheckCircle2 className="h-14 w-14 text-success" />
           <h4 className="text-lg font-bold text-navy">
-            {attaching || mode === "existing" ? "הנכס נוסף בהצלחה" : "המשכיר נוסף בהצלחה"}
+            {attaching || mode === "existing"
+              ? "הנכס נוסף בהצלחה"
+              : includeTenant
+                ? "המשכיר והשוכר נוספו בהצלחה"
+                : "המשכיר נוסף בהצלחה"}
           </h4>
-          <p className="text-sm text-text-muted">הפרטים נשמרו במערכת.</p>
+          <p className="text-sm text-text-muted">
+            {includeTenant || (mode === "new" && !attaching)
+              ? "החשבון נפתח לפי מייל. הסיסמה תיקבע בכניסה הראשונה לאפליקציה."
+              : "הפרטים נשמרו במערכת."}
+          </p>
           <Button onClick={handleClose} fullWidth className="mt-2">
             סגירה
           </Button>
@@ -292,11 +353,18 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
                 />
                 <FormField
                   label="מייל"
+                  hint="המשכיר ייכנס בפעם הראשונה עם המייל הזה ויקבע סיסמה"
                   inputProps={{
                     value: landlordEmail,
-                    onChange: (e) => setLandlordEmail(e.target.value),
+                    onChange: (e) => {
+                      setLandlordEmail(e.target.value);
+                      setFormError("");
+                    },
+                    type: "email",
                     inputMode: "email",
                     dir: "ltr",
+                    required: true,
+                    autoComplete: "email",
                   }}
                 />
                 <FormField
@@ -320,6 +388,63 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
                 onPick={setIdPhoto}
               />
             </>
+          )}
+
+          <Section title="חשבון שוכר" />
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-surface px-3.5 py-3">
+            <input
+              type="checkbox"
+              checked={includeTenant}
+              onChange={(e) => {
+                setIncludeTenant(e.target.checked);
+                setFormError("");
+              }}
+              className="mt-0.5 h-4 w-4 accent-[color:var(--orange)]"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-navy">פתיחת יוזר שוכר</span>
+              <span className="mt-0.5 block text-xs text-text-muted">
+                הזנת מייל בלבד, בלי סיסמה. השוכר יקבע סיסמה בכניסה הראשונה
+              </span>
+            </span>
+          </label>
+          {includeTenant && (
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                label="מייל השוכר"
+                className="col-span-2"
+                hint="זה מזהה הכניסה של השוכר"
+                inputProps={{
+                  value: tenantEmail,
+                  onChange: (e) => {
+                    setTenantEmail(e.target.value);
+                    setFormError("");
+                  },
+                  type: "email",
+                  inputMode: "email",
+                  dir: "ltr",
+                  required: true,
+                  autoComplete: "email",
+                }}
+              />
+              <FormField
+                label="שם השוכר"
+                className="col-span-2"
+                hint="אופציונלי"
+                inputProps={{ value: tenantName, onChange: (e) => setTenantName(e.target.value) }}
+              />
+              <FormField
+                label="טלפון השוכר"
+                className="col-span-2"
+                hint="אופציונלי"
+                inputProps={{
+                  value: tenantPhone,
+                  onChange: (e) => setTenantPhone(e.target.value),
+                  inputMode: "tel",
+                  dir: "ltr",
+                }}
+              />
+            </div>
           )}
 
           <Section title="פרטים אודות הנכס" />
@@ -494,6 +619,12 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
             file={managementAgreement}
             onPick={setManagementAgreement}
           />
+
+          {formError && (
+            <p className="rounded-lg bg-[#fdecea] px-3 py-2 text-xs font-medium text-danger">
+              {formError}
+            </p>
+          )}
 
           <Button type="submit" fullWidth size="lg">
             {attaching || mode === "existing" ? "שמירת הנכס" : "שמירת המשכיר"}
