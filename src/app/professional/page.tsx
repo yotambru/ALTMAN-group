@@ -243,12 +243,7 @@ export default function ProfessionalDashboard() {
         )}
       </div>
 
-      <BottomNavigation
-        tone="dusk"
-        items={appBottomNavItems(unread)}
-        active={tab}
-        onSelect={onNav}
-      />
+      <BottomNavigation items={appBottomNavItems(unread)} active={tab} onSelect={onNav} />
 
       <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} role="professional" userName={session.fullName} avatarUrl={user.avatarUrl} />
     </main>

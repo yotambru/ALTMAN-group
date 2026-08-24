@@ -607,12 +607,7 @@ export default function TenantDashboard() {
         )}
       </div>
 
-      <BottomNavigation
-        tone="dusk"
-        items={appBottomNavItems(unread)}
-        active={tab}
-        onSelect={onNav}
-      />
+      <BottomNavigation items={appBottomNavItems(unread)} active={tab} onSelect={onNav} />
 
       <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} role="tenant" userName={session.fullName} avatarUrl={user.avatarUrl} />
       <TicketModal open={dialog === "ticket"} onClose={() => setDialog(null)} propertyId={property.id} createdById={user.id} />

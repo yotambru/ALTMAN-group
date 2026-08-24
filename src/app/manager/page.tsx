@@ -607,12 +607,7 @@ export default function ManagerDashboard() {
         )}
       </div>
 
-      <BottomNavigation
-        tone="dusk"
-        items={appBottomNavItems(unread)}
-        active={tab}
-        onSelect={onNav}
-      />
+      <BottomNavigation items={appBottomNavItems(unread)} active={tab} onSelect={onNav} />
 
       <MobileMenu
         open={menuOpen}
