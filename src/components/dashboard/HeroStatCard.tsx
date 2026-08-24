@@ -78,6 +78,9 @@ export function HeroStatCard({
           <p className="mt-1.5 text-[2.15rem] font-extrabold leading-none tracking-tight">
             {value}
           </p>
+          {subtitle && (
+            <p className="mt-2 text-xs font-medium text-white/60">{subtitle}</p>
+          )}
           {trendPercent != null && (
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <span
@@ -90,9 +93,6 @@ export function HeroStatCard({
               </span>
               <span className="text-xs text-white/55">{trendLabel}</span>
             </div>
-          )}
-          {subtitle && trendPercent == null && (
-            <p className="mt-2 text-xs font-medium text-white/60">{subtitle}</p>
           )}
         </div>
         {secondary && (

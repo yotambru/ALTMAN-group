@@ -1,15 +1,46 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { Building2, FileCheck2, FileText, PenLine, Upload } from "lucide-react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  ArrowRight,
+  Building2,
+  ChevronLeft,
+  ClipboardList,
+  FileCheck2,
+  FileText,
+  Folder,
+  Gauge,
+  IdCard,
+  Paperclip,
+  PenLine,
+  Upload,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { SearchField } from "@/components/dashboard/ClientRow";
+import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { SignatureDialog } from "@/features/documents/SignatureDialog";
 import { useData } from "@/lib/store";
+import {
+  DOCUMENT_FOLDER_CHILD,
+  DOCUMENT_FOLDER_LABEL,
+  ROOT_DOCUMENT_FOLDERS,
+  docsInFolder,
+  documentFolderAncestors,
+  emptyFoldersLast,
+  folderCount,
+  folderToDocumentType,
+  inferDocumentFolder,
+} from "@/lib/document-folders";
 import { fileToDataUrl, formatDateDots } from "@/lib/utils";
-import type { AppDocument, DocumentType, Landlord, Property, Tenant } from "@/types";
+import type { AppDocument, DocumentFolder, DocumentType, Landlord, Property, Tenant } from "@/types";
+
+const UNASSIGNED = "unassigned";
+
+type FolderId = string;
 
 interface DocumentsDialogProps {
   open?: boolean;
@@ -28,9 +59,9 @@ interface DocumentsDialogProps {
     tenantId?: string;
     defaultType?: DocumentType;
   };
-  /** When set, documents are grouped under property sections. */
+  /** Properties become top-level folders. */
   properties?: Property[];
-  /** Enable free-text search + client/property/tenant filters. */
+  /** Enable free-text search + client filter on the apartments list. */
   searchable?: boolean;
   landlords?: Landlord[];
   tenants?: Tenant[];
@@ -44,27 +75,95 @@ const statusLabel: Record<NonNullable<AppDocument["status"]>, { label: string; t
   draft: { label: "טיוטה", tone: "neutral" },
 };
 
-const typeLabel: Record<DocumentType, string> = {
-  contract: "חוזה",
-  approval: "אישור",
-  report: "דוח",
-  id: "תעודה",
-  invoice: "חשבונית",
-  insurance: "ביטוח",
-  utility: "חשבון",
-  protocol: "פרוטוקול",
+const folderIcon: Record<DocumentFolder, LucideIcon> = {
+  lease: FileText,
+  lease_renewal: FileText,
+  id_photos: IdCard,
+  guarantor_id: Users,
+  meter_photos: Gauge,
+  appendices: Paperclip,
+  entry_protocol: ClipboardList,
 };
+
+function docsCountLabel(n: number) {
+  if (n === 0) return "אין מסמכים";
+  if (n === 1) return "מסמך אחד";
+  return `${n} מסמכים`;
+}
+
+function FolderBreadcrumb({
+  crumbs,
+}: {
+  crumbs: { id: string; label: string; onClick: () => void }[];
+}) {
+  if (crumbs.length === 0) return null;
+  return (
+    <nav aria-label="ניווט בתיקיות">
+      <ol className="flex flex-wrap items-center gap-1">
+        {crumbs.map((crumb, index) => (
+          <li key={crumb.id} className="flex items-center gap-1">
+            {index > 0 && (
+              <ChevronLeft className="h-3.5 w-3.5 shrink-0 text-navy/30" aria-hidden />
+            )}
+            <button
+              type="button"
+              onClick={crumb.onClick}
+              className="inline-flex max-w-[11rem] items-center gap-1.5 rounded-full bg-surface-muted px-3 py-1.5 text-sm font-semibold text-navy/75 transition-colors hover:bg-navy/10"
+            >
+              {index === 0 && <ArrowRight className="h-4 w-4 shrink-0" />}
+              <span className="truncate">{crumb.label}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
+function FolderRow({
+  icon,
+  title,
+  subtitle,
+  count,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-3 text-start transition-all hover:bg-surface-muted/90 active:scale-[0.995]"
+    >
+      <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-orange-soft text-orange">
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[0.95rem] font-extrabold tracking-tight text-navy">{title}</p>
+        <p className="mt-0.5 truncate text-xs text-text-muted">{subtitle}</p>
+      </div>
+      <span className="inline-flex min-w-7 items-center justify-center rounded-full bg-navy/5 px-2 py-1 text-[0.7rem] font-bold tabular-nums text-navy">
+        {count}
+      </span>
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-muted text-navy/35 transition-colors group-hover:bg-orange-soft group-hover:text-orange">
+        <ChevronLeft className="h-4 w-4" strokeWidth={2} />
+      </span>
+    </button>
+  );
+}
 
 function DocRow({
   doc,
   canSign,
   onSign,
-  metaLine,
 }: {
   doc: AppDocument;
   canSign: boolean;
   onSign: (doc: AppDocument) => void;
-  metaLine?: string;
 }) {
   const meta = statusLabel[doc.status ?? (doc.signed ? "signed" : "draft")];
   return (
@@ -75,9 +174,8 @@ function DocRow({
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold text-navy">{doc.name}</p>
         <p className="text-[0.7rem] text-text-muted">
-          {typeLabel[doc.type]} · {formatDateDots(doc.createdAt)}
+          {DOCUMENT_FOLDER_LABEL[inferDocumentFolder(doc)]} · {formatDateDots(doc.createdAt)}
           {doc.signedByName ? ` • נחתם ע״י ${doc.signedByName}` : ""}
-          {metaLine ? ` • ${metaLine}` : ""}
         </p>
       </div>
       <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
@@ -95,38 +193,6 @@ function DocRow({
   );
 }
 
-function PropertySection({
-  title,
-  docs,
-  canSign,
-  onSign,
-  hideIfEmpty = false,
-}: {
-  title: string;
-  docs: AppDocument[];
-  canSign: boolean;
-  onSign: (doc: AppDocument) => void;
-  hideIfEmpty?: boolean;
-}) {
-  if (hideIfEmpty && docs.length === 0) return null;
-  return (
-    <section className="space-y-2">
-      <div className="flex items-center gap-2 px-0.5 pt-1">
-        <Building2 className="h-4 w-4 text-orange" />
-        <h4 className="text-sm font-bold text-navy">{title}</h4>
-        <span className="text-xs text-text-muted">({docs.length})</span>
-      </div>
-      {docs.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border px-3 py-3 text-center text-xs text-text-muted">
-          אין מסמכים לנכס זה
-        </p>
-      ) : (
-        docs.map((doc) => <DocRow key={doc.id} doc={doc} canSign={canSign} onSign={onSign} />)
-      )}
-    </section>
-  );
-}
-
 export function DocumentsDialog({
   open = false,
   onClose,
@@ -137,32 +203,312 @@ export function DocumentsDialog({
   canSign = false,
   signerName = "",
   upload,
-  properties,
+  properties = [],
   searchable = false,
   landlords = [],
   tenants = [],
   awaitingSignatureOnly = false,
 }: DocumentsDialogProps) {
-  const { addDocument } = useData();
+  const { addDocument, leases, tenants: allTenants, users } = useData();
   const [signingDoc, setSigningDoc] = useState<AppDocument | null>(null);
   const [uploadName, setUploadName] = useState("");
   const [query, setQuery] = useState("");
   const [landlordFilter, setLandlordFilter] = useState<string>("all");
-  const [propertyFilter, setPropertyFilter] = useState<string>("all");
-  const [tenantFilter, setTenantFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "awaiting_signature" | "signed" | "draft">(
-    awaitingSignatureOnly ? "awaiting_signature" : "all",
-  );
+  const [selectedPropertyId, setSelectedPropertyId] = useState<FolderId | null>(null);
+  const [selectedTenantId, setSelectedTenantId] = useState<FolderId | null>(null);
+  const [selectedFolder, setSelectedFolder] = useState<DocumentFolder | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const tenantLookup = useMemo(() => {
+    const map = new Map<string, Tenant>();
+    for (const t of allTenants) map.set(t.id, t);
+    for (const t of tenants) map.set(t.id, t);
+    return map;
+  }, [allTenants, tenants]);
+
+  const vaultDocs = useMemo(
+    () =>
+      documents.filter((d) => {
+        if (d.type === "property_photo") return false;
+        if (!awaitingSignatureOnly) return true;
+        const st = d.status ?? (d.signed ? "signed" : "draft");
+        return st === "awaiting_signature";
+      }),
+    [documents, awaitingSignatureOnly],
+  );
+
+  const knownIds = useMemo(() => new Set(properties.map((p) => p.id)), [properties]);
+
+  const propertyFolders = useMemo(() => {
+    const docsFor = (propertyId: FolderId) =>
+      vaultDocs.filter((d) => {
+        if (propertyId === UNASSIGNED) return !d.propertyId || !knownIds.has(d.propertyId);
+        return d.propertyId === propertyId;
+      });
+
+    const folders = properties
+      .filter((p) => landlordFilter === "all" || p.landlordId === landlordFilter)
+      .map((p) => {
+        const docs = docsFor(p.id);
+        const landlordName = landlords.find((l) => l.id === p.landlordId)?.fullName ?? "";
+        const tenantName = tenantLookup.get(p.tenantId ?? "")?.fullName ?? "";
+        const hay = `${p.address} ${p.city} ${p.apartmentNumber} ${landlordName} ${tenantName} ${docs.map((d) => d.name).join(" ")}`.toLowerCase();
+        return {
+          id: p.id,
+          title: `${p.address}, ${p.city}`,
+          subtitle: `דירה ${p.apartmentNumber} · ${docsCountLabel(docs.length)}`,
+          count: docs.length,
+          hay,
+        };
+      });
+
+    const general = docsFor(UNASSIGNED);
+    if (general.length > 0 || (upload && properties.length === 0)) {
+      folders.push({
+        id: UNASSIGNED,
+        title: "כללי",
+        subtitle: `ללא שיוך לדירה · ${docsCountLabel(general.length)}`,
+        count: general.length,
+        hay: `כללי ללא שיוך ${general.map((d) => d.name).join(" ")}`.toLowerCase(),
+      });
+    }
+
+    return awaitingSignatureOnly ? folders.filter((f) => f.count > 0) : folders;
+  }, [
+    properties,
+    landlordFilter,
+    landlords,
+    tenantLookup,
+    vaultDocs,
+    knownIds,
+    upload,
+    awaitingSignatureOnly,
+  ]);
+
+  const skipPropertyList = propertyFolders.length <= 1 && landlordFilter === "all";
+  const activePropertyId = skipPropertyList
+    ? (propertyFolders[0]?.id ?? null)
+    : selectedPropertyId;
+
+  const visiblePropertyFolders = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || activePropertyId) return propertyFolders;
+    return propertyFolders.filter((f) => f.hay.includes(q));
+  }, [propertyFolders, query, activePropertyId]);
+
+  const activeProperty = properties.find((p) => p.id === activePropertyId);
+
+  const propertyDocs = useMemo(() => {
+    if (!activePropertyId) return [];
+    return vaultDocs.filter((d) => {
+      if (activePropertyId === UNASSIGNED) return !d.propertyId || !knownIds.has(d.propertyId);
+      return d.propertyId === activePropertyId;
+    });
+  }, [activePropertyId, vaultDocs, knownIds]);
+
+  const tenantFolders = useMemo(() => {
+    if (!activePropertyId) return [];
+    const ids = new Set<string>();
+    if (activeProperty?.tenantId) ids.add(activeProperty.tenantId);
+    for (const t of tenantLookup.values()) {
+      if (t.propertyId === activePropertyId) ids.add(t.id);
+    }
+    for (const lease of leases) {
+      if (lease.propertyId === activePropertyId) ids.add(lease.tenantId);
+    }
+    for (const doc of propertyDocs) {
+      if (doc.tenantId) ids.add(doc.tenantId);
+    }
+
+    const currentId = activeProperty?.tenantId ?? null;
+    let fallbackId = currentId;
+    if (!fallbackId) {
+      let bestDate = "";
+      for (const id of ids) {
+        const start = leases
+          .filter((l) => l.propertyId === activePropertyId && l.tenantId === id)
+          .sort((a, b) => b.startDate.localeCompare(a.startDate))[0]?.startDate ?? "";
+        if (start > bestDate) {
+          bestDate = start;
+          fallbackId = id;
+        }
+      }
+      if (!fallbackId) fallbackId = [...ids][0] ?? null;
+    }
+
+    const folders = [...ids].map((id) => {
+      const tenant = tenantLookup.get(id);
+      const lease = leases
+        .filter((l) => l.propertyId === activePropertyId && l.tenantId === id)
+        .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
+      const docs = propertyDocs.filter(
+        (d) => d.tenantId === id || (!d.tenantId && id === fallbackId),
+      );
+      const isCurrent = currentId === id;
+      const period = lease
+        ? `${formatDateDots(lease.startDate)}–${formatDateDots(lease.endDate)}`
+        : "";
+      const roleLabel = isCurrent ? "שוכר נוכחי" : "שוכר לשעבר";
+      return {
+        id,
+        title: tenant?.fullName ?? "שוכר",
+        subtitle: period ? `${roleLabel} · ${period}` : `${roleLabel} · ${docsCountLabel(docs.length)}`,
+        count: docs.length,
+        isCurrent,
+        hay: `${tenant?.fullName ?? ""} ${docs.map((d) => d.name).join(" ")}`.toLowerCase(),
+        startDate: lease?.startDate ?? "",
+      };
+    });
+
+    folders.sort((a, b) => {
+      if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+      return b.startDate.localeCompare(a.startDate);
+    });
+
+    const visible = awaitingSignatureOnly ? folders.filter((f) => f.count > 0) : folders;
+    return visible;
+  }, [
+    activePropertyId,
+    activeProperty,
+    tenantLookup,
+    leases,
+    propertyDocs,
+    awaitingSignatureOnly,
+  ]);
+
+  const skipTenantList =
+    (Boolean(activePropertyId) && tenantFolders.length === 0) ||
+    (tenantFolders.length <= 1 && propertyFolders.length <= 1);
+  const activeTenantId = skipTenantList
+    ? (tenantFolders[0]?.id ?? null)
+    : selectedTenantId;
+  const atTenantLevel = Boolean(activeTenantId) || (Boolean(activePropertyId) && tenantFolders.length === 0);
+
+  const visibleTenantFolders = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || activeTenantId) return tenantFolders;
+    return tenantFolders.filter((f) => f.hay.includes(q) || f.title.toLowerCase().includes(q));
+  }, [tenantFolders, query, activeTenantId]);
+
+  const activeTenant = activeTenantId ? tenantLookup.get(activeTenantId) : undefined;
+
+  const tenantDocs = useMemo(() => {
+    if (activeTenantId) {
+      const fallbackId = tenantFolders.find((f) => f.isCurrent)?.id ?? tenantFolders[0]?.id;
+      return propertyDocs.filter(
+        (d) => d.tenantId === activeTenantId || (!d.tenantId && activeTenantId === fallbackId),
+      );
+    }
+    if (atTenantLevel) return propertyDocs;
+    return [];
+  }, [activeTenantId, tenantFolders, propertyDocs, atTenantLevel]);
+
+  const categoryFolders = useMemo(() => {
+    if (!atTenantLevel) return [];
+    const q = query.trim().toLowerCase();
+    const folders = ROOT_DOCUMENT_FOLDERS.map((folder) => ({
+      folder,
+      title: DOCUMENT_FOLDER_LABEL[folder],
+      count: folderCount(tenantDocs, folder),
+    }));
+    const visible = awaitingSignatureOnly ? folders.filter((f) => f.count > 0) : folders;
+    const sorted = emptyFoldersLast(visible);
+    if (!q || selectedFolder) return sorted;
+    return sorted.filter(
+      (f) =>
+        f.title.includes(q) ||
+        tenantDocs.some(
+          (d) =>
+            inferDocumentFolder(d) === f.folder &&
+            d.name.toLowerCase().includes(q),
+        ),
+    );
+  }, [atTenantLevel, tenantDocs, awaitingSignatureOnly, query, selectedFolder]);
+
+  const childFolder = selectedFolder ? DOCUMENT_FOLDER_CHILD[selectedFolder] : undefined;
+  const ChildIcon = childFolder ? folderIcon[childFolder] : null;
+
+  const folderDocs = useMemo(() => {
+    if (!selectedFolder) return [];
+    const q = query.trim().toLowerCase();
+    const docs = docsInFolder(tenantDocs, selectedFolder);
+    if (!q) return docs;
+    return docs.filter((d) => d.name.toLowerCase().includes(q));
+  }, [selectedFolder, tenantDocs, query]);
+
+  const resetQuery = () => setQuery("");
+
+  const openProperty = (id: FolderId) => {
+    resetQuery();
+    setSelectedFolder(null);
+    setSelectedTenantId(null);
+    setSelectedPropertyId(id);
+  };
+
+  const backToProperties = () => {
+    resetQuery();
+    setSelectedFolder(null);
+    setSelectedTenantId(null);
+    setSelectedPropertyId(null);
+  };
+
+  const backToTenants = () => {
+    resetQuery();
+    setSelectedFolder(null);
+    setSelectedTenantId(null);
+  };
+
+  const backToTenantFolders = () => {
+    resetQuery();
+    setSelectedFolder(null);
+  };
+
+  const openTenant = (id: FolderId) => {
+    resetQuery();
+    setSelectedFolder(null);
+    setSelectedTenantId(id);
+  };
+
+  const openFolder = (folder: DocumentFolder) => {
+    resetQuery();
+    setSelectedFolder(folder);
+  };
+
+  const crumbs: { id: string; label: string; onClick: () => void }[] = [];
+  if (!skipPropertyList && activePropertyId) {
+    crumbs.push({ id: "properties", label: "דירות", onClick: backToProperties });
+  }
+  if (!skipTenantList && activeTenantId) {
+    crumbs.push({ id: "tenants", label: "שוכרים", onClick: backToTenants });
+  }
+  if (selectedFolder) {
+    crumbs.push({
+      id: "tenant-folders",
+      label: activeTenant?.fullName ?? "תיקיות",
+      onClick: backToTenantFolders,
+    });
+    for (const ancestor of documentFolderAncestors(selectedFolder)) {
+      crumbs.push({
+        id: ancestor,
+        label: DOCUMENT_FOLDER_LABEL[ancestor],
+        onClick: () => openFolder(ancestor),
+      });
+    }
+  }
+
   const handleUpload = async (file: File) => {
+    if (!selectedFolder) return;
     const dataUrl = await fileToDataUrl(file);
     addDocument({
       name: uploadName.trim() || file.name,
-      type: upload?.defaultType ?? "approval",
-      propertyId: upload?.propertyId ?? (propertyFilter !== "all" ? propertyFilter : undefined),
-      landlordId: upload?.landlordId ?? (landlordFilter !== "all" ? landlordFilter : undefined),
-      tenantId: upload?.tenantId ?? (tenantFilter !== "all" ? tenantFilter : undefined),
+      type: folderToDocumentType(selectedFolder),
+      folder: selectedFolder,
+      propertyId:
+        activePropertyId && activePropertyId !== UNASSIGNED
+          ? activePropertyId
+          : upload?.propertyId,
+      landlordId: activeProperty?.landlordId ?? upload?.landlordId,
+      tenantId: activeTenantId ?? upload?.tenantId,
       ownerUserId: upload?.ownerUserId,
       fileDataUrl: dataUrl,
     });
@@ -170,180 +516,204 @@ export function DocumentsDialog({
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return documents.filter((d) => {
-      if (landlordFilter !== "all" && d.landlordId !== landlordFilter) {
-        const prop = properties?.find((p) => p.id === d.propertyId);
-        if (prop?.landlordId !== landlordFilter && d.landlordId !== landlordFilter) return false;
-      }
-      if (propertyFilter !== "all" && d.propertyId !== propertyFilter) return false;
-      if (tenantFilter !== "all" && d.tenantId !== tenantFilter) return false;
-      if (statusFilter !== "all") {
-        const st = d.status ?? (d.signed ? "signed" : "draft");
-        if (st !== statusFilter) return false;
-      }
-      if (!q) return true;
-      const landlordName = landlords.find((l) => l.id === d.landlordId)?.fullName ?? "";
-      const tenantName = tenants.find((t) => t.id === d.tenantId)?.fullName ?? "";
-      const prop = properties?.find((p) => p.id === d.propertyId);
-      const address = prop ? `${prop.address} ${prop.city}` : "";
-      const hay = `${d.name} ${typeLabel[d.type]} ${landlordName} ${tenantName} ${address}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [
-    documents,
-    query,
-    landlordFilter,
-    propertyFilter,
-    tenantFilter,
-    statusFilter,
-    landlords,
-    tenants,
-    properties,
-  ]);
+  const searchPlaceholder = selectedFolder
+    ? "חיפוש מסמך בתיקייה…"
+    : atTenantLevel
+      ? "חיפוש תיקייה או מסמך…"
+      : activePropertyId
+        ? "חיפוש שוכר או מסמך…"
+        : "חיפוש דירה, לקוח או מסמך…";
 
-  const grouped = Boolean(properties?.length) && !searchable;
-  const knownIds = new Set(properties?.map((p) => p.id) ?? []);
-  const generalDocs = grouped
-    ? filtered.filter((d) => !d.propertyId || !knownIds.has(d.propertyId))
-    : filtered;
+  const HeaderIcon = selectedFolder
+    ? folderIcon[selectedFolder]
+    : activeTenantId
+      ? Users
+      : Building2;
 
-  const filters = searchable && (
+  const headerTitle = selectedFolder
+    ? DOCUMENT_FOLDER_LABEL[selectedFolder]
+    : activeTenant
+      ? activeTenant.fullName
+      : activeProperty
+        ? `${activeProperty.address}, ${activeProperty.city}`
+        : "כללי";
+
+  const headerSubtitle = selectedFolder
+    ? docsCountLabel(
+        folderDocs.length + (childFolder ? folderCount(tenantDocs, childFolder) : 0),
+      )
+    : activeTenantId
+      ? docsCountLabel(tenantDocs.length)
+      : activeProperty
+        ? `דירה ${activeProperty.apartmentNumber} · ${docsCountLabel(propertyDocs.length)}`
+        : docsCountLabel(propertyDocs.length);
+
+  const header = (activePropertyId || activeTenantId || selectedFolder) && (
     <div className="mb-3 space-y-2">
-      <SearchField value={query} onChange={setQuery} placeholder="חיפוש חופשי — שם מסמך, לקוח, נכס…" />
-      <div className="grid grid-cols-2 gap-2">
-        {landlords.length > 0 && (
-          <select
-            value={landlordFilter}
-            onChange={(e) => {
-              setLandlordFilter(e.target.value);
-              setPropertyFilter("all");
-            }}
-            className="rounded-lg border border-border bg-surface px-2 py-2 text-xs text-navy focus:border-orange focus:outline-none"
-            aria-label="סינון לפי לקוח"
-          >
-            <option value="all">כל הלקוחות</option>
-            {landlords.map((l) => (
-              <option key={l.id} value={l.id}>{l.fullName}</option>
-            ))}
-          </select>
-        )}
-        {properties && properties.length > 0 && (
-          <select
-            value={propertyFilter}
-            onChange={(e) => setPropertyFilter(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-2 py-2 text-xs text-navy focus:border-orange focus:outline-none"
-            aria-label="סינון לפי נכס"
-          >
-            <option value="all">כל הנכסים</option>
-            {properties
-              .filter((p) => landlordFilter === "all" || p.landlordId === landlordFilter)
-              .map((p) => (
-                <option key={p.id} value={p.id}>{p.address}, {p.city}</option>
-              ))}
-          </select>
-        )}
-        {tenants.length > 0 && (
-          <select
-            value={tenantFilter}
-            onChange={(e) => setTenantFilter(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-2 py-2 text-xs text-navy focus:border-orange focus:outline-none"
-            aria-label="סינון לפי שוכר"
-          >
-            <option value="all">כל השוכרים</option>
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>{t.fullName}</option>
-            ))}
-          </select>
-        )}
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-          className="rounded-lg border border-border bg-surface px-2 py-2 text-xs text-navy focus:border-orange focus:outline-none"
-          aria-label="סינון לפי סטטוס"
-        >
-          <option value="all">כל הסטטוסים</option>
-          <option value="awaiting_signature">מסמכים לחתימה</option>
-          <option value="signed">חתומים</option>
-          <option value="draft">טיוטות</option>
-        </select>
+      <FolderBreadcrumb crumbs={crumbs} />
+      <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-l from-orange-soft/70 to-surface-muted px-3.5 py-3">
+        <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-surface text-orange shadow-sm">
+          {activeTenant && !selectedFolder ? (
+            <UserAvatar
+              name={activeTenant.fullName}
+              avatarUrl={users.find((u) => u.tenantId === activeTenant.id)?.avatarUrl}
+              size="md"
+              tone="gradient"
+              className="h-11 w-11"
+            />
+          ) : (
+            <HeaderIcon className="h-5 w-5" />
+          )}
+        </span>
+        <div className="min-w-0 flex-1 text-start">
+          <h3 className="truncate text-base font-extrabold tracking-tight text-navy">{headerTitle}</h3>
+          <p className="mt-0.5 text-xs font-medium text-text-muted">{headerSubtitle}</p>
+        </div>
       </div>
     </div>
   );
 
-  const list = (
-    <div className={inline ? "space-y-4" : "no-scrollbar max-h-[55vh] space-y-4 overflow-y-auto"}>
-      {filtered.length === 0 && (
-        <p className="py-6 text-center text-sm text-text-muted">אין מסמכים להצגה.</p>
-      )}
-
-      {grouped ? (
-        <>
-          {properties!.map((property) => (
-            <PropertySection
-              key={property.id}
-              title={`${property.address}, ${property.city}`}
-              docs={filtered.filter((d) => d.propertyId === property.id)}
-              canSign={canSign}
-              onSign={setSigningDoc}
-            />
+  const filters = searchable && (
+    <div className="mb-3 space-y-2">
+      <SearchField value={query} onChange={setQuery} placeholder={searchPlaceholder} />
+      {!activePropertyId && landlords.length > 0 && (
+        <select
+          value={landlordFilter}
+          onChange={(e) => {
+            setLandlordFilter(e.target.value);
+            backToProperties();
+          }}
+          className="w-full rounded-lg border border-border bg-surface px-2 py-2 text-xs text-navy focus:border-orange focus:outline-none"
+          aria-label="סינון לפי לקוח"
+        >
+          <option value="all">כל הלקוחות</option>
+          {landlords.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.fullName}
+            </option>
           ))}
-          <PropertySection
-            title="כללי · ללא שיוך לנכס"
-            docs={generalDocs}
-            canSign={canSign}
-            onSign={setSigningDoc}
-            hideIfEmpty
-          />
+        </select>
+      )}
+    </div>
+  );
+
+  const uploadBox = upload && selectedFolder && (
+    <div className="mb-4 rounded-xl border border-dashed border-border bg-surface-muted p-3">
+      <input
+        value={uploadName}
+        onChange={(e) => setUploadName(e.target.value)}
+        placeholder="שם המסמך (לא חובה)"
+        className="mb-2 w-full rounded-lg border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
+      />
+      <input
+        ref={fileRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void handleUpload(f);
+        }}
+      />
+      <Button variant="outline" fullWidth onClick={() => fileRef.current?.click()}>
+        <Upload className="h-5 w-5" />
+        העלאת מסמך
+      </Button>
+    </div>
+  );
+
+  const list = (
+    <div className={inline ? "space-y-2" : "no-scrollbar max-h-[55vh] space-y-2 overflow-y-auto"}>
+      {selectedFolder ? (
+        <>
+          {childFolder && ChildIcon && folderCount(tenantDocs, childFolder) > 0 && (
+            <FolderRow
+              icon={<ChildIcon className="h-5 w-5" />}
+              title={DOCUMENT_FOLDER_LABEL[childFolder]}
+              subtitle={docsCountLabel(folderCount(tenantDocs, childFolder))}
+              count={folderCount(tenantDocs, childFolder)}
+              onClick={() => openFolder(childFolder)}
+            />
+          )}
+          {folderDocs.length === 0 && !(childFolder && folderCount(tenantDocs, childFolder) > 0) ? (
+            <p className="py-6 text-center text-sm text-text-muted">אין מסמכים בתיקייה זו.</p>
+          ) : (
+            folderDocs.map((doc) => (
+              <DocRow key={doc.id} doc={doc} canSign={canSign} onSign={setSigningDoc} />
+            ))
+          )}
+          {childFolder && ChildIcon && folderCount(tenantDocs, childFolder) === 0 && (
+            <FolderRow
+              icon={<ChildIcon className="h-5 w-5" />}
+              title={DOCUMENT_FOLDER_LABEL[childFolder]}
+              subtitle={docsCountLabel(0)}
+              count={0}
+              onClick={() => openFolder(childFolder)}
+            />
+          )}
         </>
-      ) : (
-        <div className="space-y-2">
-          {filtered.map((doc) => {
-            const landlordName = landlords.find((l) => l.id === doc.landlordId)?.fullName;
-            const tenantName = tenants.find((t) => t.id === doc.tenantId)?.fullName;
-            const metaBits = [landlordName, tenantName].filter(Boolean).join(" · ");
+      ) : atTenantLevel ? (
+        categoryFolders.length === 0 ? (
+          <p className="py-6 text-center text-sm text-text-muted">אין תיקיות להצגה.</p>
+        ) : (
+          categoryFolders.map((folder) => {
+            const Icon = folderIcon[folder.folder];
             return (
-              <DocRow
-                key={doc.id}
-                doc={doc}
-                canSign={canSign}
-                onSign={setSigningDoc}
-                metaLine={metaBits || undefined}
+              <FolderRow
+                key={folder.folder}
+                icon={<Icon className="h-5 w-5" />}
+                title={folder.title}
+                subtitle={docsCountLabel(folder.count)}
+                count={folder.count}
+                onClick={() => openFolder(folder.folder)}
               />
             );
-          })}
-        </div>
+          })
+        )
+      ) : activePropertyId ? (
+        visibleTenantFolders.length === 0 ? (
+          <p className="py-6 text-center text-sm text-text-muted">אין שוכרים לנכס זה.</p>
+        ) : (
+          visibleTenantFolders.map((folder) => (
+            <FolderRow
+              key={folder.id}
+              icon={
+                <UserAvatar
+                  name={folder.title}
+                  avatarUrl={users.find((u) => u.tenantId === folder.id)?.avatarUrl}
+                  size="md"
+                  tone="gradient"
+                  className="h-11 w-11 rounded-xl"
+                />
+              }
+              title={folder.title}
+              subtitle={folder.subtitle}
+              count={folder.count}
+              onClick={() => openTenant(folder.id)}
+            />
+          ))
+        )
+      ) : visiblePropertyFolders.length === 0 ? (
+        <p className="py-6 text-center text-sm text-text-muted">אין מסמכים להצגה.</p>
+      ) : (
+        visiblePropertyFolders.map((folder) => (
+          <FolderRow
+            key={folder.id}
+            icon={<Folder className="h-5 w-5" />}
+            title={folder.title}
+            subtitle={folder.subtitle}
+            count={folder.count}
+            onClick={() => openProperty(folder.id)}
+          />
+        ))
       )}
     </div>
   );
 
   const body = (
     <>
+      {header}
       {filters}
-      {upload && (
-        <div className="mb-4 rounded-xl border border-dashed border-border bg-surface-muted p-3">
-          <input
-            value={uploadName}
-            onChange={(e) => setUploadName(e.target.value)}
-            placeholder="שם המסמך (לא חובה)"
-            className="mb-2 w-full rounded-lg border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
-          />
-          <input
-            ref={fileRef}
-            type="file"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void handleUpload(f);
-            }}
-          />
-          <Button variant="outline" fullWidth onClick={() => fileRef.current?.click()}>
-            <Upload className="h-5 w-5" />
-            העלאת מסמך
-          </Button>
-        </div>
-      )}
+      {uploadBox}
       {list}
     </>
   );

@@ -41,7 +41,9 @@ export function SendForSignatureDialog({ open, onClose }: SendForSignatureDialog
     addDocument({
       name: name.trim(),
       type: "contract",
+      folder: /חידוש/.test(name) ? "lease_renewal" : "lease",
       propertyId: propertyId || undefined,
+      tenantId: properties.find((p) => p.id === propertyId)?.tenantId,
       ownerUserId,
       fileDataUrl: fileData,
       awaitingSignature: true,

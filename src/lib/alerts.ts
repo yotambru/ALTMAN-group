@@ -84,6 +84,8 @@ function allUtilitiesUploaded(ob: TenantOnboarding): boolean {
   });
 }
 
+const ALL_ONBOARDING_LABELS = [...utilityOrder.map((kind) => utilityLabel[kind]), "פוליסת ביטוח"];
+
 /** Outstanding uploads for a tenant (utilities + insurance still pending). */
 export function pendingOnboardingCount(ob: TenantOnboarding | undefined): number {
   return pendingOnboardingLabels(ob).length;
@@ -91,7 +93,7 @@ export function pendingOnboardingCount(ob: TenantOnboarding | undefined): number
 
 /** Hebrew labels for items the tenant still needs to upload. */
 export function pendingOnboardingLabels(ob: TenantOnboarding | undefined): string[] {
-  if (!ob) return [];
+  if (!ob) return [...ALL_ONBOARDING_LABELS];
   const labels: string[] = [];
   for (const kind of utilityOrder) {
     const item = ob.utilities.find((u) => u.utility === kind);
@@ -110,10 +112,9 @@ export function awaitingManagementApproval(ob: TenantOnboarding | undefined): bo
   return allUtilitiesUploaded(ob) && isUploaded(ob.insurance.status);
 }
 
-/** Account is locked until onboarding is completed (uploads + management approval). */
+/** Account is locked until onboarding is completed (uploads + management approval). Missing onboarding is treated as locked. */
 export function isOnboardingLocked(ob: TenantOnboarding | undefined): boolean {
-  if (!ob) return false;
-  return !ob.completed;
+  return !ob || !ob.completed;
 }
 
 /**

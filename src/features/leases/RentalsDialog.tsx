@@ -32,7 +32,7 @@ export function RentalsDialog({ open, onClose, landlordId }: RentalsDialogProps)
           <div key={lease.id} className="rounded-xl border border-border p-3">
             <div className="flex items-center gap-3">
               {property && (
-                <PropertyImage variant={property.imageId} className="h-12 w-12 shrink-0" rounded="rounded-lg" />
+                <PropertyImage variant={property.imageId} src={property.photoUrls?.[0]} className="h-12 w-12 shrink-0" rounded="rounded-lg" />
               )}
               <div className="min-w-0 flex-1">
                 <p className="truncate font-bold text-navy">

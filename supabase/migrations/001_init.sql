@@ -48,6 +48,7 @@ create table if not exists public.properties (
   building_fee double precision not null default 0,
   electricity_meter text not null default '',
   image_id text not null default 'residential',
+  photo_urls text[] not null default '{}',
   landlord_id text not null,
   tenant_id text,
   neighborhood text,

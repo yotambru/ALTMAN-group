@@ -43,11 +43,13 @@ import { getCriticalDates } from "@/lib/alerts";
 import {
   buildPortfolioYieldHistory,
   buildPortfolioYieldSeries,
-  currentPortfolioYield,
   formatPercent,
+  impliedPortfolioValue,
+  monthlyRentalIncome,
   occupancyPercent,
   portfolioIncomeGrowth,
   portfolioJoinDate,
+  PORTFOLIO_YIELD_RATE,
 } from "@/lib/portfolio";
 import { formatCurrency, formatMonthYear } from "@/lib/utils";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
@@ -72,16 +74,15 @@ export default function LandlordDashboard() {
   const myProperties = properties.filter((p) => p.landlordId === landlordId);
   const myPropertyIds = myProperties.map((p) => p.id);
   const myLeases = leases.filter((l) => l.landlordId === landlordId && l.active);
-  const expectedIncome = myLeases.reduce((sum, l) => sum + l.monthlyRent, 0);
-  const portfolioValue = myProperties.reduce((sum, p) => sum + p.value, 0);
+  const expectedIncome = monthlyRentalIncome(myLeases);
+  const portfolioValue = impliedPortfolioValue(expectedIncome);
   const criticalDates = getCriticalDates(myLeases, myProperties);
   const criticalCount = criticalDates.length;
   const leaseRenewals = criticalDates.filter((d) => d.kind === "lease_end" && d.daysLeft <= 30).length;
   const occupancy = occupancyPercent(myProperties);
-  const portfolioYield = currentPortfolioYield(myLeases);
   const yieldHistory = buildPortfolioYieldHistory(myLeases);
   const yieldSeries = buildPortfolioYieldSeries(myLeases);
-  const incomeSeries = yieldSeries.map((p) => p.annualIncome);
+  const incomeSeries = yieldSeries.map((p) => p.monthlyIncome);
   const incomeGrowth = portfolioIncomeGrowth(myLeases);
   const joinDate = portfolioJoinDate(myLeases);
   const firstYield = yieldSeries[0];
@@ -199,28 +200,28 @@ export default function LandlordDashboard() {
               tone="glass"
               label="שווי נכסים כולל"
               value={formatCurrency(portfolioValue)}
-              subtitle={`תפוסה ${occupancy}% · תשואה ${formatPercent(portfolioYield)}`}
+              subtitle={`תפוסה ${occupancy}% · שווי לפי תשואה ${formatPercent(PORTFOLIO_YIELD_RATE * 100)}`}
               data={incomeSeries.length > 1 ? incomeSeries : undefined}
               trendPercent={incomeGrowth}
               trendLabel={
                 joinDate
                   ? `גידול בהכנסות מאז ההצטרפות · ${formatMonthYear(joinDate)}`
-                  : "לפי מחשבון תשואה"
+                  : "גידול בדמי שכירות"
               }
               chartStartLabel={
                 firstYield && joinDate
-                  ? `הצטרפות ${formatMonthYear(joinDate)} · ${formatPercent(firstYield.yieldPercent)}`
+                  ? `הצטרפות ${formatMonthYear(joinDate)} · ${formatCurrency(firstYield.monthlyIncome)}`
                   : undefined
               }
               chartEndLabel={
                 lastYield
-                  ? `${lastYield.incomeGrowthPercent >= 0 ? "+" : ""}${formatPercent(lastYield.incomeGrowthPercent)} · תשואה ${formatPercent(lastYield.yieldPercent)}`
+                  ? `${lastYield.incomeGrowthPercent >= 0 ? "+" : ""}${formatPercent(lastYield.incomeGrowthPercent)} · ${formatCurrency(lastYield.monthlyIncome)}`
                   : undefined
               }
               secondary={{
                 label: "הכנסה חודשית",
                 value: formatCurrency(expectedIncome),
-                sublabel: "מנכסים מושכרים",
+                sublabel: "סך דמי שכירות מכל הנכסים",
                 onClick: () => setDialog("rentals"),
               }}
             />
@@ -256,7 +257,7 @@ export default function LandlordDashboard() {
                 sublabel={
                   incomeGrowth != null && joinDate
                     ? `מאז ההצטרפות · ${formatMonthYear(joinDate)}`
-                    : "לפי מחשבון תשואה"
+                    : "מתעדכן עם דמי השכירות"
                 }
                 onClick={() => openPanel("report")}
               />

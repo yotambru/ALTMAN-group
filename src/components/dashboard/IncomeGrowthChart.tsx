@@ -7,8 +7,8 @@ interface IncomeGrowthChartProps {
 }
 
 /**
- * Yearly rental-income growth chart (management start → today).
- * Uses the same reconstructed series as yield history.
+ * Rental-income chart from join date → today.
+ * Bars are monthly rent; height jumps when a lease starts or rent is updated.
  */
 export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps) {
   if (points.length < 2) {
@@ -24,7 +24,7 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
   const padX = 16;
   const padTop = 22;
   const padBottom = 30;
-  const values = points.map((p) => p.annualIncome);
+  const values = points.map((p) => p.monthlyIncome);
   const min = Math.min(...values) * 0.92;
   const max = Math.max(...values);
   const range = max - min || 1;
@@ -33,7 +33,7 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
 
   const bars = points.map((p, i) => {
     const x = padX + i * ((w - padX * 2) / points.length) + ((w - padX * 2) / points.length - barW) / 2;
-    const barH = ((p.annualIncome - min) / range) * (h - padTop - padBottom);
+    const barH = ((p.monthlyIncome - min) / range) * (h - padTop - padBottom);
     const y = h - padBottom - barH;
     return { ...p, x, y, barH };
   });
@@ -48,14 +48,14 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
         <div>
           <p className="text-sm font-semibold text-navy">גידול בהכנסות מאז ההצטרפות</p>
           <p className="mt-0.5 text-xs text-text-muted">
-            לפי מחשבון תשואה · שווי מעוגן לפי תשואה ממוצעת בישראל (3%)
+            דמי שכירות ביום ההצטרפות, ואז בכל עדכון שכירות
           </p>
         </div>
         <div className="text-end">
-          <p className="text-lg font-extrabold text-orange">{formatCurrency(last.annualIncome)}</p>
+          <p className="text-lg font-extrabold text-orange">{formatCurrency(last.monthlyIncome)}</p>
           <p className="text-[0.7rem] font-medium text-success">
             {growth >= 0 ? "+" : ""}
-            {formatPercent(growth)} הכנסה · תשואה {formatPercent(last.yieldPercent)}
+            {formatPercent(growth)} מאז ההצטרפות
           </p>
         </div>
       </div>
@@ -86,7 +86,7 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
                 fontSize="9"
                 fontWeight="700"
               >
-                {formatPercent(b.yieldPercent)}
+                {i === 0 ? formatCurrency(b.monthlyIncome) : `${b.incomeGrowthPercent >= 0 ? "+" : ""}${formatPercent(b.incomeGrowthPercent)}`}
               </text>
               <text
                 x={b.x + barW / 2}
@@ -102,12 +102,8 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
         </svg>
 
         <div className="mt-1 flex justify-between text-[0.7rem] text-text-muted">
-          <span>
-            הצטרפות: {formatCurrency(first.annualIncome)} · {formatPercent(first.yieldPercent)}
-          </span>
-          <span>
-            היום: {formatCurrency(last.annualIncome)} · {formatPercent(last.yieldPercent)}
-          </span>
+          <span>הצטרפות: {formatCurrency(first.monthlyIncome)} / חודש</span>
+          <span>היום: {formatCurrency(last.monthlyIncome)} / חודש</span>
         </div>
       </div>
     </div>

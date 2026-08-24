@@ -39,6 +39,7 @@ import { TicketsDialog } from "@/features/maintenance/TicketsDialog";
 import { ChatPanel } from "@/features/chat/ChatPanel";
 import { DocumentsDialog } from "@/features/documents/DocumentsDialog";
 import { PropertyDetailDialog } from "@/features/properties/PropertyDetailDialog";
+import { UtilityAccountDetails } from "@/features/utilities/UtilityAccountDetails";
 import { useSession } from "@/lib/useSession";
 import { useData, utilityLabelHe } from "@/lib/store";
 import { storage } from "@/lib/storage";
@@ -55,7 +56,6 @@ import {
   fileToDataUrl,
   formatDateSlashes,
   formatCurrency,
-  humanizeUntil,
   isValidIsoDate,
 } from "@/lib/utils";
 import type { AppNotification, UtilityKind } from "@/types";
@@ -106,10 +106,11 @@ export default function TenantDashboard() {
   const firstName = session.fullName.trim().split(/\s+/)[0] || session.fullName;
   const unread = notifications.filter((n) => !n.read && (n.forUserId === user.id || n.forRole === "tenant")).length;
   const myDocs = documents.filter((d) => d.ownerUserId === user.id || (d.propertyId && d.propertyId === property?.id));
-  const authorityDocs = myDocs.filter((d) => d.type === "utility" || d.type === "approval" || d.type === "insurance");
+  const tenantProperties = property ? [property] : [];
 
   const [tab, setTab] = useState<AppTab>("dashboard");
-  const [homePanel, setHomePanel] = useState<HomePanel>(() => (locked ? "home" : "chat"));
+  /** Always start on home — first render uses a demo session, so `locked` is not yet trustworthy. */
+  const [homePanel, setHomePanel] = useState<HomePanel>("home");
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   /** Infinitive phrase for the lock sheet, e.g. "להשתמש בצ׳אט עם המנהל". */
@@ -117,9 +118,13 @@ export default function TenantDashboard() {
   const fileRef = useRef<HTMLInputElement>(null);
   const pendingUpload = useRef<UtilityKind | "insurance" | null>(null);
 
-  // After onboarding completes, land on chat instead of the empty required-actions home.
-  if (!locked && homePanel === "home") {
-    setHomePanel("chat");
+  // Wait for the real session before choosing a panel — first render is the demo user.
+  if (ready) {
+    if (locked && homePanel !== "home") {
+      setHomePanel("home");
+    } else if (!locked && homePanel === "home") {
+      setHomePanel("chat");
+    }
   }
 
   useEffect(() => {
@@ -150,10 +155,10 @@ export default function TenantDashboard() {
     if (!target) return;
     const dataUrl = await fileToDataUrl(file);
     if (target === "insurance") {
-      const doc = addDocument({ name: "פוליסת ביטוח", type: "insurance", propertyId: property?.id, ownerUserId: user.id, fileDataUrl: dataUrl });
+      const doc = addDocument({ name: "פוליסת ביטוח", type: "insurance", folder: "appendices", propertyId: property?.id, tenantId: tenantId, ownerUserId: user.id, fileDataUrl: dataUrl });
       setInsuranceStatus(tenantId, "submitted", doc.id);
     } else {
-      const doc = addDocument({ name: `אישור החלפת ${utilityLabelHe(target)}`, type: "utility", propertyId: property?.id, ownerUserId: user.id, fileDataUrl: dataUrl });
+      const doc = addDocument({ name: `אישור החלפת ${utilityLabelHe(target)}`, type: "utility", folder: "appendices", propertyId: property?.id, tenantId: tenantId, ownerUserId: user.id, fileDataUrl: dataUrl });
       setUtilityStatus(tenantId, target, "submitted", doc.id);
     }
     addNotification({
@@ -222,6 +227,10 @@ export default function TenantDashboard() {
 
   const onNav = (id: string) => {
     const next = id as AppTab;
+    if (next === "documents" && locked) {
+      showLock("לגשת למסמכים לחתימה");
+      return;
+    }
     if (next === "dashboard") {
       if (tab === "dashboard") window.scrollTo({ top: 0, behavior: "smooth" });
       setHomePanel(locked ? "home" : "chat");
@@ -278,7 +287,15 @@ export default function TenantDashboard() {
               tone="glass"
               label="דמי שכירות חודשיים"
               value={formatCurrency(lease?.monthlyRent ?? 0)}
-              subtitle={lease ? `תשלום הבא · ${humanizeUntil(lease.nextPaymentDate)}` : undefined}
+              subtitle={
+                lease
+                  ? `תשלום הבא · ${
+                      isValidIsoDate(lease.nextPaymentDate)
+                        ? formatDateSlashes(lease.nextPaymentDate)
+                        : "—"
+                    }`
+                  : undefined
+              }
             />
           </div>
         </div>
@@ -297,15 +314,17 @@ export default function TenantDashboard() {
               <MetricCard
                 icon={Wallet}
                 label="תשלום הבא"
-                value={lease ? humanizeUntil(lease.nextPaymentDate) : "—"}
-                sublabel={lease ? formatDateSlashes(lease.nextPaymentDate) : "אין מועד"}
+                value={
+                  lease && isValidIsoDate(lease.nextPaymentDate)
+                    ? formatDateSlashes(lease.nextPaymentDate)
+                    : "—"
+                }
                 onClick={() => setDialog("contract")}
               />
               <MetricCard
                 icon={CalendarClock}
                 label="סיום חוזה"
-                value={leaseEnd ? humanizeUntil(leaseEnd) : "—"}
-                sublabel={leaseEnd ? formatDateSlashes(leaseEnd) : "אין תאריך סיום"}
+                value={leaseEnd ? formatDateSlashes(leaseEnd) : "—"}
                 onClick={() => setDialog("contract")}
               />
               <MetricCard
@@ -359,7 +378,7 @@ export default function TenantDashboard() {
               ]}
             />
 
-            {homePanel !== "home" ? (
+            {homePanel !== "home" && !locked ? (
               <section className="space-y-3 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
                 <SectionHeader title={panelTitles[homePanel]} />
                 {homePanel === "chat" && (
@@ -376,9 +395,11 @@ export default function TenantDashboard() {
                 {homePanel === "docs" && (
                   <DocumentsDialog
                     inline
+                    searchable
                     documents={myDocs}
                     canSign
                     signerName={session.fullName}
+                    properties={tenantProperties}
                     upload={{
                       ownerUserId: user.id,
                       propertyId: property.id,
@@ -397,7 +418,7 @@ export default function TenantDashboard() {
               onClick={() => setDialog("contract")}
               className="flex w-full items-center gap-3 border-y border-border py-3 text-start transition-colors hover:bg-surface-muted/80"
             >
-              <PropertyImage variant={property.imageId} className="h-12 w-12 shrink-0" rounded="rounded-lg" />
+              <PropertyImage variant={property.imageId} src={property.photoUrls?.[0]} className="h-12 w-12 shrink-0" rounded="rounded-lg" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold text-navy">
                   {property.address}, {property.city}
@@ -415,6 +436,7 @@ export default function TenantDashboard() {
             {showRequiredActions && (
             <section className="space-y-3">
               <SectionHeader title="פעולות נדרשות" />
+              <UtilityAccountDetails property={property} tenant={tenant} />
               <div className="grid grid-cols-5 gap-2">
                 {utilityOrder.map((u) => {
                   const item = onboarding?.utilities.find((x) => x.utility === u);
@@ -482,6 +504,13 @@ export default function TenantDashboard() {
             </section>
             )}
 
+            {!showRequiredActions && (
+              <section className="space-y-3">
+                <SectionHeader title="פרטי חשבונות" />
+                <UtilityAccountDetails property={property} tenant={tenant} />
+              </section>
+            )}
+
             <section className="grid grid-cols-2 gap-3">
               <button onClick={() => setDialog("contract")} className="rounded-[var(--radius)] bg-surface p-3 text-start ring-1 ring-border">
                 <p className="flex items-center gap-1.5 text-xs text-text-muted">
@@ -489,9 +518,6 @@ export default function TenantDashboard() {
                 </p>
                 <p className="mt-1 text-base font-extrabold text-navy">
                   {leaseEnd ? formatDateSlashes(leaseEnd) : "—"}
-                </p>
-                <p className="text-[0.7rem] text-orange">
-                  {leaseEnd ? humanizeUntil(leaseEnd) : "אין תאריך סיום"}
                 </p>
               </button>
               <button
@@ -529,28 +555,21 @@ export default function TenantDashboard() {
         {tab === "documents" && (
           <div className="space-y-4 px-4 pb-8 pt-2">
             <SectionHeader title="מסמכים" />
-            {authorityDocs.length > 0 && (
-              <section className="space-y-2">
-                <p className="text-sm font-bold text-navy">מסמכי רשויות וחשבונות</p>
-                <DocumentsDialog inline documents={authorityDocs} canSign signerName={session.fullName} />
-              </section>
-            )}
-            <section className="space-y-2">
-              <p className="text-sm font-bold text-navy">כל המסמכים</p>
-              <DocumentsDialog
-                inline
-                documents={myDocs}
-                canSign
-                signerName={session.fullName}
-                upload={{
-                  ownerUserId: user.id,
-                  propertyId: property.id,
-                  tenantId: tenantId,
-                  landlordId: property.landlordId,
-                  defaultType: "approval",
-                }}
-              />
-            </section>
+            <DocumentsDialog
+              inline
+              searchable
+              documents={myDocs}
+              canSign
+              signerName={session.fullName}
+              properties={tenantProperties}
+              upload={{
+                ownerUserId: user.id,
+                propertyId: property.id,
+                tenantId: tenantId,
+                landlordId: property.landlordId,
+                defaultType: "approval",
+              }}
+            />
           </div>
         )}
 
@@ -579,6 +598,11 @@ export default function TenantDashboard() {
                 <p className="font-bold text-navy">{formatCurrency(lease?.monthlyRent ?? 0)}</p>
               </div>
             </div>
+            <UtilityAccountDetails
+              property={property}
+              tenant={tenant}
+              heading="פרטים להעברת חשבונות"
+            />
           </ProfileTab>
         )}
       </div>

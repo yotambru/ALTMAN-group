@@ -79,6 +79,7 @@ export function PropertyCard({
         </div>
         <PropertyImage
           variant={property.imageId}
+          src={property.photoUrls?.[0]}
           className="h-20 w-24 shrink-0"
           rounded="rounded-xl"
         />
@@ -158,6 +159,7 @@ export function PropertyRow({
       >
         <PropertyImage
           variant={property.imageId}
+          src={property.photoUrls?.[0]}
           className="h-full w-full"
           rounded="rounded-full"
           muted
@@ -241,6 +243,7 @@ export function PropertyMiniCard({
       </div>
       <PropertyImage
         variant={property.imageId}
+        src={property.photoUrls?.[0]}
         className="mx-3 h-20"
         rounded="rounded-lg"
       />

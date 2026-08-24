@@ -50,8 +50,7 @@ export interface Property {
   status: PropertyStatus;
   /**
    * Estimated market value in ILS.
-   * Prefer anchoring at management-start via average Israeli yield so rent
-   * growth raises yield % (see `lib/portfolio.ts`) instead of revaluing 1:1.
+   * Total portfolio value is derived as annual rent ÷ 2.8% (see `lib/portfolio.ts`).
    */
   value: number;
   /** Monthly municipal tax (ארנונה) in ILS */
@@ -62,6 +61,8 @@ export interface Property {
   buildingFee: number;
   electricityMeter: string;
   imageId: PropertyImageId;
+  /** Uploaded property photos (Storage / data URLs). First image is the cover. */
+  photoUrls?: string[];
   landlordId: string;
   tenantId?: string;
   /** Neighborhood (שכונה) */
@@ -129,12 +130,22 @@ export interface Tenant {
   idPhotoUploaded?: boolean;
 }
 
+/** A recorded change to monthly rent (keeps the income graph honest). */
+export interface RentAdjustment {
+  date: string; // ISO
+  monthlyRent: number;
+}
+
 export interface Lease {
   id: string;
   propertyId: string;
   tenantId: string;
   landlordId: string;
   monthlyRent: number;
+  /** Rent on the day the lease / management started. Defaults to `monthlyRent`. */
+  startingMonthlyRent?: number;
+  /** Later rent updates, oldest first. Current rent is always `monthlyRent`. */
+  rentAdjustments?: RentAdjustment[];
   startDate: string; // ISO — lease start
   endDate: string; // ISO — lease end
   nextPaymentDate: string; // ISO
@@ -222,14 +233,27 @@ export type DocumentType =
   | "invoice"
   | "insurance"
   | "utility"
-  | "protocol";
+  | "protocol"
+  | "property_photo";
 
 export type DocumentStatus = "draft" | "awaiting_signature" | "signed";
+
+/** Vault folders: property → tenant → these categories (some have a nested child). */
+export type DocumentFolder =
+  | "lease"
+  | "lease_renewal"
+  | "id_photos"
+  | "guarantor_id"
+  | "meter_photos"
+  | "appendices"
+  | "entry_protocol";
 
 export interface AppDocument {
   id: string;
   name: string;
   type: DocumentType;
+  /** Vault folder. Inferred from `type` / name when missing (legacy rows). */
+  folder?: DocumentFolder;
   propertyId?: string;
   /** Optional direct links for search / folder filters. */
   landlordId?: string;

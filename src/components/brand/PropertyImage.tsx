@@ -3,6 +3,8 @@ import { cn } from "@/lib/utils";
 
 interface PropertyImageProps {
   variant: PropertyImageId;
+  /** Uploaded photo URL; falls back to the illustration variant. */
+  src?: string;
   className?: string;
   rounded?: string;
   /** Soften for small thumbnails (list rows). */
@@ -24,23 +26,25 @@ const ALT: Record<PropertyImageId, string> = {
 };
 
 /**
- * Calm premium illustrations — not photos, not flashy clip-art.
+ * Property cover: uploaded photo when available, otherwise a calm illustration.
  */
 export function PropertyImage({
   variant,
+  src,
   className,
   rounded = "rounded-xl",
   muted = false,
 }: PropertyImageProps) {
+  const photo = src?.trim();
   return (
     <div className={cn("relative overflow-hidden bg-[#f3f0ea]", rounded, className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={SOURCES[variant]}
-        alt={ALT[variant]}
+        src={photo || SOURCES[variant]}
+        alt={photo ? "תמונת נכס" : ALT[variant]}
         className={cn(
           "h-full w-full object-cover object-center",
-          muted && "brightness-[0.99] saturate-[0.92]",
+          muted && !photo && "brightness-[0.99] saturate-[0.92]",
         )}
       />
     </div>

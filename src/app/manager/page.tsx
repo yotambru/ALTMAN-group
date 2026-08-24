@@ -118,7 +118,7 @@ export default function ManagerDashboard() {
   const monthlyIncome = activeLeases.reduce((sum, l) => sum + l.monthlyRent, 0);
   const occupancy = occupancyPercent(properties);
   const yieldSeries = buildPortfolioYieldSeries(activeLeases);
-  const incomeSeries = yieldSeries.map((p) => p.annualIncome);
+  const incomeSeries = yieldSeries.map((p) => p.monthlyIncome);
   const incomeGrowth = portfolioIncomeGrowth(activeLeases);
   const joinDate = portfolioJoinDate(activeLeases);
   const firstYield = yieldSeries[0];
@@ -342,12 +342,12 @@ export default function ManagerDashboard() {
               }
               chartStartLabel={
                 firstYield && joinDate
-                  ? `התחלה ${formatMonthYear(joinDate)} · ${formatPercent(firstYield.yieldPercent)}`
+                  ? `התחלה ${formatMonthYear(joinDate)} · ${formatCurrency(firstYield.monthlyIncome)}`
                   : undefined
               }
               chartEndLabel={
                 lastYield
-                  ? `${lastYield.incomeGrowthPercent >= 0 ? "+" : ""}${formatPercent(lastYield.incomeGrowthPercent)} · תשואה ${formatPercent(lastYield.yieldPercent)}`
+                  ? `${lastYield.incomeGrowthPercent >= 0 ? "+" : ""}${formatPercent(lastYield.incomeGrowthPercent)} · ${formatCurrency(lastYield.monthlyIncome)}`
                   : undefined
               }
             />

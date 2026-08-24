@@ -54,6 +54,7 @@ export function PropertyListDialog({
           >
             <PropertyImage
               variant={property.imageId}
+              src={property.photoUrls?.[0]}
               className="h-12 w-12 shrink-0"
               rounded="rounded-lg"
             />

@@ -8,7 +8,8 @@ import { FormField } from "@/components/ui/FormField";
 import { useData } from "@/lib/store";
 import { emailInUse, isValidEmail, normalizeEmail } from "@/lib/auth";
 import { fileToDataUrl } from "@/lib/utils";
-import type { AirDirection, PropertyImageId } from "@/types";
+import { PhotoGridField } from "@/components/ui/PhotoGridField";
+import type { AirDirection } from "@/types";
 
 interface AddClientModalProps {
   open: boolean;
@@ -24,13 +25,6 @@ interface PickedFile {
   name: string;
   dataUrl: string;
 }
-
-const imageOptions: { id: PropertyImageId; label: string }[] = [
-  { id: "tower", label: "מגדל" },
-  { id: "residential", label: "מגורים" },
-  { id: "boutique", label: "בוטיק" },
-  { id: "garden", label: "גן" },
-];
 
 const airOptions: { id: AirDirection; label: string }[] = [
   { id: "north", label: "צפון" },
@@ -64,6 +58,8 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
   const [tenantName, setTenantName] = useState("");
   const [tenantPhone, setTenantPhone] = useState("");
   const [tenantEmail, setTenantEmail] = useState("");
+  const [tenantIdNumber, setTenantIdNumber] = useState("");
+  const [leaseEndDate, setLeaseEndDate] = useState("");
   const [formError, setFormError] = useState("");
 
   // property
@@ -98,7 +94,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
   const [electricityMeter, setElectricityMeter] = useState("");
   const [gasMeter, setGasMeter] = useState("");
   const [waterMeter, setWaterMeter] = useState("");
-  const [imageId, setImageId] = useState<PropertyImageId>("residential");
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
 
   const reset = () => {
     setDone(false);
@@ -114,6 +110,8 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     setTenantName("");
     setTenantPhone("");
     setTenantEmail("");
+    setTenantIdNumber("");
+    setLeaseEndDate("");
     setFormError("");
     setHasInspectionReport("");
     setCity("");
@@ -146,7 +144,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     setElectricityMeter("");
     setGasMeter("");
     setWaterMeter("");
-    setImageId("residential");
+    setPhotoUrls([]);
   };
 
   const handleClose = () => {
@@ -216,7 +214,8 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
       municipalPropertyNumber: municipalPropertyNumber.trim() || undefined,
       buildingFee: num(buildingFee),
       electricityMeter: electricityMeter.trim(),
-      imageId,
+      imageId: "residential",
+      photoUrls: photoUrls.length ? photoUrls : undefined,
       neighborhood: neighborhood.trim() || undefined,
       hasInspectionReport: triBool(hasInspectionReport),
       hasBalcony: triBool(hasBalcony),
@@ -253,6 +252,8 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
             tenantName: tenantName.trim() || undefined,
             tenantPhone: tenantPhone.trim() || undefined,
             tenantEmail: tenantMail,
+            tenantIdNumber: tenantIdNumber.trim() || undefined,
+            endDate: leaseEndDate || undefined,
           }
         : {}),
     });
@@ -444,6 +445,27 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
                   dir: "ltr",
                 }}
               />
+              <FormField
+                label="מס׳ ת״ז"
+                className="col-span-2"
+                hint="אופציונלי"
+                inputProps={{
+                  value: tenantIdNumber,
+                  onChange: (e) => setTenantIdNumber(e.target.value),
+                  inputMode: "numeric",
+                  dir: "ltr",
+                }}
+              />
+              <FormField
+                label="תאריך סיום חוזה"
+                className="col-span-2"
+                hint="מוצג בדשבורד השוכר"
+                inputProps={{
+                  type: "date",
+                  value: leaseEndDate,
+                  onChange: (e) => setLeaseEndDate(e.target.value),
+                }}
+              />
             </div>
           )}
 
@@ -597,17 +619,13 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
             />
           </div>
 
-          <FormField label="תמונת נכס">
-            <select
-              value={imageId}
-              onChange={(e) => setImageId(e.target.value as PropertyImageId)}
-              className="w-full rounded-xl border bg-surface px-3.5 py-3 text-sm focus:border-orange focus:outline-none"
-            >
-              {imageOptions.map((o) => (
-                <option key={o.id} value={o.id}>{o.label}</option>
-              ))}
-            </select>
-          </FormField>
+          <PhotoGridField
+            label="תמונות נכס"
+            hint="JPEG, PNG או HEIC"
+            emptyLabel="העלאת תמונות"
+            photos={photoUrls}
+            onChange={setPhotoUrls}
+          />
 
           <Section title="מסמכים" />
           <FilePickField

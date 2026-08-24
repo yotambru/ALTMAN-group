@@ -1,3 +1,5 @@
+import { smoothLinePath, smoothSeries } from "./smooth-path";
+
 interface SparklineProps {
   data: number[];
   className?: string;
@@ -26,20 +28,21 @@ export function Sparkline({
   const h = 48;
   const padY = 6;
   const padX = 6;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
+  const series = smoothSeries(data);
+  const min = Math.min(...series);
+  const max = Math.max(...series);
   const range = max - min || 1;
 
-  const points = data.map((v, i) => {
-    const x = padX + (i / (data.length - 1)) * (w - padX * 2);
+  const points = series.map((v, i) => {
+    const x = padX + (i / (series.length - 1)) * (w - padX * 2);
     const y = h - padY - ((v - min) / range) * (h - padY * 2);
     return { x, y };
   });
 
-  const line = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
-  const area = `${line} L ${w} ${h} L 0 ${h} Z`;
+  const line = smoothLinePath(points);
   const first = points[0];
   const last = points[points.length - 1];
+  const area = `${line} L ${last.x.toFixed(2)} ${h} L ${first.x.toFixed(2)} ${h} Z`;
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className={className} preserveAspectRatio="none" aria-hidden>

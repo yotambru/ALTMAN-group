@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
+import { PhotoGridField } from "@/components/ui/PhotoGridField";
 import { useData } from "@/lib/store";
 import type { Property, PropertyStatus } from "@/types";
 
@@ -24,15 +25,22 @@ const statusOptions: { id: PropertyStatus; label: string }[] = [
 
 /** Edit an existing property (and its active lease's rent). */
 export function EditPropertyModal({ property, onClose }: EditPropertyModalProps) {
-  const { updateProperty, updateLease, leases } = useData();
+  const { updateProperty, updateLease, setPropertyPhotos, leases } = useData();
   const lease = property ? leases.find((l) => l.propertyId === property.id && l.active) : undefined;
 
   const [value, setValue] = useState("");
   const [municipalTax, setMunicipalTax] = useState("");
   const [buildingFee, setBuildingFee] = useState("");
   const [electricityMeter, setElectricityMeter] = useState("");
+  const [gasMeter, setGasMeter] = useState("");
+  const [waterMeter, setWaterMeter] = useState("");
+  const [municipalPropertyNumber, setMunicipalPropertyNumber] = useState("");
+  const [managementCompanyPhone, setManagementCompanyPhone] = useState("");
   const [status, setStatus] = useState<PropertyStatus>("rented");
   const [rent, setRent] = useState("");
+  const [leaseStartDate, setLeaseStartDate] = useState("");
+  const [leaseEndDate, setLeaseEndDate] = useState("");
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -41,8 +49,15 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
       setMunicipalTax(String(property.municipalTax));
       setBuildingFee(String(property.buildingFee));
       setElectricityMeter(property.electricityMeter);
+      setGasMeter(property.gasMeter ?? "");
+      setWaterMeter(property.waterMeter ?? "");
+      setMunicipalPropertyNumber(property.municipalPropertyNumber ?? "");
+      setManagementCompanyPhone(property.managementCompanyPhone ?? "");
       setStatus(property.status);
       setRent(lease ? String(lease.monthlyRent) : "");
+      setLeaseStartDate(lease?.startDate?.slice(0, 10) ?? "");
+      setLeaseEndDate(lease?.endDate?.slice(0, 10) ?? "");
+      setPhotoUrls(property.photoUrls ?? []);
     }
   }, [property, lease]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -56,9 +71,20 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
       municipalTax: num(municipalTax),
       buildingFee: num(buildingFee),
       electricityMeter: electricityMeter.trim(),
+      gasMeter: gasMeter.trim() || undefined,
+      waterMeter: waterMeter.trim() || undefined,
+      municipalPropertyNumber: municipalPropertyNumber.trim() || undefined,
+      managementCompanyPhone: managementCompanyPhone.trim() || undefined,
       status,
     });
-    if (lease && rent) updateLease(lease.id, { monthlyRent: num(rent) });
+    setPropertyPhotos(property.id, photoUrls);
+    if (lease) {
+      updateLease(lease.id, {
+        ...(rent ? { monthlyRent: num(rent) } : {}),
+        startDate: leaseStartDate || lease.startDate,
+        endDate: leaseEndDate,
+      });
+    }
     onClose();
   };
 
@@ -70,7 +96,48 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
           <FormField label="שכר דירה (₪)" inputProps={{ value: rent, onChange: (e) => setRent(e.target.value), inputMode: "numeric" }} />
           <FormField label="ארנונה (₪)" inputProps={{ value: municipalTax, onChange: (e) => setMunicipalTax(e.target.value), inputMode: "numeric" }} />
           <FormField label="ועד בית (₪)" inputProps={{ value: buildingFee, onChange: (e) => setBuildingFee(e.target.value), inputMode: "numeric" }} />
-          <FormField label="מונה חשמל" inputProps={{ value: electricityMeter, onChange: (e) => setElectricityMeter(e.target.value) }} />
+          <FormField
+            label="מס׳ נכס בארנונה"
+            className="col-span-2"
+            inputProps={{
+              value: municipalPropertyNumber,
+              onChange: (e) => setMunicipalPropertyNumber(e.target.value),
+              dir: "ltr",
+            }}
+          />
+          <FormField
+            label="מונה חשמל"
+            inputProps={{
+              value: electricityMeter,
+              onChange: (e) => setElectricityMeter(e.target.value),
+              dir: "ltr",
+            }}
+          />
+          <FormField
+            label="מונה מים"
+            inputProps={{
+              value: waterMeter,
+              onChange: (e) => setWaterMeter(e.target.value),
+              dir: "ltr",
+            }}
+          />
+          <FormField
+            label="מונה גז"
+            inputProps={{
+              value: gasMeter,
+              onChange: (e) => setGasMeter(e.target.value),
+              dir: "ltr",
+            }}
+          />
+          <FormField
+            label="טלפון חברת ניהול"
+            inputProps={{
+              value: managementCompanyPhone,
+              onChange: (e) => setManagementCompanyPhone(e.target.value),
+              inputMode: "tel",
+              dir: "ltr",
+            }}
+          />
           <FormField label="סטטוס">
             <select
               value={status}
@@ -82,7 +149,34 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
               ))}
             </select>
           </FormField>
+          {lease && (
+            <>
+              <FormField
+                label="תחילת חוזה"
+                inputProps={{
+                  type: "date",
+                  value: leaseStartDate,
+                  onChange: (e) => setLeaseStartDate(e.target.value),
+                }}
+              />
+              <FormField
+                label="סיום חוזה"
+                inputProps={{
+                  type: "date",
+                  value: leaseEndDate,
+                  onChange: (e) => setLeaseEndDate(e.target.value),
+                }}
+              />
+            </>
+          )}
         </div>
+        <PhotoGridField
+          label="תמונות נכס"
+          hint="JPEG, PNG או HEIC"
+          emptyLabel="העלאת תמונות"
+          photos={photoUrls}
+          onChange={setPhotoUrls}
+        />
         <Button type="submit" fullWidth size="lg">שמירת שינויים</Button>
       </form>
     </Modal>

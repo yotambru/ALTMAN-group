@@ -11,11 +11,12 @@ import { downloadAnnualReportPdf } from "@/lib/annual-report-pdf";
 import { useData } from "@/lib/store";
 import {
   buildPortfolioYieldHistory,
-  currentPortfolioYield,
   estimateMarketValue,
   formatPercent,
+  impliedPortfolioValue,
   monthlyManagementFee,
   occupancyPercent,
+  PORTFOLIO_YIELD_RATE,
 } from "@/lib/portfolio";
 import { fileToDataUrl, formatCurrency, formatDateDots } from "@/lib/utils";
 
@@ -56,7 +57,7 @@ export function AnnualReportDialog({
       ? monthlyManagementFee(lease, landlord?.managementFeePercent) * 12
       : 0;
     const marketValue = yearly > 0 ? estimateMarketValue(yearly) : property.value;
-    const yieldPct = property.value > 0 && yearly > 0 ? (yearly / property.value) * 100 : 0;
+    const yieldPct = yearly > 0 ? PORTFOLIO_YIELD_RATE * 100 : 0;
     return { property, yearly, yearlyManagementFee, marketValue, yieldPct };
   });
   const totalIncome = rows.reduce((sum, r) => sum + r.yearly, 0);
@@ -98,9 +99,9 @@ export function AnnualReportDialog({
       date: e.date,
     })),
   ];
-  const portfolioValue = owned.reduce((sum, p) => sum + p.value, 0);
+  const portfolioValue = impliedPortfolioValue(totalIncome / 12);
   const yieldHistory = buildPortfolioYieldHistory(activeLeases);
-  const portfolioYield = currentPortfolioYield(activeLeases);
+  const portfolioYield = totalIncome > 0 ? PORTFOLIO_YIELD_RATE * 100 : 0;
   const occupancy = occupancyPercent(owned);
 
   const [expenseDesc, setExpenseDesc] = useState("");
@@ -125,7 +126,7 @@ export function AnnualReportDialog({
         properties: rows.map(({ property, yearly, marketValue, yieldPct }) => ({
           address: property.address,
           yearlyIncome: yearly,
-          marketValue: property.value || marketValue,
+          marketValue: yearly > 0 ? marketValue : property.value,
           yieldPct,
         })),
         expenses: expenseRows.map((e) => ({
@@ -153,6 +154,7 @@ export function AnnualReportDialog({
       const doc = addDocument({
         name: `חשבונית — ${expenseDesc.trim()}`,
         type: "invoice",
+        folder: "appendices",
         propertyId: expensePropertyId || undefined,
         landlordId,
         fileDataUrl: dataUrl,
@@ -205,12 +207,12 @@ export function AnnualReportDialog({
       <YieldGrowthChart points={yieldHistory} />
 
       <div className={inline ? "space-y-2" : "no-scrollbar max-h-[30vh] space-y-2 overflow-y-auto"}>
-        {rows.map(({ property, yearly, yieldPct }) => (
+        {rows.map(({ property, yearly, yieldPct, marketValue }) => (
           <div key={property.id} className="flex items-center justify-between rounded-xl border border-border p-3">
             <div className="min-w-0">
               <p className="truncate font-semibold text-navy">{property.address}</p>
               <p className="text-xs text-text-muted">
-                שווי {formatCurrency(property.value)}
+                שווי {formatCurrency(yearly > 0 ? marketValue : property.value)}
                 {yearly > 0 ? ` · תשואה ${formatPercent(yieldPct)}` : " · ללא שכירות פעילה"}
               </p>
             </div>

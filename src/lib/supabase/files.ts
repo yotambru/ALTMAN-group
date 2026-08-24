@@ -133,8 +133,10 @@ function stillEmbedded(item: Record<string, unknown>): boolean {
   for (const field of fields) {
     if (isEmbedded(item[field])) return true;
   }
-  const photos = item.photoDataUrls;
-  return Array.isArray(photos) && photos.some(isEmbedded);
+  const protocolPhotos = item.photoDataUrls;
+  if (Array.isArray(protocolPhotos) && protocolPhotos.some(isEmbedded)) return true;
+  const propertyPhotos = item.photoUrls;
+  return Array.isArray(propertyPhotos) && propertyPhotos.some(isEmbedded);
 }
 
 export async function hydrateFileFields<T extends Record<string, unknown>>(
@@ -167,6 +169,15 @@ export async function hydrateFileFields<T extends Record<string, unknown>>(
       ),
     );
     return { ...item, photoDataUrls };
+  }
+  if (key === "properties" && Array.isArray(item.photoUrls)) {
+    const stamp = Date.now();
+    const photoUrls = await Promise.all(
+      (item.photoUrls as string[]).map((url, i) =>
+        uploadDataUrl(url, `properties/${id}/${stamp}-${i}`),
+      ),
+    );
+    return { ...item, photoUrls };
   }
   return item;
 }

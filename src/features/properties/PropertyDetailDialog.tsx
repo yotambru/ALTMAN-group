@@ -1,28 +1,30 @@
 "use client";
 
+import { useState } from "react";
 import {
   Bath,
   BedDouble,
   CalendarDays,
   CheckCircle2,
   FileText,
-  Hash,
+  IdCard,
   Layers,
+  Mail,
   Pencil,
   Phone,
   Plus,
   Ruler,
   Users,
   Wrench,
-  Zap,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { PropertyImage } from "@/components/brand/PropertyImage";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
+import { UtilityAccountDetails } from "@/features/utilities/UtilityAccountDetails";
 import { useData } from "@/lib/store";
-import { formatCurrency, formatDateDots } from "@/lib/utils";
+import { cn, formatCurrency, formatDateDots } from "@/lib/utils";
 import { PROPERTY_STATUS_LABELS } from "@/lib/portfolio";
 import type { CheckDepositMode, Payment, PaymentStatus, Property } from "@/types";
 
@@ -40,6 +42,60 @@ const paymentStatusLabel: Record<PaymentStatus, { label: string; tone: "success"
   upcoming: { label: "צפוי", tone: "neutral" },
   overdue: { label: "באיחור", tone: "danger" },
 };
+
+function PropertyHero({ property }: { property: Property }) {
+  const photos = (property.photoUrls ?? []).filter(Boolean);
+  const [index, setIndex] = useState(0);
+  const safeIndex = photos.length ? Math.min(index, photos.length - 1) : 0;
+  const cover = photos[safeIndex];
+  const floorLabel = property.floor === 0 ? "קומת קרקע" : `קומה ${property.floor}`;
+
+  return (
+    <div className="space-y-2">
+      <div className="relative overflow-hidden rounded-2xl">
+        <PropertyImage
+          variant={property.imageId}
+          src={cover}
+          className="h-48 w-full"
+          rounded="rounded-2xl"
+        />
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-navy/80 via-navy/30 to-transparent px-3.5 pb-3.5 pt-16">
+          <p className="text-base font-extrabold text-white">
+            {property.address}, {property.city}
+          </p>
+          <p className="text-xs text-white/85">
+            דירה {property.apartmentNumber} • {floorLabel}
+          </p>
+        </div>
+        <div className="absolute start-3 top-3">
+          <StatusBadge tone="neutral" className="border border-border/60 bg-white/95 text-navy shadow-sm backdrop-blur">
+            {statusLabels[property.status]}
+          </StatusBadge>
+        </div>
+      </div>
+      {photos.length > 1 && (
+        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-0.5">
+          {photos.map((src, i) => (
+            <button
+              key={`${i}-${src.slice(-24)}`}
+              type="button"
+              onClick={() => setIndex(i)}
+              aria-label={`תמונה ${i + 1}`}
+              aria-current={i === safeIndex}
+              className={cn(
+                "h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-2 ring-offset-1 ring-offset-surface",
+                i === safeIndex ? "ring-orange" : "ring-transparent",
+              )}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={src} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Spec({ icon: Icon, value }: { icon: typeof Bath; value: string }) {
   return (
@@ -83,7 +139,10 @@ export function PropertyDetailDialog({
   if (!property) return null;
   const lease = leases.find((l) => l.propertyId === property.id && l.active)
     ?? leases.find((l) => l.propertyId === property.id);
-  const tenant = lease ? tenants.find((t) => t.id === lease.tenantId) : undefined;
+  const tenant =
+    (lease ? tenants.find((t) => t.id === lease.tenantId) : undefined)
+    ?? tenants.find((t) => t.id === property.tenantId)
+    ?? tenants.find((t) => t.propertyId === property.id);
   const landlord = landlords.find((l) => l.id === property.landlordId);
   const openTickets = tickets.filter((t) => t.propertyId === property.id && t.status !== "resolved");
   const depositMode: CheckDepositMode = landlord?.checkDepositMode ?? "client";
@@ -105,22 +164,7 @@ export function PropertyDetailDialog({
     >
       <div className="relative space-y-5 pb-14">
         {/* Hero — address only */}
-        <div className="relative overflow-hidden rounded-2xl">
-          <PropertyImage variant={property.imageId} className="h-48 w-full" rounded="rounded-2xl" />
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-navy/80 via-navy/30 to-transparent px-3.5 pb-3.5 pt-16">
-            <p className="text-base font-extrabold text-white">
-              {property.address}, {property.city}
-            </p>
-            <p className="text-xs text-white/85">
-              דירה {property.apartmentNumber} • {floorLabel}
-            </p>
-          </div>
-          <div className="absolute start-3 top-3">
-            <StatusBadge tone="neutral" className="border border-border/60 bg-white/95 text-navy shadow-sm backdrop-blur">
-              {statusLabels[property.status]}
-            </StatusBadge>
-          </div>
-        </div>
+        <PropertyHero key={property.id} property={property} />
 
         {/* 1. מפרט דירה — רק שורת האייקונים */}
         <section className="space-y-2">
@@ -140,32 +184,34 @@ export function PropertyDetailDialog({
         <section className="space-y-2">
           <p className="text-sm font-bold text-navy">פרטי שוכר</p>
           {tenant ? (
-            <div className="card flex items-center gap-3 p-3">
-              <UserAvatar
-                name={tenant.fullName}
-                avatarUrl={users.find((u) => u.tenantId === tenant.id)?.avatarUrl}
-                size="md"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-navy">{tenant.fullName}</p>
-                {lease && (
-                  <p className="text-[0.7rem] text-text-muted">נכנס: {formatDateDots(lease.startDate)}</p>
-                )}
+            <div className="card space-y-3 p-3">
+              <div className="flex items-center gap-3">
+                <UserAvatar
+                  name={tenant.fullName}
+                  avatarUrl={users.find((u) => u.tenantId === tenant.id)?.avatarUrl}
+                  size="md"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-navy">{tenant.fullName}</p>
+                  {lease && (
+                    <p className="text-[0.7rem] text-text-muted">נכנס: {formatDateDots(lease.startDate)}</p>
+                  )}
+                </div>
                 {tenant.phone && (
-                  <p className="mt-0.5 text-[0.7rem] text-text-muted" dir="ltr">
-                    {tenant.phone}
-                  </p>
+                  <a
+                    href={`tel:${tenant.phone}`}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-orange px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-orange-dark"
+                  >
+                    <Phone className="h-4 w-4" />
+                    צור קשר
+                  </a>
                 )}
               </div>
-              {tenant.phone && (
-                <a
-                  href={`tel:${tenant.phone}`}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-orange px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-orange-dark"
-                >
-                  <Phone className="h-4 w-4" />
-                  צור קשר
-                </a>
-              )}
+              <div className="space-y-1.5 border-t border-border pt-2.5">
+                <TenantMeta icon={IdCard} label="מס׳ ת״ז" value={tenant.idNumber} ltr />
+                <TenantMeta icon={Phone} label="טלפון" value={tenant.phone} ltr />
+                <TenantMeta icon={Mail} label="מייל" value={tenant.email} ltr />
+              </div>
             </div>
           ) : (
             <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-text-muted">
@@ -178,11 +224,14 @@ export function PropertyDetailDialog({
         <div className="grid grid-cols-2 gap-2">
           <DetailRow icon={FileText} label="ארנונה (לחודש)" value={formatCurrency(property.municipalTax)} />
           <DetailRow icon={Users} label="ועד בית" value={formatCurrency(property.buildingFee)} />
-          <DetailRow icon={Zap} label="מונה חשמל" value={property.electricityMeter || "—"} />
-          {property.municipalPropertyNumber && (
-            <DetailRow icon={Hash} label="מס׳ נכס בארנונה" value={property.municipalPropertyNumber} />
-          )}
         </div>
+
+        <UtilityAccountDetails
+          property={property}
+          hideLocation
+          heading="מונים וחשבונות"
+          hint="לחצו על פרט כדי להעתיק אותו."
+        />
 
         <div className="flex items-center justify-between rounded-2xl bg-surface-muted px-4 py-3">
           <span className="text-sm text-text-muted">שווי נכס</span>
@@ -352,6 +401,31 @@ function PaymentRow({
           אישור פרעון צ׳ק
         </Button>
       )}
+    </div>
+  );
+}
+
+function TenantMeta({
+  icon: Icon,
+  label,
+  value,
+  ltr,
+}: {
+  icon: typeof Bath;
+  label: string;
+  value?: string;
+  ltr?: boolean;
+}) {
+  const display = value?.trim() ? value : "—";
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="flex shrink-0 items-center gap-1.5 text-text-muted">
+        <Icon className="h-3.5 w-3.5 text-orange" />
+        {label}
+      </span>
+      <span className="min-w-0 truncate font-semibold text-navy" dir={ltr ? "ltr" : undefined}>
+        {display}
+      </span>
     </div>
   );
 }

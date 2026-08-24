@@ -1,4 +1,5 @@
 import type { DataState } from "@/lib/data-state";
+import { inferDocumentFolder, isDocumentFolder } from "@/lib/document-folders";
 import type {
   ActivityLogEntry,
   AirDirection,
@@ -25,6 +26,7 @@ import type {
   ProtocolChecklistItem,
   ProtocolRecord,
   ProtocolType,
+  RentAdjustment,
   Role,
   Task,
   TaskStatus,
@@ -57,6 +59,18 @@ function bool(value: unknown, fallback = false): boolean {
 
 function strArr(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+function parseRentAdjustments(value: unknown): RentAdjustment[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const rec = entry as Record<string, unknown>;
+    const date = str(rec.date);
+    const monthlyRent = num(rec.monthlyRent ?? rec.monthly_rent);
+    return date && monthlyRent > 0 ? [{ date, monthlyRent }] : [];
+  });
+  return items.length > 0 ? items : undefined;
 }
 
 type CollectionKey = keyof DataState;
@@ -145,6 +159,7 @@ function propertyToRow(p: Property): Row {
     building_fee: p.buildingFee,
     electricity_meter: p.electricityMeter,
     image_id: p.imageId,
+    ...(p.photoUrls !== undefined ? { photo_urls: p.photoUrls } : {}),
     landlord_id: p.landlordId,
     tenant_id: p.tenantId ?? null,
     neighborhood: p.neighborhood ?? null,
@@ -187,6 +202,7 @@ function propertyFromRow(row: Row): Property {
     buildingFee: num(row.building_fee),
     electricityMeter: str(row.electricity_meter),
     imageId: str(row.image_id, "residential") as PropertyImageId,
+    photoUrls: row.photo_urls == null ? undefined : strArr(row.photo_urls),
     landlordId: str(row.landlord_id),
     tenantId: opt(row.tenant_id as string | null),
     neighborhood: opt(row.neighborhood as string | null),
@@ -245,6 +261,8 @@ function leaseToRow(l: Lease): Row {
     tenant_id: l.tenantId,
     landlord_id: l.landlordId,
     monthly_rent: l.monthlyRent,
+    starting_monthly_rent: l.startingMonthlyRent ?? null,
+    rent_adjustments: l.rentAdjustments ?? null,
     start_date: l.startDate,
     end_date: l.endDate,
     next_payment_date: l.nextPaymentDate,
@@ -267,6 +285,8 @@ function leaseFromRow(row: Row): Lease {
     tenantId: str(row.tenant_id),
     landlordId: str(row.landlord_id),
     monthlyRent: num(row.monthly_rent),
+    startingMonthlyRent: row.starting_monthly_rent == null ? undefined : num(row.starting_monthly_rent),
+    rentAdjustments: parseRentAdjustments(row.rent_adjustments),
     startDate: str(row.start_date),
     endDate: str(row.end_date),
     nextPaymentDate: str(row.next_payment_date),
@@ -391,14 +411,23 @@ function documentToRow(d: AppDocument): Row {
     signed_by_name: d.signedByName ?? null,
     signed_at: d.signedAt ?? null,
     file_data_url: d.fileDataUrl ?? null,
+    folder: inferDocumentFolder(d),
   };
 }
 
 function documentFromRow(row: Row): AppDocument {
+  const type = str(row.type) as DocumentType;
+  const name = str(row.name);
+  const folderRaw = opt(row.folder as string | null);
   return {
     id: str(row.id),
-    name: str(row.name),
-    type: str(row.type) as DocumentType,
+    name,
+    type,
+    folder: inferDocumentFolder({
+      type,
+      name,
+      folder: isDocumentFolder(folderRaw) ? folderRaw : undefined,
+    }),
     propertyId: opt(row.property_id as string | null),
     landlordId: opt(row.landlord_id as string | null),
     tenantId: opt(row.tenant_id as string | null),

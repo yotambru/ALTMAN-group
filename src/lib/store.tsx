@@ -17,10 +17,12 @@ import {
 } from "@/lib/supabase/sync";
 import { accountDisplayName, normalizeEmail } from "@/lib/auth";
 import { generateId } from "@/lib/utils";
+import { inferDocumentFolder } from "@/lib/document-folders";
 import type {
   ActivityLogEntry,
   AppDocument,
   AppNotification,
+  DocumentFolder,
   DocumentType,
   Expense,
   Landlord,
@@ -63,6 +65,8 @@ export interface NewClientInput {
   buildingFee: number;
   electricityMeter: string;
   imageId: Property["imageId"];
+  /** Uploaded property photos (data URLs). */
+  photoUrls?: string[];
   neighborhood?: string;
   hasInspectionReport?: boolean;
   hasBalcony?: boolean;
@@ -162,6 +166,8 @@ interface DataContextValue extends DataState {
   // properties / leases / people
   updateUser: (id: string, patch: Partial<User>) => void;
   updateProperty: (id: string, patch: Partial<Property>) => void;
+  /** Replace the uploaded photo set for a property. */
+  setPropertyPhotos: (propertyId: string, photoUrls: string[]) => void;
   updateLease: (id: string, patch: Partial<Lease>) => void;
   updateLandlord: (id: string, patch: Partial<Landlord>) => void;
   updateTenant: (id: string, patch: Partial<Tenant>) => void;
@@ -182,6 +188,7 @@ interface DataContextValue extends DataState {
   addDocument: (d: {
     name: string;
     type: DocumentType;
+    folder?: DocumentFolder;
     propertyId?: string;
     landlordId?: string;
     tenantId?: string;
@@ -235,6 +242,26 @@ function collapseChatNotifications(list: AppNotification[]): AppNotification[] {
     out.push(n);
   }
   return out;
+}
+
+function withPropertyPhotos(properties: Property[], documents: AppDocument[]): Property[] {
+  const fromDocs = new Map<string, string[]>();
+  for (const doc of documents) {
+    if (doc.type !== "property_photo" || !doc.propertyId || !doc.fileDataUrl) continue;
+    const list = fromDocs.get(doc.propertyId) ?? [];
+    list.push(doc.fileDataUrl);
+    fromDocs.set(doc.propertyId, list);
+  }
+  if (fromDocs.size === 0 && properties.every((p) => !p.photoUrls?.length)) return properties;
+  return properties.map((p) => {
+    const extra = fromDocs.get(p.id);
+    if (!extra?.length && !p.photoUrls?.length) return p;
+    const merged = [...(p.photoUrls ?? [])];
+    for (const url of extra ?? []) {
+      if (!merged.includes(url)) merged.push(url);
+    }
+    return { ...p, photoUrls: merged };
+  });
 }
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
@@ -348,8 +375,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const withTenant = Boolean(
         input.tenantName?.trim() ||
           input.tenantPhone?.trim() ||
-          input.tenantEmail?.trim() ||
-          input.endDate,
+          input.tenantEmail?.trim(),
       );
       const tenantId = withTenant ? generateId("t") : undefined;
       const leaseId = withTenant ? generateId("ls") : undefined;
@@ -428,6 +454,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             tenantId,
             landlordId,
             monthlyRent: input.monthlyRent ?? input.listedRent ?? 0,
+            startingMonthlyRent: input.monthlyRent ?? input.listedRent ?? 0,
             startDate: input.startDate || input.entryDate || nowIso.slice(0, 10),
             endDate: input.endDate || "",
             nextPaymentDate: input.startDate || input.entryDate || nowIso.slice(0, 10),
@@ -457,6 +484,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           id: generateId("doc"),
           name: "תצלום תעודת זהות — משכיר",
           type: "id",
+          folder: "id_photos",
           propertyId,
           landlordId,
           fileDataUrl: input.landlordIdPhotoDataUrl,
@@ -470,6 +498,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           id: generateId("doc"),
           name: input.managementAgreementFileName?.trim() || "הסכם ניהול",
           type: "contract",
+          folder: "appendices",
           propertyId,
           landlordId,
           fileDataUrl: input.managementAgreementDataUrl,
@@ -478,6 +507,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           status: "draft",
         });
       }
+      (input.photoUrls ?? []).forEach((url, i) => {
+        docs.push({
+          id: generateId("doc"),
+          name: `תמונת נכס ${i + 1}`,
+          type: "property_photo",
+          propertyId,
+          landlordId,
+          fileDataUrl: url,
+          createdAt: nowIso,
+          signed: false,
+          status: "draft",
+        });
+      });
 
       const loginUsers: User[] = [];
       const landlordEmail = input.landlordEmail.trim();
@@ -587,6 +629,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           tenantId,
           landlordId: property.landlordId,
           monthlyRent: input.monthlyRent ?? property.listedRent ?? 0,
+          startingMonthlyRent: input.monthlyRent ?? property.listedRent ?? 0,
           startDate: input.startDate || property.entryDate || nowIso.slice(0, 10),
           endDate: input.endDate || "",
           nextPaymentDate: input.startDate || property.entryDate || nowIso.slice(0, 10),
@@ -709,11 +752,62 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [makeLog],
   );
 
+  const setPropertyPhotos = useCallback<DataContextValue["setPropertyPhotos"]>(
+    (propertyId, photoUrls) => {
+      setState((p) => {
+        const property = p.properties.find((it) => it.id === propertyId);
+        const nowIso = new Date().toISOString();
+        const others = p.documents.filter(
+          (d) => !(d.type === "property_photo" && d.propertyId === propertyId),
+        );
+        const existing = p.documents.filter(
+          (d) => d.type === "property_photo" && d.propertyId === propertyId,
+        );
+        const photoDocs: AppDocument[] = photoUrls.map((url, i) => {
+          const prev = existing.find((d) => d.fileDataUrl === url);
+          return (
+            prev ?? {
+              id: generateId("doc"),
+              name: `תמונת נכס ${i + 1}`,
+              type: "property_photo",
+              propertyId,
+              landlordId: property?.landlordId,
+              fileDataUrl: url,
+              createdAt: nowIso,
+              signed: false,
+              status: "draft",
+            }
+          );
+        });
+        return {
+          ...p,
+          documents: [...photoDocs, ...others],
+          activityLog: [makeLog("עדכון תמונות נכס", "property", propertyId), ...p.activityLog],
+        };
+      });
+    },
+    [makeLog],
+  );
+
   const updateLease = useCallback<DataContextValue["updateLease"]>(
     (id, patch) => {
+      const today = new Date().toISOString().slice(0, 10);
       setState((p) => ({
         ...p,
-        leases: p.leases.map((it) => (it.id === id ? { ...it, ...patch } : it)),
+        leases: p.leases.map((it) => {
+          if (it.id !== id) return it;
+          if (patch.monthlyRent == null || patch.monthlyRent === it.monthlyRent) {
+            return { ...it, ...patch };
+          }
+          const starting = it.startingMonthlyRent ?? it.monthlyRent;
+          const previous = (it.rentAdjustments ?? []).filter((a) => a.date.slice(0, 10) !== today);
+          return {
+            ...it,
+            ...patch,
+            startingMonthlyRent: starting,
+            rentAdjustments: [...previous, { date: today, monthlyRent: patch.monthlyRent }],
+          };
+        }),
         activityLog: [makeLog("עדכון שכירות", "lease", id), ...p.activityLog],
       }));
     },
@@ -857,6 +951,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         id: generateId("doc"),
         name: file.name.trim() || `חשבונית — ${ticket.title}`,
         type: "invoice",
+        folder: "appendices",
         propertyId: ticket.propertyId,
         landlordId: property?.landlordId,
         fileDataUrl: file.dataUrl,
@@ -884,6 +979,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         id: generateId("doc"),
         name: d.name,
         type: d.type,
+        folder: inferDocumentFolder({ type: d.type, name: d.name, folder: d.folder }),
         propertyId: d.propertyId,
         landlordId: d.landlordId,
         tenantId: d.tenantId,
@@ -1266,6 +1362,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const value: DataContextValue = {
     ...state,
+    properties: withPropertyPhotos(state.properties, state.documents),
     ready,
     actor,
     setActor,
@@ -1277,6 +1374,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setUserPassword,
     updateUser,
     updateProperty,
+    setPropertyPhotos,
     updateLease,
     updateLandlord,
     updateTenant,

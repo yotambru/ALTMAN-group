@@ -24,6 +24,8 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [idNumber, setIdNumber] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [error, setError] = useState("");
   const selectedPropertyId = vacant.some((p) => p.id === propertyId)
     ? propertyId
@@ -35,6 +37,8 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     setEmail("");
     setName("");
     setPhone("");
+    setIdNumber("");
+    setEndDate("");
     setError("");
   };
 
@@ -62,6 +66,8 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
       email,
       name: name.trim() || undefined,
       phone: phone.trim() || undefined,
+      idNumber: idNumber.trim() || undefined,
+      endDate: endDate || undefined,
     });
     setDone(true);
   };
@@ -140,6 +146,25 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
               onChange: (e) => setPhone(e.target.value),
               inputMode: "tel",
               dir: "ltr",
+            }}
+          />
+          <FormField
+            label="מס׳ ת״ז"
+            hint="אופציונלי"
+            inputProps={{
+              value: idNumber,
+              onChange: (e) => setIdNumber(e.target.value),
+              inputMode: "numeric",
+              dir: "ltr",
+            }}
+          />
+          <FormField
+            label="תאריך סיום חוזה"
+            hint="מוצג בדשבורד השוכר"
+            inputProps={{
+              type: "date",
+              value: endDate,
+              onChange: (e) => setEndDate(e.target.value),
             }}
           />
           {error && (
