@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { CheckCircle2, FileText, IdCard, Upload, X } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
+import { CheckCircle2, FileText, IdCard, Paperclip, Upload, X } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
@@ -9,7 +9,13 @@ import { useData } from "@/lib/store";
 import { emailInUse, isValidEmail, normalizeEmail } from "@/lib/auth";
 import { fileToDataUrl } from "@/lib/utils";
 import { PhotoGridField } from "@/components/ui/PhotoGridField";
-import type { AirDirection } from "@/types";
+import { LeaseScheduleFields } from "@/features/leases/LeaseScheduleFields";
+import {
+  alignPeriodRents,
+  buildLeasePeriods,
+  rentScheduleFromPeriods,
+} from "@/lib/lease-periods";
+import type { AirDirection, DocumentFolder, DocumentType } from "@/types";
 
 interface AddClientModalProps {
   open: boolean;
@@ -59,11 +65,19 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
   const [tenantPhone, setTenantPhone] = useState("");
   const [tenantEmail, setTenantEmail] = useState("");
   const [tenantIdNumber, setTenantIdNumber] = useState("");
+  const [leaseStartDate, setLeaseStartDate] = useState("");
   const [leaseEndDate, setLeaseEndDate] = useState("");
+  const [periodRents, setPeriodRents] = useState<string[]>([""]);
+  const [leaseFile, setLeaseFile] = useState<PickedFile | null>(null);
+  const [tenantIdPhoto, setTenantIdPhoto] = useState<PickedFile | null>(null);
+  const [guarantorIdPhoto1, setGuarantorIdPhoto1] = useState<PickedFile | null>(null);
+  const [guarantorIdPhoto2, setGuarantorIdPhoto2] = useState<PickedFile | null>(null);
+  const [tenantExtraFile, setTenantExtraFile] = useState<PickedFile | null>(null);
   const [formError, setFormError] = useState("");
 
   // property
   const [hasInspectionReport, setHasInspectionReport] = useState<Tri>("");
+  const [inspectionReportFile, setInspectionReportFile] = useState<PickedFile | null>(null);
   const [city, setCity] = useState("");
   const [address, setAddress] = useState("");
   const [neighborhood, setNeighborhood] = useState("");
@@ -111,9 +125,17 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     setTenantPhone("");
     setTenantEmail("");
     setTenantIdNumber("");
+    setLeaseStartDate("");
     setLeaseEndDate("");
+    setPeriodRents([""]);
+    setLeaseFile(null);
+    setTenantIdPhoto(null);
+    setGuarantorIdPhoto1(null);
+    setGuarantorIdPhoto2(null);
+    setTenantExtraFile(null);
     setFormError("");
     setHasInspectionReport("");
+    setInspectionReportFile(null);
     setCity("");
     setAddress("");
     setNeighborhood("");
@@ -199,6 +221,89 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
         setFormError("מייל השוכר כבר משויך למשתמש במערכת.");
         return;
       }
+      if (!leaseStartDate) {
+        setFormError("יש להזין תאריך תחילת שכירות.");
+        return;
+      }
+      if (leaseEndDate && leaseEndDate < leaseStartDate) {
+        setFormError("תאריך סיום החוזה חייב להיות אחרי תאריך ההתחלה.");
+        return;
+      }
+    }
+
+    const listedRentAmount = num(monthlyRent);
+    let leaseRent = listedRentAmount;
+    let startingMonthlyRent: number | undefined;
+    let rentAdjustments: ReturnType<typeof rentScheduleFromPeriods>["rentAdjustments"] | undefined;
+    const tenantDocuments: Array<{
+      name: string;
+      type: DocumentType;
+      folder: DocumentFolder;
+      fileDataUrl: string;
+    }> = [];
+
+    if (includeTenant) {
+      const activePeriods = buildLeasePeriods(leaseStartDate, leaseEndDate || undefined);
+      const rentFields = alignPeriodRents(
+        periodRents,
+        Math.max(activePeriods.length, 1),
+        listedRentAmount ? String(listedRentAmount) : "",
+      );
+      const rents = activePeriods.map((_, i) => num(rentFields[i] ?? ""));
+      if (rents.some((r) => r <= 0)) {
+        setFormError(
+          activePeriods.length > 1
+            ? "יש להזין דמי שכירות לכל תקופה בחוזה."
+            : "יש להזין דמי שכירות חודשיים.",
+        );
+        return;
+      }
+      const schedule = rentScheduleFromPeriods(activePeriods, rents);
+      leaseRent = schedule.monthlyRent;
+      startingMonthlyRent = schedule.startingMonthlyRent;
+      rentAdjustments = schedule.rentAdjustments.length
+        ? schedule.rentAdjustments
+        : undefined;
+      if (leaseFile) {
+        tenantDocuments.push({
+          name: leaseFile.name.trim() || "הסכם שכירות",
+          type: "contract",
+          folder: "lease",
+          fileDataUrl: leaseFile.dataUrl,
+        });
+      }
+      if (tenantIdPhoto) {
+        tenantDocuments.push({
+          name: tenantIdPhoto.name.trim() || "תצלום תעודת זהות — שוכר",
+          type: "id",
+          folder: "id_photos",
+          fileDataUrl: tenantIdPhoto.dataUrl,
+        });
+      }
+      if (guarantorIdPhoto1) {
+        tenantDocuments.push({
+          name: guarantorIdPhoto1.name.trim() || "תצלום תעודת זהות — ערב 1",
+          type: "id",
+          folder: "guarantor_id",
+          fileDataUrl: guarantorIdPhoto1.dataUrl,
+        });
+      }
+      if (guarantorIdPhoto2) {
+        tenantDocuments.push({
+          name: guarantorIdPhoto2.name.trim() || "תצלום תעודת זהות — ערב 2",
+          type: "id",
+          folder: "guarantor_id",
+          fileDataUrl: guarantorIdPhoto2.dataUrl,
+        });
+      }
+      if (tenantExtraFile) {
+        tenantDocuments.push({
+          name: tenantExtraFile.name.trim() || "נספח",
+          type: "approval",
+          folder: "appendices",
+          fileDataUrl: tenantExtraFile.dataUrl,
+        });
+      }
     }
 
     addClient({
@@ -229,7 +334,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
       parkingNumber: hasParking === "yes" ? parkingNumber.trim() || undefined : undefined,
       hasStorage: triBool(hasStorage),
       storageNumber: hasStorage === "yes" ? storageNumber.trim() || undefined : undefined,
-      listedRent: num(monthlyRent) || undefined,
+      listedRent: (includeTenant ? startingMonthlyRent : listedRentAmount) || undefined,
       entryDate: entryDate || undefined,
       keysReceived: num(keysReceived) || undefined,
       subcontractorPhones: subcontractorPhones.trim() || undefined,
@@ -246,6 +351,10 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
       landlordIdPhotoDataUrl: mode === "new" && !attaching ? idPhoto?.dataUrl : undefined,
       managementAgreementDataUrl: managementAgreement?.dataUrl,
       managementAgreementFileName: managementAgreement?.name,
+      inspectionReportDataUrl:
+        hasInspectionReport === "yes" ? inspectionReportFile?.dataUrl : undefined,
+      inspectionReportFileName:
+        hasInspectionReport === "yes" ? inspectionReportFile?.name : undefined,
       existingLandlordId: effectiveLandlordId,
       ...(includeTenant
         ? {
@@ -253,7 +362,12 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
             tenantPhone: tenantPhone.trim() || undefined,
             tenantEmail: tenantMail,
             tenantIdNumber: tenantIdNumber.trim() || undefined,
+            monthlyRent: leaseRent || undefined,
+            startingMonthlyRent,
+            rentAdjustments,
+            startDate: leaseStartDate || undefined,
             endDate: leaseEndDate || undefined,
+            tenantDocuments: tenantDocuments.length ? tenantDocuments : undefined,
           }
         : {}),
     });
@@ -397,8 +511,12 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
               type="checkbox"
               checked={includeTenant}
               onChange={(e) => {
-                setIncludeTenant(e.target.checked);
+                const next = e.target.checked;
+                setIncludeTenant(next);
                 setFormError("");
+                if (next && monthlyRent.trim() && !periodRents.some((v) => v.trim())) {
+                  setPeriodRents([monthlyRent]);
+                }
               }}
               className="mt-0.5 h-4 w-4 accent-[color:var(--orange)]"
             />
@@ -456,16 +574,80 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
                   dir: "ltr",
                 }}
               />
-              <FormField
-                label="תאריך סיום חוזה"
-                className="col-span-2"
-                hint="מוצג בדשבורד השוכר"
-                inputProps={{
-                  type: "date",
-                  value: leaseEndDate,
-                  onChange: (e) => setLeaseEndDate(e.target.value),
-                }}
-              />
+              <div className="col-span-2">
+                <LeaseScheduleFields
+                  startDate={leaseStartDate}
+                  endDate={leaseEndDate}
+                  onDatesChange={(nextStart, nextEnd) => {
+                    setLeaseStartDate(nextStart);
+                    setLeaseEndDate(nextEnd);
+                    const nextPeriods = nextStart
+                      ? buildLeasePeriods(nextStart, nextEnd || undefined)
+                      : [];
+                    setPeriodRents((prev) =>
+                      alignPeriodRents(
+                        prev,
+                        Math.max(nextPeriods.length, 1),
+                        monthlyRent.trim() || "",
+                      ),
+                    );
+                    setFormError("");
+                  }}
+                  periodRents={periodRents}
+                  onPeriodRentsChange={(next) => {
+                    setPeriodRents(next);
+                    setFormError("");
+                  }}
+                  listedRentHint={monthlyRent.trim()}
+                />
+              </div>
+              <div className="col-span-2 space-y-3">
+                <FilePickField
+                  label="הסכם שכירות"
+                  hint="PDF או תמונה"
+                  accept="image/*,.pdf,application/pdf"
+                  icon={<FileText className="h-5 w-5" />}
+                  emptyLabel="העלאת הסכם שכירות"
+                  file={leaseFile}
+                  onPick={setLeaseFile}
+                />
+                <FilePickField
+                  label="תצלום תעודת זהות של השוכר"
+                  hint="אופציונלי"
+                  accept="image/*,.pdf,application/pdf"
+                  icon={<IdCard className="h-5 w-5" />}
+                  emptyLabel="העלאת תצלום ת״ז"
+                  file={tenantIdPhoto}
+                  onPick={setTenantIdPhoto}
+                />
+                <FilePickField
+                  label="תצלום תעודת זהות של ערב 1"
+                  hint="אופציונלי"
+                  accept="image/*,.pdf,application/pdf"
+                  icon={<IdCard className="h-5 w-5" />}
+                  emptyLabel="העלאת תצלום ת״ז"
+                  file={guarantorIdPhoto1}
+                  onPick={setGuarantorIdPhoto1}
+                />
+                <FilePickField
+                  label="תצלום תעודת זהות של ערב 2"
+                  hint="אופציונלי"
+                  accept="image/*,.pdf,application/pdf"
+                  icon={<IdCard className="h-5 w-5" />}
+                  emptyLabel="העלאת תצלום ת״ז"
+                  file={guarantorIdPhoto2}
+                  onPick={setGuarantorIdPhoto2}
+                />
+                <FilePickField
+                  label="מסמך נוסף"
+                  hint="נספח, ערבות או כל מסמך רלוונטי"
+                  accept="image/*,.pdf,application/pdf"
+                  icon={<Paperclip className="h-5 w-5" />}
+                  emptyLabel="העלאת מסמך"
+                  file={tenantExtraFile}
+                  onPick={setTenantExtraFile}
+                />
+              </div>
             </div>
           )}
 
@@ -473,8 +655,22 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
           <YesNoField
             label="האם קיים דוח בדק?"
             value={hasInspectionReport}
-            onChange={setHasInspectionReport}
+            onChange={(next) => {
+              setHasInspectionReport(next);
+              if (next !== "yes") setInspectionReportFile(null);
+            }}
           />
+          {hasInspectionReport === "yes" && (
+            <FilePickField
+              label="דוח בדק"
+              hint="PDF או תמונה"
+              accept="image/*,.pdf,application/pdf"
+              icon={<FileText className="h-5 w-5" />}
+              emptyLabel="העלאת דוח בדק"
+              file={inspectionReportFile}
+              onPick={setInspectionReportFile}
+            />
+          )}
           <div className="grid grid-cols-2 gap-3">
             <FormField label="עיר" inputProps={{ value: city, onChange: (e) => setCity(e.target.value) }} />
             <FormField label="שכונה" inputProps={{ value: neighborhood, onChange: (e) => setNeighborhood(e.target.value) }} />
@@ -485,10 +681,12 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
             />
             <FormField label="מס׳ דירה" inputProps={{ value: apartmentNumber, onChange: (e) => setApartmentNumber(e.target.value) }} />
             <FormField label="מס׳ חדרים" inputProps={{ value: rooms, onChange: (e) => setRooms(e.target.value), inputMode: "decimal" }} />
-            <FormField
-              label="שכ״ד (₪)"
-              inputProps={{ value: monthlyRent, onChange: (e) => setMonthlyRent(e.target.value), inputMode: "numeric" }}
-            />
+            {!includeTenant && (
+              <FormField
+                label="שכ״ד (₪)"
+                inputProps={{ value: monthlyRent, onChange: (e) => setMonthlyRent(e.target.value), inputMode: "numeric" }}
+              />
+            )}
             <FormField
               label="מ״ר"
               inputProps={{ value: sizeSqm, onChange: (e) => setSizeSqm(e.target.value), inputMode: "numeric" }}
@@ -674,7 +872,7 @@ function FilePickField({
   label: string;
   hint?: string;
   accept: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   emptyLabel: string;
   file: PickedFile | null;
   onPick: (f: PickedFile | null) => void;

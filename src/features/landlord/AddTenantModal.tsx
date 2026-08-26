@@ -1,13 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
+import { CheckCircle2, FileText, IdCard, Paperclip, Upload, X } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
+import { LeaseScheduleFields } from "@/features/leases/LeaseScheduleFields";
 import { emailInUse, isValidEmail } from "@/lib/auth";
+import {
+  alignPeriodRents,
+  buildLeasePeriods,
+  rentScheduleFromPeriods,
+} from "@/lib/lease-periods";
+import { can } from "@/lib/permissions";
 import { useData } from "@/lib/store";
-import type { Property } from "@/types";
+import { fileToDataUrl } from "@/lib/utils";
+import type { DocumentFolder, DocumentType, Property } from "@/types";
 
 interface AddTenantModalProps {
   open: boolean;
@@ -15,9 +23,16 @@ interface AddTenantModalProps {
   properties: Property[];
 }
 
-/** Landlord (or manager) opens a tenant login by email only — no password. */
+interface PickedFile {
+  name: string;
+  dataUrl: string;
+}
+
+const parseMoney = (v: string) => Number(v.replace(/[^0-9.]/g, "")) || 0;
+
+/** Landlord (or manager) opens a tenant login by email — with lease details and optional docs. */
 export function AddTenantModal({ open, onClose, properties }: AddTenantModalProps) {
-  const { addTenant, landlords, tenants, users } = useData();
+  const { addTenant, landlords, tenants, users, actor } = useData();
   const vacant = properties.filter((p) => !p.tenantId);
   const [done, setDone] = useState(false);
   const [propertyId, setPropertyId] = useState(vacant[0]?.id ?? "");
@@ -25,11 +40,35 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [idNumber, setIdNumber] = useState("");
+  const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [periodRents, setPeriodRents] = useState<string[]>([""]);
+  const [leaseFile, setLeaseFile] = useState<PickedFile | null>(null);
+  const [idPhoto, setIdPhoto] = useState<PickedFile | null>(null);
+  const [guarantorIdPhoto1, setGuarantorIdPhoto1] = useState<PickedFile | null>(null);
+  const [guarantorIdPhoto2, setGuarantorIdPhoto2] = useState<PickedFile | null>(null);
+  const [extraFile, setExtraFile] = useState<PickedFile | null>(null);
   const [error, setError] = useState("");
   const selectedPropertyId = vacant.some((p) => p.id === propertyId)
     ? propertyId
     : (vacant[0]?.id ?? "");
+  const selectedProperty = vacant.find((p) => p.id === selectedPropertyId);
+  const listedRentHint = selectedProperty?.listedRent
+    ? String(selectedProperty.listedRent)
+    : "";
+  const isManager = can(actor.role, "documents.viewAll");
+
+  const applyLeaseDates = (nextStart: string, nextEnd: string) => {
+    setStartDate(nextStart);
+    setEndDate(nextEnd);
+    const nextPeriods = nextStart
+      ? buildLeasePeriods(nextStart, nextEnd || undefined)
+      : [];
+    setPeriodRents((prev) =>
+      alignPeriodRents(prev, Math.max(nextPeriods.length, 1), listedRentHint),
+    );
+    setError("");
+  };
 
   const reset = () => {
     setDone(false);
@@ -38,7 +77,14 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     setName("");
     setPhone("");
     setIdNumber("");
+    setStartDate("");
     setEndDate("");
+    setPeriodRents([""]);
+    setLeaseFile(null);
+    setIdPhoto(null);
+    setGuarantorIdPhoto1(null);
+    setGuarantorIdPhoto2(null);
+    setExtraFile(null);
     setError("");
   };
 
@@ -61,13 +107,93 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
       setError("המייל הזה כבר משויך למשתמש במערכת.");
       return;
     }
+    if (!startDate) {
+      setError("יש להזין תאריך תחילת שכירות.");
+      return;
+    }
+    if (endDate && endDate < startDate) {
+      setError("תאריך סיום החוזה חייב להיות אחרי תאריך ההתחלה.");
+      return;
+    }
+
+    const activePeriods = buildLeasePeriods(startDate, endDate || undefined);
+    const rentFields = alignPeriodRents(
+      periodRents,
+      Math.max(activePeriods.length, 1),
+      listedRentHint,
+    );
+    const rents = activePeriods.map((_, i) => parseMoney(rentFields[i] ?? ""));
+    if (rents.some((r) => r <= 0)) {
+      setError(
+        activePeriods.length > 1
+          ? "יש להזין דמי שכירות לכל תקופה בחוזה."
+          : "יש להזין דמי שכירות חודשיים.",
+      );
+      return;
+    }
+
+    const schedule = rentScheduleFromPeriods(activePeriods, rents);
+    const documents: Array<{
+      name: string;
+      type: DocumentType;
+      folder: DocumentFolder;
+      fileDataUrl: string;
+    }> = [];
+    if (leaseFile) {
+      documents.push({
+        name: leaseFile.name.trim() || "הסכם שכירות",
+        type: "contract",
+        folder: "lease",
+        fileDataUrl: leaseFile.dataUrl,
+      });
+    }
+    if (idPhoto) {
+      documents.push({
+        name: idPhoto.name.trim() || "תצלום תעודת זהות — שוכר",
+        type: "id",
+        folder: "id_photos",
+        fileDataUrl: idPhoto.dataUrl,
+      });
+    }
+    if (guarantorIdPhoto1) {
+      documents.push({
+        name: guarantorIdPhoto1.name.trim() || "תצלום תעודת זהות — ערב 1",
+        type: "id",
+        folder: "guarantor_id",
+        fileDataUrl: guarantorIdPhoto1.dataUrl,
+      });
+    }
+    if (guarantorIdPhoto2) {
+      documents.push({
+        name: guarantorIdPhoto2.name.trim() || "תצלום תעודת זהות — ערב 2",
+        type: "id",
+        folder: "guarantor_id",
+        fileDataUrl: guarantorIdPhoto2.dataUrl,
+      });
+    }
+    if (extraFile) {
+      documents.push({
+        name: extraFile.name.trim() || "נספח",
+        type: "approval",
+        folder: "appendices",
+        fileDataUrl: extraFile.dataUrl,
+      });
+    }
+
     addTenant({
       propertyId: selectedPropertyId,
       email,
       name: name.trim() || undefined,
       phone: phone.trim() || undefined,
       idNumber: idNumber.trim() || undefined,
+      startDate,
       endDate: endDate || undefined,
+      monthlyRent: schedule.monthlyRent,
+      startingMonthlyRent: schedule.startingMonthlyRent,
+      rentAdjustments: schedule.rentAdjustments.length
+        ? schedule.rentAdjustments
+        : undefined,
+      documents: documents.length ? documents : undefined,
     });
     setDone(true);
   };
@@ -77,7 +203,11 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
       open={open}
       onClose={handleClose}
       title="שוכר חדש"
-      description={done ? undefined : "מזינים רק מייל. השוכר יקבע סיסמה בכניסה הראשונה"}
+      description={
+        done
+          ? undefined
+          : "פתיחת חשבון שוכר עם פרטי חוזה. השוכר יקבע סיסמה בכניסה הראשונה"
+      }
     >
       {done ? (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
@@ -100,11 +230,24 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
           </Button>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="no-scrollbar max-h-[64vh] space-y-4 overflow-y-auto pe-1"
+        >
           <FormField label="נכס">
             <select
               value={selectedPropertyId}
-              onChange={(e) => setPropertyId(e.target.value)}
+              onChange={(e) => {
+                const id = e.target.value;
+                setPropertyId(id);
+                const prop = vacant.find((p) => p.id === id);
+                if (prop?.listedRent) {
+                  setPeriodRents((prev) => {
+                    if (prev.some((v) => v.trim())) return prev;
+                    return prev.map(() => String(prop.listedRent));
+                  });
+                }
+              }}
               required
               className="w-full rounded-xl border bg-surface px-3.5 py-3 text-sm focus:border-orange focus:outline-none"
             >
@@ -158,15 +301,73 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
               dir: "ltr",
             }}
           />
-          <FormField
-            label="תאריך סיום חוזה"
-            hint="מוצג בדשבורד השוכר"
-            inputProps={{
-              type: "date",
-              value: endDate,
-              onChange: (e) => setEndDate(e.target.value),
+
+          <LeaseScheduleFields
+            startDate={startDate}
+            endDate={endDate}
+            onDatesChange={applyLeaseDates}
+            periodRents={periodRents}
+            onPeriodRentsChange={(next) => {
+              setPeriodRents(next);
+              setError("");
             }}
+            listedRentHint={listedRentHint}
           />
+
+          {isManager && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 pt-1">
+                <span className="h-4 w-1 rounded-full bg-orange" />
+                <h4 className="text-sm font-bold text-navy">מסמכים</h4>
+              </div>
+              <FilePickField
+                label="הסכם שכירות"
+                hint="PDF או תמונה"
+                accept="image/*,.pdf,application/pdf"
+                icon={<FileText className="h-5 w-5" />}
+                emptyLabel="העלאת הסכם שכירות"
+                file={leaseFile}
+                onPick={setLeaseFile}
+              />
+              <FilePickField
+                label="תצלום תעודת זהות של השוכר"
+                hint="אופציונלי"
+                accept="image/*,.pdf,application/pdf"
+                icon={<IdCard className="h-5 w-5" />}
+                emptyLabel="העלאת תצלום ת״ז"
+                file={idPhoto}
+                onPick={setIdPhoto}
+              />
+              <FilePickField
+                label="תצלום תעודת זהות של ערב 1"
+                hint="אופציונלי"
+                accept="image/*,.pdf,application/pdf"
+                icon={<IdCard className="h-5 w-5" />}
+                emptyLabel="העלאת תצלום ת״ז"
+                file={guarantorIdPhoto1}
+                onPick={setGuarantorIdPhoto1}
+              />
+              <FilePickField
+                label="תצלום תעודת זהות של ערב 2"
+                hint="אופציונלי"
+                accept="image/*,.pdf,application/pdf"
+                icon={<IdCard className="h-5 w-5" />}
+                emptyLabel="העלאת תצלום ת״ז"
+                file={guarantorIdPhoto2}
+                onPick={setGuarantorIdPhoto2}
+              />
+              <FilePickField
+                label="מסמך נוסף"
+                hint="נספח, ערבות או כל מסמך רלוונטי"
+                accept="image/*,.pdf,application/pdf"
+                icon={<Paperclip className="h-5 w-5" />}
+                emptyLabel="העלאת מסמך"
+                file={extraFile}
+                onPick={setExtraFile}
+              />
+            </div>
+          )}
+
           {error && (
             <p className="rounded-lg bg-[#fdecea] px-3 py-2 text-xs font-medium text-danger">
               {error}
@@ -178,5 +379,78 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
         </form>
       )}
     </Modal>
+  );
+}
+
+function FilePickField({
+  label,
+  hint,
+  accept,
+  icon,
+  emptyLabel,
+  file,
+  onPick,
+}: {
+  label: string;
+  hint?: string;
+  accept: string;
+  icon: ReactNode;
+  emptyLabel: string;
+  file: PickedFile | null;
+  onPick: (f: PickedFile | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isImage = Boolean(file?.dataUrl.startsWith("data:image/"));
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <p className="text-sm font-semibold text-navy">{label}</p>
+        {hint && <p className="text-[0.7rem] text-text-muted">{hint}</p>}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        className="hidden"
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          onPick({ name: f.name, dataUrl: await fileToDataUrl(f) });
+        }}
+      />
+      {file ? (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-3">
+          {isImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={file.dataUrl} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+          ) : (
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-navy/5 text-navy">
+              {icon}
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-navy" dir="ltr">
+              {file.name}
+            </p>
+            <p className="text-[0.7rem] text-success">הועלה בהצלחה</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onPick(null)}
+            aria-label="הסרת קובץ"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-muted text-navy"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <Button type="button" variant="outline" fullWidth onClick={() => inputRef.current?.click()}>
+          <Upload className="h-4 w-4" />
+          {emptyLabel}
+        </Button>
+      )}
+    </div>
   );
 }

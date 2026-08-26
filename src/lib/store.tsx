@@ -32,6 +32,7 @@ import type {
   Professional,
   Property,
   ProtocolRecord,
+  RentAdjustment,
   Role,
   Task,
   TaskStatus,
@@ -106,6 +107,8 @@ export interface NewClientInput {
   tenantIdNumber?: string;
   // lease — optional when no tenant
   monthlyRent?: number;
+  startingMonthlyRent?: number;
+  rentAdjustments?: RentAdjustment[];
   startDate?: string;
   endDate?: string;
   managementStartDate?: string;
@@ -115,6 +118,16 @@ export interface NewClientInput {
   /** Management-agreement file (data URL) + original filename. */
   managementAgreementDataUrl?: string;
   managementAgreementFileName?: string;
+  /** Inspection report (דוח בדק) file when the property has one. */
+  inspectionReportDataUrl?: string;
+  inspectionReportFileName?: string;
+  /** Lease / ID / appendix files attached while opening a tenant on this property. */
+  tenantDocuments?: Array<{
+    name: string;
+    type: DocumentType;
+    folder?: DocumentFolder;
+    fileDataUrl: string;
+  }>;
 }
 
 export interface NewTenantInput {
@@ -124,8 +137,17 @@ export interface NewTenantInput {
   phone?: string;
   idNumber?: string;
   monthlyRent?: number;
+  startingMonthlyRent?: number;
+  rentAdjustments?: RentAdjustment[];
   startDate?: string;
   endDate?: string;
+  /** Lease / ID files attached while opening the tenant account. */
+  documents?: Array<{
+    name: string;
+    type: DocumentType;
+    folder?: DocumentFolder;
+    fileDataUrl: string;
+  }>;
 }
 
 const ALL_UTILITIES: UtilityKind[] = ["arnona", "water", "electricity", "gas", "vaad"];
@@ -444,17 +466,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             propertyId,
             leaseId,
             idNumber: input.tenantIdNumber,
-            idPhotoUploaded: Boolean(input.tenantIdNumber),
+            idPhotoUploaded:
+              Boolean(input.tenantIdNumber) ||
+              (input.tenantDocuments ?? []).some((d) => d.folder === "id_photos"),
           }
         : null;
+      const leaseRent = input.monthlyRent ?? input.listedRent ?? 0;
       const lease: Lease | null = withTenant && tenantId && leaseId
         ? {
             id: leaseId,
             propertyId,
             tenantId,
             landlordId,
-            monthlyRent: input.monthlyRent ?? input.listedRent ?? 0,
-            startingMonthlyRent: input.monthlyRent ?? input.listedRent ?? 0,
+            monthlyRent: leaseRent,
+            startingMonthlyRent: input.startingMonthlyRent ?? leaseRent,
+            ...(input.rentAdjustments?.length
+              ? { rentAdjustments: input.rentAdjustments }
+              : {}),
             startDate: input.startDate || input.entryDate || nowIso.slice(0, 10),
             endDate: input.endDate || "",
             nextPaymentDate: input.startDate || input.entryDate || nowIso.slice(0, 10),
@@ -507,6 +535,35 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           status: "draft",
         });
       }
+      if (input.inspectionReportDataUrl) {
+        docs.push({
+          id: generateId("doc"),
+          name: input.inspectionReportFileName?.trim() || "דוח בדק",
+          type: "report",
+          folder: "appendices",
+          propertyId,
+          landlordId,
+          fileDataUrl: input.inspectionReportDataUrl,
+          createdAt: nowIso,
+          signed: false,
+          status: "draft",
+        });
+      }
+      (input.tenantDocuments ?? []).forEach((d) => {
+        docs.push({
+          id: generateId("doc"),
+          name: d.name,
+          type: d.type,
+          folder: inferDocumentFolder({ type: d.type, name: d.name, folder: d.folder }),
+          propertyId,
+          landlordId,
+          tenantId,
+          fileDataUrl: d.fileDataUrl,
+          createdAt: nowIso,
+          signed: false,
+          status: "draft",
+        });
+      });
       (input.photoUrls ?? []).forEach((url, i) => {
         docs.push({
           id: generateId("doc"),
@@ -613,6 +670,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const property = p.properties.find((it) => it.id === input.propertyId);
         if (!property || property.tenantId) return p;
 
+        const startDate = input.startDate || property.entryDate || nowIso.slice(0, 10);
+        const baseRent = input.monthlyRent ?? property.listedRent ?? 0;
+        const startingMonthlyRent = input.startingMonthlyRent ?? baseRent;
+        const rentAdjustments = input.rentAdjustments?.length
+          ? input.rentAdjustments
+          : undefined;
+        const monthlyRent = baseRent;
+
+        const hasIdDoc = (input.documents ?? []).some((d) => d.folder === "id_photos");
+
         const tenant: Tenant = {
           id: tenantId,
           fullName,
@@ -621,18 +688,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           propertyId: property.id,
           leaseId,
           idNumber: input.idNumber,
-          idPhotoUploaded: Boolean(input.idNumber),
+          idPhotoUploaded: Boolean(input.idNumber) || hasIdDoc,
         };
         const lease: Lease = {
           id: leaseId,
           propertyId: property.id,
           tenantId,
           landlordId: property.landlordId,
-          monthlyRent: input.monthlyRent ?? property.listedRent ?? 0,
-          startingMonthlyRent: input.monthlyRent ?? property.listedRent ?? 0,
-          startDate: input.startDate || property.entryDate || nowIso.slice(0, 10),
+          monthlyRent,
+          startingMonthlyRent,
+          ...(rentAdjustments ? { rentAdjustments } : {}),
+          startDate,
           endDate: input.endDate || "",
-          nextPaymentDate: input.startDate || property.entryDate || nowIso.slice(0, 10),
+          nextPaymentDate: startDate,
           active: true,
         };
         const onboarding: TenantOnboarding = {
@@ -655,20 +723,44 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           (u) => u.email && normalizeEmail(u.email) === email,
         );
 
+        const docs: AppDocument[] = (input.documents ?? []).map((d) => ({
+          id: generateId("doc"),
+          name: d.name,
+          type: d.type,
+          folder: inferDocumentFolder({ type: d.type, name: d.name, folder: d.folder }),
+          propertyId: property.id,
+          landlordId: property.landlordId,
+          tenantId,
+          fileDataUrl: d.fileDataUrl,
+          createdAt: nowIso,
+          signed: false,
+          status: "draft" as const,
+        }));
+
         return {
           ...p,
           users: emailTaken ? p.users : [loginUser, ...p.users],
           tenants: [tenant, ...p.tenants],
           leases: [lease, ...p.leases],
           onboardings: [onboarding, ...p.onboardings],
+          documents: docs.length ? [...docs, ...p.documents] : p.documents,
           properties: p.properties.map((it) =>
-            it.id === property.id ? { ...it, tenantId, status: "rented" as const } : it,
+            it.id === property.id
+              ? {
+                  ...it,
+                  tenantId,
+                  status: "rented" as const,
+                  listedRent: startingMonthlyRent || it.listedRent,
+                  entryDate: it.entryDate || startDate,
+                }
+              : it,
           ),
           activityLog: [
             makeLog("הוספת שוכר", "tenant", tenantId, fullName),
             ...(emailTaken
               ? []
               : [makeLog("פתיחת חשבון שוכר", "user", userId, email)]),
+            ...docs.map((d) => makeLog("העלאת מסמך", "document", d.id, d.name)),
             ...p.activityLog,
           ],
         };
