@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bath,
   BedDouble,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   FileText,
   IdCard,
   Layers,
@@ -14,18 +16,23 @@ import {
   Phone,
   Plus,
   Ruler,
+  Trash2,
   Users,
   Wrench,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { PropertyImage } from "@/components/brand/PropertyImage";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { UtilityAccountDetails } from "@/features/utilities/UtilityAccountDetails";
 import { useData } from "@/lib/store";
-import { cn, formatCurrency, formatDateDots } from "@/lib/utils";
-import { PROPERTY_STATUS_LABELS } from "@/lib/portfolio";
+import { can } from "@/lib/permissions";
+import { cn, formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
+import { currentMonthlyRent, PROPERTY_STATUS_LABELS, propertyDisplayValue } from "@/lib/portfolio";
+import { buildLeasePeriods, rentOnDate } from "@/lib/lease-periods";
 import type { CheckDepositMode, Payment, PaymentStatus, Property } from "@/types";
 
 const statusLabels = PROPERTY_STATUS_LABELS;
@@ -127,6 +134,8 @@ interface PropertyDetailDialogProps {
   onEdit?: (property: Property) => void;
   /** Allow confirming check clearance (manager / landlord). */
   canConfirmClearance?: boolean;
+  /** Show a compact preview first, with the rest behind a "ראה עוד" action. */
+  collapsible?: boolean;
 }
 
 export function PropertyDetailDialog({
@@ -134,9 +143,59 @@ export function PropertyDetailDialog({
   onClose,
   onEdit,
   canConfirmClearance = false,
+  collapsible = false,
 }: PropertyDetailDialogProps) {
-  const { leases, tenants, landlords, tickets, payments, users, confirmPaymentClearance } = useData();
-  if (!property) return null;
+  const {
+    leases,
+    tenants,
+    landlords,
+    tickets,
+    payments,
+    users,
+    actor,
+    confirmPaymentClearance,
+    deleteTenant,
+  } = useData();
+  const [pendingTenant, setPendingTenant] = useState<{ id: string; name: string } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [showFullDetails, setShowFullDetails] = useState(false);
+  const canDelete = can(actor.role, "clients.delete");
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    setShowFullDetails(false);
+  }, [property?.id]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const toastEl = <Toast message={toast} onDone={() => setToast(null)} />;
+  const confirmEl = (
+    <ConfirmDialog
+      open={pendingTenant != null}
+      onClose={() => setPendingTenant(null)}
+      onConfirm={() => {
+        if (!pendingTenant) return;
+        deleteTenant(pendingTenant.id);
+        setPendingTenant(null);
+        setToast("השוכר נמחק");
+      }}
+      title="מחיקת שוכר"
+      description={
+        pendingTenant
+          ? `למחוק את ${pendingTenant.name}? חשבון הכניסה, השכירות והתשלומים יימחקו, והנכס יסומן כפנוי.`
+          : ""
+      }
+      confirmLabel="מחיקה"
+    />
+  );
+
+  if (!property) {
+    return (
+      <>
+        {confirmEl}
+        {toastEl}
+      </>
+    );
+  }
   const lease = leases.find((l) => l.propertyId === property.id && l.active)
     ?? leases.find((l) => l.propertyId === property.id);
   const tenant =
@@ -153,8 +212,24 @@ export function PropertyDetailDialog({
   ).slice().sort((a, b) => b.dueDate.localeCompare(a.dueDate));
 
   const floorLabel = property.floor === 0 ? "קומת קרקע" : `קומה ${property.floor}`;
+  const currentRent = lease ? currentMonthlyRent(lease) : property.listedRent;
+  const displayValue = propertyDisplayValue(property, currentRent);
+  const periods = lease ? buildLeasePeriods(lease.startDate, lease.endDate || undefined) : [];
+  const periodRows = lease
+    ? periods.map((period) => ({
+        ...period,
+        rent: rentOnDate(
+          lease.startingMonthlyRent ?? lease.monthlyRent,
+          lease.rentAdjustments,
+          period.startDate,
+        ),
+      }))
+    : [];
+  const showSchedule = periodRows.length > 1 && new Set(periodRows.map((p) => p.rent)).size > 1;
+  const endDateLabel = lease && isValidIsoDate(lease.endDate) ? formatDateDots(lease.endDate) : "לא הוזן";
 
   return (
+    <>
     <Modal
       open={!!property}
       onClose={onClose}
@@ -212,6 +287,16 @@ export function PropertyDetailDialog({
                 <TenantMeta icon={Phone} label="טלפון" value={tenant.phone} ltr />
                 <TenantMeta icon={Mail} label="מייל" value={tenant.email} ltr />
               </div>
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={() => setPendingTenant({ id: tenant.id, name: tenant.fullName })}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-bold text-danger transition-colors hover:bg-danger/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  מחיקת שוכר
+                </button>
+              )}
             </div>
           ) : (
             <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-text-muted">
@@ -220,22 +305,24 @@ export function PropertyDetailDialog({
           )}
         </section>
 
-        {/* 3. השאר — פרטי תשלומים/מונים, שווי, וכו׳ */}
-        <div className="grid grid-cols-2 gap-2">
+        {(!collapsible || showFullDetails) && (
+          <>
+            {/* 3. השאר — פרטי תשלומים/מונים, שווי, וכו׳ */}
+            <div className="grid grid-cols-2 gap-2">
           <DetailRow icon={FileText} label="ארנונה (לחודש)" value={formatCurrency(property.municipalTax)} />
           <DetailRow icon={Users} label="ועד בית" value={formatCurrency(property.buildingFee)} />
-        </div>
+            </div>
 
-        <UtilityAccountDetails
-          property={property}
-          hideLocation
-          heading="מונים וחשבונות"
-          hint="לחצו על פרט כדי להעתיק אותו."
-        />
+            <UtilityAccountDetails
+              property={property}
+              hideLocation
+              heading="מונים וחשבונות"
+              hint="לחצו על פרט כדי להעתיק אותו."
+            />
 
         <div className="flex items-center justify-between rounded-2xl bg-surface-muted px-4 py-3">
           <span className="text-sm text-text-muted">שווי נכס</span>
-          <span className="text-lg font-extrabold text-navy">{formatCurrency(property.value)}</span>
+          <span className="text-lg font-extrabold text-navy">{formatCurrency(displayValue)}</span>
         </div>
 
         <section className="space-y-2">
@@ -298,7 +385,12 @@ export function PropertyDetailDialog({
           {lease && (
             <div className="rounded-2xl bg-surface-muted p-3">
               <div className="space-y-1.5 text-sm">
-                <Line label="שכר דירה חודשי" value={formatCurrency(lease.monthlyRent)} />
+                <Line label="שכר דירה חודשי" value={formatCurrency(currentRent ?? 0)} />
+                {lease.startingMonthlyRent != null &&
+                  lease.startingMonthlyRent > 0 &&
+                  lease.startingMonthlyRent !== (currentRent ?? 0) && (
+                    <Line label="שכ״ד התחלתי" value={formatCurrency(lease.startingMonthlyRent)} />
+                  )}
                 <Line
                   icon={<CalendarDays className="h-4 w-4" />}
                   label="תחילת חוזה"
@@ -307,9 +399,21 @@ export function PropertyDetailDialog({
                 <Line
                   icon={<CalendarDays className="h-4 w-4" />}
                   label="סיום חוזה"
-                  value={formatDateDots(lease.endDate)}
-                  valueClass="text-orange"
+                  value={endDateLabel}
+                  valueClass={isValidIsoDate(lease.endDate) ? "text-orange" : "text-text-muted"}
                 />
+                {showSchedule && (
+                  <div className="mt-2 space-y-1 border-t border-border/70 pt-2">
+                    <p className="text-[0.7rem] font-semibold text-text-muted">שכ״ד לפי תקופות</p>
+                    {periodRows.map((period) => (
+                      <Line
+                        key={period.startDate}
+                        label={period.label}
+                        value={formatCurrency(period.rent)}
+                      />
+                    ))}
+                  </div>
+                )}
                 {lease.managementEndDate && (
                   <Line label="סיום הסכם ניהול" value={formatDateDots(lease.managementEndDate)} />
                 )}
@@ -322,24 +426,40 @@ export function PropertyDetailDialog({
           )}
         </section>
 
-        {onEdit && (
-          <>
-            <Button variant="outline" fullWidth onClick={() => onEdit(property)}>
-              <Pencil className="h-5 w-5" />
-              עריכת פרטי הנכס
-            </Button>
-            <button
-              type="button"
-              onClick={() => onEdit(property)}
-              aria-label="עריכת נכס"
-              className="fab"
-            >
-              <Plus className="h-7 w-7" strokeWidth={2.2} />
-            </button>
+            {onEdit && (
+              <>
+                <Button variant="outline" fullWidth onClick={() => onEdit(property)}>
+                  <Pencil className="h-5 w-5" />
+                  עריכת פרטי הנכס
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => onEdit(property)}
+                  aria-label="עריכת נכס"
+                  className="fab"
+                >
+                  <Plus className="h-7 w-7" strokeWidth={2.2} />
+                </button>
+              </>
+            )}
           </>
+        )}
+
+        {collapsible && (
+          <button
+            type="button"
+            onClick={() => setShowFullDetails((current) => !current)}
+            className="sticky bottom-0 z-10 flex w-full items-center justify-center gap-2 rounded-2xl bg-navy px-4 py-3 text-sm font-bold text-white shadow-lg"
+          >
+            {showFullDetails ? "הצג פחות" : "ראה עוד"}
+            {showFullDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
         )}
       </div>
     </Modal>
+    {confirmEl}
+    {toastEl}
+    </>
   );
 }
 

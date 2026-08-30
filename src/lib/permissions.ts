@@ -9,6 +9,7 @@ export type Capability =
   | "clients.view"
   | "clients.create"
   | "clients.edit"
+  | "clients.delete"
   | "people.view"
   | "tickets.viewAll"
   | "tickets.manage"
@@ -31,6 +32,7 @@ const MANAGER: Capability[] = [
   "clients.view",
   "clients.create",
   "clients.edit",
+  "clients.delete",
   "people.view",
   "tickets.viewAll",
   "tickets.manage",

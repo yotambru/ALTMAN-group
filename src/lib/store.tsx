@@ -17,7 +17,9 @@ import {
 } from "@/lib/supabase/sync";
 import { accountDisplayName, normalizeEmail } from "@/lib/auth";
 import { generateId } from "@/lib/utils";
+import { localTodayIso } from "@/lib/lease-periods";
 import { inferDocumentFolder } from "@/lib/document-folders";
+import { removeLandlord, removeTenant } from "@/lib/delete-users";
 import type {
   ActivityLogEntry,
   AppDocument,
@@ -160,6 +162,67 @@ function recomputeCompleted(ob: TenantOnboarding): TenantOnboarding {
   };
 }
 
+/** Create a pending onboarding row when one is missing (broken create / failed persist). */
+function ensureOnboardingRecord(
+  state: DataState,
+  tenantId: string,
+): TenantOnboarding {
+  const existing = state.onboardings.find((o) => o.tenantId === tenantId);
+  if (existing) {
+    const utilities = ALL_UTILITIES.map((utility) => {
+      const prev = existing.utilities.find((u) => u.utility === utility);
+      return prev ?? { utility, status: "pending" as const };
+    });
+    return { ...existing, utilities };
+  }
+  const tenant = state.tenants.find((t) => t.id === tenantId);
+  const lease = state.leases.find(
+    (l) => l.id === tenant?.leaseId || l.tenantId === tenantId,
+  );
+  return {
+    tenantId,
+    leaseId: tenant?.leaseId || lease?.id || "",
+    moveInDate: lease?.startDate || new Date().toISOString().slice(0, 10),
+    utilities: ALL_UTILITIES.map((utility) => ({ utility, status: "pending" })),
+    insurance: { status: "pending" },
+    completed: false,
+  };
+}
+
+/**
+ * Recreate lease rows that failed to persist (schema lag) so dashboards still
+ * have rent / portfolio value after a refresh. The persist effect writes them back.
+ */
+function repairMissingLeases(state: DataState): DataState {
+  const leasesById = new Set(state.leases.map((l) => l.id));
+  const leasedTenantIds = new Set(state.leases.map((l) => l.tenantId));
+  const extra: Lease[] = [];
+  for (const tenant of state.tenants) {
+    if (leasesById.has(tenant.leaseId) || leasedTenantIds.has(tenant.id)) continue;
+    const property = state.properties.find((p) => p.id === tenant.propertyId);
+    if (!property) continue;
+    const rent = property.listedRent && property.listedRent > 0 ? property.listedRent : 0;
+    const start = property.entryDate?.slice(0, 10) || localTodayIso();
+    const leaseId = tenant.leaseId || generateId("ls");
+    extra.push({
+      id: leaseId,
+      propertyId: tenant.propertyId,
+      tenantId: tenant.id,
+      landlordId: property.landlordId,
+      monthlyRent: rent,
+      startingMonthlyRent: rent || undefined,
+      startDate: start,
+      endDate: "",
+      nextPaymentDate: start,
+      active: true,
+    });
+    leasesById.add(leaseId);
+    leasedTenantIds.add(tenant.id);
+  }
+  if (extra.length === 0) return state;
+  return { ...state, leases: [...extra, ...state.leases] };
+}
+
 interface DataContextValue extends DataState {
   ready: boolean;
   actor: Actor;
@@ -193,6 +256,10 @@ interface DataContextValue extends DataState {
   updateLease: (id: string, patch: Partial<Lease>) => void;
   updateLandlord: (id: string, patch: Partial<Landlord>) => void;
   updateTenant: (id: string, patch: Partial<Tenant>) => void;
+  /** Manager: delete a landlord and cascade properties / tenants / logins. */
+  deleteLandlord: (id: string) => void;
+  /** Manager: delete a tenant, their login, and vacate the current property. */
+  deleteTenant: (id: string) => void;
 
   // payments / expenses
   confirmPaymentClearance: (paymentId: string) => void;
@@ -218,6 +285,7 @@ interface DataContextValue extends DataState {
     fileDataUrl?: string;
     awaitingSignature?: boolean;
   }) => AppDocument;
+  updateDocument: (id: string, patch: Partial<Pick<AppDocument, "name" | "folder">>) => void;
   signDocument: (id: string, signedByName: string) => void;
 
   // notifications
@@ -294,6 +362,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [persistNonce, setPersistNonce] = useState(0);
   const actorRef = useRef<Actor>(DEFAULT_ACTOR);
   const prevRef = useRef<DataState | null>(null);
+  const persistChainRef = useRef(Promise.resolve());
+  const persistInFlightRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -303,12 +373,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         if (remote) {
           const merged: DataState = {
-            ...seedState(),
             ...remote,
             expenses: remote.expenses ?? [],
             notifications: collapseChatNotifications(remote.notifications ?? []),
           };
-          setState(merged);
+          const healed = repairMissingLeases(merged);
+          setState(healed);
+          // Keep prev as the raw remote snapshot so healed leases get persisted.
           prevRef.current = merged;
         } else {
           prevRef.current = seedState();
@@ -326,22 +397,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
-    const prev = prevRef.current;
-    if (!prev) return;
-    let cancelled = false;
-    void (async () => {
-      const errors = await persistDiff(prev, state);
-      if (cancelled) return;
-      if (errors.length === 0) {
-        prevRef.current = state;
-        setPersistError(null);
-        return;
-      }
-      setPersistError(errors[0] ?? "שמירה לשרת נכשלה");
-    })();
-    return () => {
-      cancelled = true;
-    };
+    if (!prevRef.current) return;
+    const next = state;
+    persistChainRef.current = persistChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const prev = prevRef.current;
+        if (!prev) return;
+        persistInFlightRef.current = true;
+        try {
+          const errors = await persistDiff(prev, next);
+          if (errors.length === 0) {
+            prevRef.current = next;
+            setPersistError(null);
+            return;
+          }
+          setPersistError(errors[0] ?? "שמירה לשרת נכשלה");
+        } catch (err) {
+          console.error("[supabase] persist", err);
+          setPersistError("שמירה לשרת נכשלה");
+        } finally {
+          persistInFlightRef.current = false;
+        }
+      });
   }, [state, ready, persistNonce]);
 
   useEffect(() => {
@@ -349,7 +427,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return subscribeToData((table, event, row) => {
       setState((prev) => {
         const next = applyRealtimeChange(prev, table, event, row);
-        if (prevRef.current) {
+        if (prevRef.current && !persistInFlightRef.current) {
           prevRef.current = applyRealtimeChange(prevRef.current, table, event, row);
         }
         return next;
@@ -525,8 +603,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         docs.push({
           id: generateId("doc"),
           name: input.managementAgreementFileName?.trim() || "הסכם ניהול",
-          type: "contract",
-          folder: "appendices",
+          type: "approval",
+          folder: "management",
           propertyId,
           landlordId,
           fileDataUrl: input.managementAgreementDataUrl,
@@ -554,7 +632,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           id: generateId("doc"),
           name: d.name,
           type: d.type,
-          folder: inferDocumentFolder({ type: d.type, name: d.name, folder: d.folder }),
+          folder: inferDocumentFolder({ type: d.type, name: d.name, folder: d.folder, tenantId }),
           propertyId,
           landlordId,
           tenantId,
@@ -727,7 +805,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           id: generateId("doc"),
           name: d.name,
           type: d.type,
-          folder: inferDocumentFolder({ type: d.type, name: d.name, folder: d.folder }),
+          folder: inferDocumentFolder({ type: d.type, name: d.name, folder: d.folder, tenantId }),
           propertyId: property.id,
           landlordId: property.landlordId,
           tenantId,
@@ -883,11 +961,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateLease = useCallback<DataContextValue["updateLease"]>(
     (id, patch) => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localTodayIso();
       setState((p) => ({
         ...p,
         leases: p.leases.map((it) => {
           if (it.id !== id) return it;
+          if (patch.rentAdjustments !== undefined || patch.startingMonthlyRent != null) {
+            return { ...it, ...patch };
+          }
           if (patch.monthlyRent == null || patch.monthlyRent === it.monthlyRent) {
             return { ...it, ...patch };
           }
@@ -924,6 +1005,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         tenants: p.tenants.map((it) => (it.id === id ? { ...it, ...patch } : it)),
         activityLog: [makeLog("עדכון שוכר", "tenant", id), ...p.activityLog],
       }));
+    },
+    [makeLog],
+  );
+
+  const deleteLandlord = useCallback<DataContextValue["deleteLandlord"]>(
+    (id) => {
+      setState((p) => {
+        const landlord = p.landlords.find((l) => l.id === id);
+        const next = removeLandlord(
+          p,
+          id,
+          makeLog("מחיקת משכיר", "landlord", id, landlord?.fullName),
+        );
+        return next ?? p;
+      });
+    },
+    [makeLog],
+  );
+
+  const deleteTenant = useCallback<DataContextValue["deleteTenant"]>(
+    (id) => {
+      setState((p) => {
+        const tenant = p.tenants.find((t) => t.id === id);
+        const next = removeTenant(
+          p,
+          id,
+          makeLog("מחיקת שוכר", "tenant", id, tenant?.fullName),
+        );
+        return next ?? p;
+      });
     },
     [makeLog],
   );
@@ -1071,7 +1182,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         id: generateId("doc"),
         name: d.name,
         type: d.type,
-        folder: inferDocumentFolder({ type: d.type, name: d.name, folder: d.folder }),
+        folder: inferDocumentFolder({ type: d.type, name: d.name, folder: d.folder, tenantId: d.tenantId }),
         propertyId: d.propertyId,
         landlordId: d.landlordId,
         tenantId: d.tenantId,
@@ -1102,6 +1213,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         activityLog: [makeLog(d.awaitingSignature ? "שליחת מסמך לחתימה" : "העלאת מסמך", "document", doc.id, doc.name), ...p.activityLog],
       }));
       return doc;
+    },
+    [makeLog],
+  );
+
+  const updateDocument = useCallback<DataContextValue["updateDocument"]>(
+    (id, patch) => {
+      setState((p) => ({
+        ...p,
+        documents: p.documents.map((doc) => {
+          if (doc.id !== id) return doc;
+          const next = { ...doc, ...patch };
+          next.folder = inferDocumentFolder(next);
+          return next;
+        }),
+        activityLog: [makeLog("עדכון תיקיית מסמך", "document", id), ...p.activityLog],
+      }));
     },
     [makeLog],
   );
@@ -1250,17 +1377,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const setUtilityStatus = useCallback<DataContextValue["setUtilityStatus"]>(
     (tenantId, utility, status, proofDocId) => {
       setState((p) => {
+        const base = ensureOnboardingRecord(p, tenantId);
         const prev = p.onboardings.find((o) => o.tenantId === tenantId);
-        const onboardings = p.onboardings.map((ob) =>
-          ob.tenantId === tenantId
-            ? recomputeCompleted({
-                ...ob,
-                utilities: ob.utilities.map((u) =>
-                  u.utility === utility ? { ...u, status, proofDocId, updatedAt: new Date().toISOString() } : u,
-                ),
-              })
-            : ob,
-        );
+        const patched = recomputeCompleted({
+          ...base,
+          utilities: base.utilities.map((u) =>
+            u.utility === utility
+              ? { ...u, status, proofDocId, updatedAt: new Date().toISOString() }
+              : u,
+          ),
+        });
+        const onboardings = prev
+          ? p.onboardings.map((ob) => (ob.tenantId === tenantId ? patched : ob))
+          : [patched, ...p.onboardings];
         const updated = onboardings.find((o) => o.tenantId === tenantId);
         const justReady =
           status === "submitted" &&
@@ -1321,12 +1450,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const setInsuranceStatus = useCallback<DataContextValue["setInsuranceStatus"]>(
     (tenantId, status, docId) => {
       setState((p) => {
+        const base = ensureOnboardingRecord(p, tenantId);
         const prev = p.onboardings.find((o) => o.tenantId === tenantId);
-        const onboardings = p.onboardings.map((ob) =>
-          ob.tenantId === tenantId
-            ? recomputeCompleted({ ...ob, insurance: { status, docId, updatedAt: new Date().toISOString() } })
-            : ob,
-        );
+        const patched = recomputeCompleted({
+          ...base,
+          insurance: { status, docId, updatedAt: new Date().toISOString() },
+        });
+        const onboardings = prev
+          ? p.onboardings.map((ob) => (ob.tenantId === tenantId ? patched : ob))
+          : [patched, ...p.onboardings];
         const updated = onboardings.find((o) => o.tenantId === tenantId);
         const justReady =
           status === "submitted" &&
@@ -1470,6 +1602,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     updateLease,
     updateLandlord,
     updateTenant,
+    deleteLandlord,
+    deleteTenant,
     confirmPaymentClearance,
     updatePayment,
     addExpense,
@@ -1478,6 +1612,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     assignTicket,
     attachTicketInvoice,
     addDocument,
+    updateDocument,
     signDocument,
     addNotification,
     markNotificationRead,

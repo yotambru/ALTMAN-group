@@ -100,8 +100,8 @@ export function HeroStatCard({
             type={secondary.onClick ? "button" : undefined}
             onClick={secondary.onClick}
             className={cn(
-              "relative mt-4 w-full rounded-xl border border-white/12 bg-white/8 px-3.5 py-3 text-start",
-              secondary.onClick && "transition-colors hover:bg-white/12",
+              "relative mt-4 w-full rounded-2xl border-2 border-orange/70 bg-gradient-to-l from-orange/30 via-orange/15 to-white/8 px-3.5 py-3 text-start shadow-lg",
+              secondary.onClick && "transition-colors hover:from-orange/40 hover:via-orange/20",
             )}
           >
             <p className="text-xs font-medium text-white/65">{secondary.label}</p>

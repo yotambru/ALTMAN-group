@@ -5,7 +5,16 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { PhotoGridField } from "@/components/ui/PhotoGridField";
+import { LeaseScheduleFields } from "@/features/leases/LeaseScheduleFields";
+import {
+  alignPeriodRents,
+  buildLeasePeriods,
+  rentOnDate,
+  rentScheduleFromPeriods,
+} from "@/lib/lease-periods";
+import { currentMonthlyRent, propertyDisplayValue } from "@/lib/portfolio";
 import { useData } from "@/lib/store";
+import { formatCurrency } from "@/lib/utils";
 import type { Property, PropertyStatus } from "@/types";
 
 interface EditPropertyModalProps {
@@ -23,7 +32,29 @@ const statusOptions: { id: PropertyStatus; label: string }[] = [
   { id: "issue", label: "תקלה" },
 ];
 
-/** Edit an existing property (and its active lease's rent). */
+function rentsFromLease(
+  lease: {
+    monthlyRent: number;
+    startingMonthlyRent?: number;
+    rentAdjustments?: { date: string; monthlyRent: number }[];
+  },
+  start: string,
+  end: string,
+): string[] {
+  const periods = start ? buildLeasePeriods(start, end || undefined) : [];
+  const fallback = String(currentMonthlyRent(lease) || lease.monthlyRent || "");
+  if (!periods.length) return [fallback];
+  return periods.map((period) => {
+    const rent = rentOnDate(
+      lease.startingMonthlyRent ?? lease.monthlyRent,
+      lease.rentAdjustments,
+      period.startDate,
+    );
+    return rent > 0 ? String(rent) : fallback;
+  });
+}
+
+/** Edit an existing property (and its active lease's rent schedule). */
 export function EditPropertyModal({ property, onClose }: EditPropertyModalProps) {
   const { updateProperty, updateLease, setPropertyPhotos, leases } = useData();
   const lease = property ? leases.find((l) => l.propertyId === property.id && l.active) : undefined;
@@ -37,15 +68,16 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
   const [municipalPropertyNumber, setMunicipalPropertyNumber] = useState("");
   const [managementCompanyPhone, setManagementCompanyPhone] = useState("");
   const [status, setStatus] = useState<PropertyStatus>("rented");
-  const [rent, setRent] = useState("");
   const [leaseStartDate, setLeaseStartDate] = useState("");
   const [leaseEndDate, setLeaseEndDate] = useState("");
+  const [periodRents, setPeriodRents] = useState<string[]>([""]);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [formError, setFormError] = useState("");
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (property) {
-      setValue(String(property.value));
+      setValue(property.value > 0 ? String(property.value) : "");
       setMunicipalTax(String(property.municipalTax));
       setBuildingFee(String(property.buildingFee));
       setElectricityMeter(property.electricityMeter);
@@ -54,18 +86,62 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
       setMunicipalPropertyNumber(property.municipalPropertyNumber ?? "");
       setManagementCompanyPhone(property.managementCompanyPhone ?? "");
       setStatus(property.status);
-      setRent(lease ? String(lease.monthlyRent) : "");
-      setLeaseStartDate(lease?.startDate?.slice(0, 10) ?? "");
-      setLeaseEndDate(lease?.endDate?.slice(0, 10) ?? "");
+      const start = lease?.startDate?.slice(0, 10) ?? "";
+      const end = lease?.endDate?.slice(0, 10) ?? "";
+      setLeaseStartDate(start);
+      setLeaseEndDate(end);
+      setPeriodRents(lease ? rentsFromLease(lease, start, end) : [""]);
       setPhotoUrls(property.photoUrls ?? []);
+      setFormError("");
     }
   }, [property, lease]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!property) return null;
 
+  const estimatedValue = propertyDisplayValue(
+    property,
+    lease ? currentMonthlyRent(lease) : property.listedRent,
+  );
+
+  const applyLeaseDates = (nextStart: string, nextEnd: string) => {
+    setLeaseStartDate(nextStart);
+    setLeaseEndDate(nextEnd);
+    const nextPeriods = nextStart ? buildLeasePeriods(nextStart, nextEnd || undefined) : [];
+    setPeriodRents((prev) =>
+      alignPeriodRents(prev, Math.max(nextPeriods.length, 1), prev[0] ?? ""),
+    );
+    setFormError("");
+  };
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    let schedule:
+      | ReturnType<typeof rentScheduleFromPeriods>
+      | undefined;
+    if (lease) {
+      if (!leaseStartDate) {
+        setFormError("יש להזין תאריך תחילת שכירות.");
+        return;
+      }
+      if (leaseEndDate && leaseEndDate < leaseStartDate) {
+        setFormError("תאריך סיום החוזה חייב להיות אחרי תאריך ההתחלה.");
+        return;
+      }
+      const periods = buildLeasePeriods(leaseStartDate, leaseEndDate || undefined);
+      const rentFields = alignPeriodRents(periodRents, Math.max(periods.length, 1));
+      const rents = periods.map((_, i) => num(rentFields[i] ?? ""));
+      if (rents.some((r) => r <= 0)) {
+        setFormError(
+          periods.length > 1
+            ? "יש להזין דמי שכירות לכל תקופה בחוזה."
+            : "יש להזין דמי שכירות חודשיים.",
+        );
+        return;
+      }
+      schedule = rentScheduleFromPeriods(periods, rents);
+    }
+
     updateProperty(property.id, {
       value: num(value),
       municipalTax: num(municipalTax),
@@ -76,13 +152,16 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
       municipalPropertyNumber: municipalPropertyNumber.trim() || undefined,
       managementCompanyPhone: managementCompanyPhone.trim() || undefined,
       status,
+      ...(schedule ? { listedRent: schedule.startingMonthlyRent } : {}),
     });
     setPropertyPhotos(property.id, photoUrls);
-    if (lease) {
+    if (lease && schedule) {
       updateLease(lease.id, {
-        ...(rent ? { monthlyRent: num(rent) } : {}),
         startDate: leaseStartDate || lease.startDate,
         endDate: leaseEndDate,
+        monthlyRent: schedule.monthlyRent,
+        startingMonthlyRent: schedule.startingMonthlyRent,
+        rentAdjustments: schedule.rentAdjustments,
       });
     }
     onClose();
@@ -92,8 +171,16 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
     <Modal open={!!property} onClose={onClose} title="עריכת נכס" description={`${property.address}, ${property.city}`}>
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <FormField label="שווי (₪)" inputProps={{ value, onChange: (e) => setValue(e.target.value), inputMode: "numeric" }} />
-          <FormField label="שכר דירה (₪)" inputProps={{ value: rent, onChange: (e) => setRent(e.target.value), inputMode: "numeric" }} />
+          <FormField
+            label="שווי (₪)"
+            hint={
+              estimatedValue > 0
+                ? `אם ריק, מוצג שווי לפי תשואה: ${formatCurrency(estimatedValue)}`
+                : "אם ריק, מחושב לפי תשואה 2.8%"
+            }
+            className="col-span-2"
+            inputProps={{ value, onChange: (e) => setValue(e.target.value), inputMode: "numeric", placeholder: estimatedValue ? String(estimatedValue) : undefined }}
+          />
           <FormField label="ארנונה (₪)" inputProps={{ value: municipalTax, onChange: (e) => setMunicipalTax(e.target.value), inputMode: "numeric" }} />
           <FormField label="ועד בית (₪)" inputProps={{ value: buildingFee, onChange: (e) => setBuildingFee(e.target.value), inputMode: "numeric" }} />
           <FormField
@@ -138,7 +225,7 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
               dir: "ltr",
             }}
           />
-          <FormField label="סטטוס">
+          <FormField label="סטטוס" className="col-span-2">
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as PropertyStatus)}
@@ -149,27 +236,17 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
               ))}
             </select>
           </FormField>
-          {lease && (
-            <>
-              <FormField
-                label="תחילת חוזה"
-                inputProps={{
-                  type: "date",
-                  value: leaseStartDate,
-                  onChange: (e) => setLeaseStartDate(e.target.value),
-                }}
-              />
-              <FormField
-                label="סיום חוזה"
-                inputProps={{
-                  type: "date",
-                  value: leaseEndDate,
-                  onChange: (e) => setLeaseEndDate(e.target.value),
-                }}
-              />
-            </>
-          )}
         </div>
+        {lease && (
+          <LeaseScheduleFields
+            startDate={leaseStartDate}
+            endDate={leaseEndDate}
+            onDatesChange={applyLeaseDates}
+            periodRents={periodRents}
+            onPeriodRentsChange={setPeriodRents}
+          />
+        )}
+        {formError && <p className="text-sm font-medium text-danger">{formError}</p>}
         <PhotoGridField
           label="תמונות נכס"
           hint="JPEG, PNG או HEIC"

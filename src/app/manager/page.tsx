@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Bell,
@@ -16,6 +16,7 @@ import {
   MessagesSquare,
   Repeat,
   Send,
+  Trash2,
   UserPlus,
   Users,
   UsersRound,
@@ -24,7 +25,6 @@ import {
 import { DashboardTopBar } from "@/components/dashboard/DashboardTopBar";
 import { HeroStatCard } from "@/components/dashboard/HeroStatCard";
 import { FocusActions } from "@/components/dashboard/FocusActions";
-import { AlertStrip } from "@/components/dashboard/AlertStrip";
 import { ClientRow, SearchField } from "@/components/dashboard/ClientRow";
 import { PropertyRow } from "@/components/dashboard/PropertyCard";
 import { PropertyStatusFilter } from "@/components/dashboard/PropertyStatusFilter";
@@ -36,6 +36,8 @@ import { ProfileTab } from "@/components/dashboard/ProfileTab";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { appBottomNavItems, type AppTab } from "@/components/dashboard/appNav";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
 import { ChatPanel, type ChatPeer } from "@/features/chat/ChatPanel";
 import { DocumentsDialog } from "@/features/documents/DocumentsDialog";
 import { SendForSignatureDialog } from "@/features/documents/SendForSignatureDialog";
@@ -58,13 +60,13 @@ import { useData } from "@/lib/store";
 import { can } from "@/lib/permissions";
 import { getCriticalDates } from "@/lib/alerts";
 import {
-  buildPortfolioYieldSeries,
   formatPercent,
   occupancyPercent,
-  portfolioIncomeGrowth,
-  portfolioJoinDate,
+  propertyMonthlyIncome,
+  summarizePortfolio,
+  PORTFOLIO_YIELD_RATE,
 } from "@/lib/portfolio";
-import { formatCurrency, formatMonthYear } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
 type Dialog =
@@ -88,7 +90,7 @@ type HomePanel = "clients" | "tickets" | "docs" | "chat" | "report";
 export default function ManagerDashboard() {
   const { session, user, ready, logout } = useSession(["manager", "assistant"]);
   const data = useData();
-  const { properties, landlords, tenants, documents, notifications, leases, users, chatThreads, tickets } = data;
+  const { properties, landlords, tenants, documents, notifications, leases, users, chatThreads, tickets, deleteLandlord } = data;
   const role = session.role;
 
   const [tab, setTab] = useState<AppTab>("dashboard");
@@ -104,25 +106,22 @@ export default function ManagerDashboard() {
   const [propertyQuery, setPropertyQuery] = useState("");
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [addForLandlordId, setAddForLandlordId] = useState<string | null>(null);
+  const [pendingLandlord, setPendingLandlord] = useState<{ id: string; name: string } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [scrollToClients, setScrollToClients] = useState(false);
+  const clientsSectionRef = useRef<HTMLElement | null>(null);
 
   const self = { id: session.userId, name: session.fullName, role };
   const firstName = session.fullName.trim().split(/\s+/)[0] || session.fullName;
   const criticalDates = getCriticalDates(leases, properties);
-  const criticalCount = criticalDates.length;
   const leaseRenewals = criticalDates.filter((d) => d.kind === "lease_end" && d.daysLeft <= 30).length;
   const unread = notifications.filter(
     (n) => !n.read && (n.forRole === "manager" || n.forUserId === session.userId || (!n.forUserId && !n.forRole)),
   ).length;
 
   const activeLeases = leases.filter((l) => l.active);
-  const monthlyIncome = activeLeases.reduce((sum, l) => sum + l.monthlyRent, 0);
+  const { monthlyIncome, portfolioValue } = summarizePortfolio(properties, activeLeases);
   const occupancy = occupancyPercent(properties);
-  const yieldSeries = buildPortfolioYieldSeries(activeLeases);
-  const incomeSeries = yieldSeries.map((p) => p.monthlyIncome);
-  const incomeGrowth = portfolioIncomeGrowth(activeLeases);
-  const joinDate = portfolioJoinDate(activeLeases);
-  const firstYield = yieldSeries[0];
-  const lastYield = yieldSeries.at(-1);
   const openTicketCount = tickets.filter((t) => t.status === "open" || t.status === "in_progress").length;
   const rentedCount = properties.filter((p) => p.status === "rented").length;
 
@@ -188,6 +187,23 @@ export default function ManagerDashboard() {
     setTab("dashboard");
   };
 
+  const openClients = () => {
+    setSelectedClientId(null);
+    setPropertyQuery("");
+    setStatusFilter("all");
+    openPanel("clients");
+    setScrollToClients(true);
+  };
+
+  useEffect(() => {
+    if (!scrollToClients || tab !== "dashboard" || homePanel !== "clients") return;
+    const frame = window.requestAnimationFrame(() => {
+      clientsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setScrollToClients(false);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [homePanel, scrollToClients, tab]);
+
   const openTickets = (ticketId: string | null = null) => {
     setFocusTicketId(ticketId);
     setHomePanel("tickets");
@@ -250,7 +266,7 @@ export default function ManagerDashboard() {
   const menuItems: MobileMenuItem[] = [
     { icon: UserPlus, label: "משכיר חדש", onClick: () => { setAddForLandlordId(null); setDialog("add"); } },
     { icon: KeyRound, label: "שוכר חדש", onClick: () => setDialog("addTenant") },
-    { icon: UsersRound, label: "תצוגת לקוחות", onClick: () => { setSelectedClientId(null); openPanel("clients"); } },
+    { icon: UsersRound, label: "תצוגת לקוחות", onClick: openClients },
     { icon: Users, label: "תצוגת שוכרים", onClick: () => setDialog("tenants") },
     { icon: Building2, label: "כל הנכסים", onClick: () => setDialog("properties") },
     { icon: FileBarChart, label: "דוח שנתי", onClick: () => openPanel("report") },
@@ -296,8 +312,11 @@ export default function ManagerDashboard() {
     setTab(next);
   };
 
-  const rentByProperty = (propertyId: string) =>
-    leases.find((l) => l.propertyId === propertyId && l.active)?.monthlyRent;
+  const rentByProperty = (property: Property) => {
+    const lease = leases.find((l) => l.propertyId === property.id && l.active);
+    const rent = propertyMonthlyIncome(property, lease);
+    return rent > 0 ? rent : undefined;
+  };
 
   const panelTitles: Record<Exclude<HomePanel, "clients">, string> = {
     tickets: "קריאות ותקלות",
@@ -310,13 +329,6 @@ export default function ManagerDashboard() {
 
   return (
     <main className="app-shell flex min-h-[100dvh] flex-col bg-surface-muted">
-      {tab === "dashboard" && criticalCount > 0 && (
-        <AlertStrip
-          title={`${criticalCount} מועדים קריטיים ב-90 הימים הקרובים`}
-          onClick={() => setDialog("critical")}
-        />
-      )}
-
       {tab === "dashboard" ? (
         <div className="dusk-header">
           <DashboardTopBar
@@ -330,26 +342,14 @@ export default function ManagerDashboard() {
           <div className="px-4 pb-6 pt-1">
             <HeroStatCard
               tone="glass"
-              label="הכנסות חודשיות"
-              value={formatCurrency(monthlyIncome)}
-              subtitle={`תפוסה ${occupancy}% · ${rentedCount}/${properties.length} מושכרים · ${landlords.length} לקוחות`}
-              data={incomeSeries.length > 1 ? incomeSeries : undefined}
-              trendPercent={incomeGrowth}
-              trendLabel={
-                joinDate
-                  ? `גידול בהכנסות מאז תחילת הניהול · ${formatMonthYear(joinDate)}`
-                  : "לפי מחשבון תשואה"
-              }
-              chartStartLabel={
-                firstYield && joinDate
-                  ? `התחלה ${formatMonthYear(joinDate)} · ${formatCurrency(firstYield.monthlyIncome)}`
-                  : undefined
-              }
-              chartEndLabel={
-                lastYield
-                  ? `${lastYield.incomeGrowthPercent >= 0 ? "+" : ""}${formatPercent(lastYield.incomeGrowthPercent)} · ${formatCurrency(lastYield.monthlyIncome)}`
-                  : undefined
-              }
+              label="שווי נכסים כולל"
+              value={formatCurrency(portfolioValue)}
+              subtitle={`תפוסה ${occupancy}% · שווי לפי תשואה ${formatPercent(PORTFOLIO_YIELD_RATE * 100)}`}
+              secondary={{
+                label: "הכנסה חודשית",
+                value: formatCurrency(monthlyIncome),
+                sublabel: "סך דמי שכירות מכל הנכסים",
+              }}
             />
           </div>
         </div>
@@ -391,10 +391,7 @@ export default function ManagerDashboard() {
                 label="לקוחות"
                 value={landlords.length}
                 sublabel={`${tenants.length} שוכרים פעילים`}
-                onClick={() => {
-                  setSelectedClientId(null);
-                  openPanel("clients");
-                }}
+                onClick={openClients}
               />
             </div>
 
@@ -418,7 +415,10 @@ export default function ManagerDashboard() {
               }))}
             />
 
-            <section className="space-y-1 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
+            <section
+              ref={clientsSectionRef}
+              className="scroll-mt-4 space-y-1 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border"
+            >
               {homePanel === "clients" ? (
                 selectedClient ? (
                   <>
@@ -435,18 +435,33 @@ export default function ManagerDashboard() {
                         <ArrowRight className="h-4 w-4" />
                         לקוחות
                       </button>
-                      {can(role, "clients.create") && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAddForLandlordId(selectedClient.id);
-                            setDialog("add");
-                          }}
-                          className="inline-flex items-center gap-1 rounded-full bg-orange px-3.5 py-1.5 text-sm font-bold text-white shadow-[0_8px_18px_-10px_rgba(242,106,33,0.8)] transition-colors hover:bg-orange-dark"
-                        >
-                          + נכס
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {can(role, "clients.delete") && (
+                          <button
+                            type="button"
+                            aria-label={`מחיקת ${selectedClient.fullName}`}
+                            onClick={() =>
+                              setPendingLandlord({ id: selectedClient.id, name: selectedClient.fullName })
+                            }
+                            className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-bold text-danger transition-colors hover:bg-danger/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            מחיקה
+                          </button>
+                        )}
+                        {can(role, "clients.create") && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAddForLandlordId(selectedClient.id);
+                              setDialog("add");
+                            }}
+                            className="inline-flex items-center gap-1 rounded-full bg-orange px-3.5 py-1.5 text-sm font-bold text-white shadow-[0_8px_18px_-10px_rgba(242,106,33,0.8)] transition-colors hover:bg-orange-dark"
+                          >
+                            + נכס
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="mb-4 flex items-center gap-3 rounded-2xl bg-gradient-to-l from-orange-soft/70 to-surface-muted px-3.5 py-3.5">
@@ -481,7 +496,7 @@ export default function ManagerDashboard() {
                     />
                     <div className="space-y-1">
                       {visibleProperties.map((p) => {
-                        const rent = rentByProperty(p.id);
+                        const rent = rentByProperty(p);
                         const tenant = tenants.find((t) => t.id === p.tenantId);
                         return (
                           <PropertyRow
@@ -531,6 +546,11 @@ export default function ManagerDashboard() {
                               setPropertyQuery("");
                               setSelectedClientId(l.id);
                             }}
+                            onDelete={
+                              can(role, "clients.delete")
+                                ? () => setPendingLandlord({ id: l.id, name: l.fullName })
+                                : undefined
+                            }
                           />
                         );
                       })}
@@ -578,7 +598,20 @@ export default function ManagerDashboard() {
 
         {tab === "documents" && (
           <div className="space-y-3 px-4 pb-8 pt-2">
-            <SectionHeader title="מסמכים" />
+            <SectionHeader
+              title="מסמכים"
+              action={
+                <button
+                  type="button"
+                  onClick={() => onNav("dashboard")}
+                  aria-label="חזרה לדשבורד"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-surface-muted px-3 py-1.5 text-sm font-bold text-navy transition-colors hover:bg-orange-soft hover:text-orange"
+                >
+                  <ArrowRight className="h-4 w-4" />
+                  חזרה
+                </button>
+              }
+            />
             <DocumentsDialog
               inline
               searchable
@@ -651,9 +684,14 @@ export default function ManagerDashboard() {
       <CriticalDatesDialog open={dialog === "critical"} onClose={() => setDialog(null)} />
 
       <PropertyDetailDialog
-        property={detailProperty}
+        property={
+          detailProperty
+            ? (properties.find((p) => p.id === detailProperty.id) ?? null)
+            : null
+        }
         onClose={() => setDetailProperty(null)}
         canConfirmClearance={can(role, "payments.confirm")}
+        collapsible
         onEdit={
           can(role, "clients.edit")
             ? (p) => {
@@ -664,6 +702,25 @@ export default function ManagerDashboard() {
         }
       />
       <EditPropertyModal property={editProperty} onClose={() => setEditProperty(null)} />
+      <ConfirmDialog
+        open={pendingLandlord != null}
+        onClose={() => setPendingLandlord(null)}
+        onConfirm={() => {
+          if (!pendingLandlord) return;
+          deleteLandlord(pendingLandlord.id);
+          setSelectedClientId(null);
+          setPendingLandlord(null);
+          setToast("המשכיר נמחק");
+        }}
+        title="מחיקת משכיר"
+        description={
+          pendingLandlord
+            ? `למחוק את ${pendingLandlord.name}? יימחקו גם הנכסים, השוכרים והשכירויות הקשורים. לא ניתן לשחזר.`
+            : ""
+        }
+        confirmLabel="מחיקה"
+      />
+      <Toast message={toast} onDone={() => setToast(null)} />
     </main>
   );
 }

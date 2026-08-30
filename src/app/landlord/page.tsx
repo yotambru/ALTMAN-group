@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  ArrowRight,
   Building2,
   CalendarCheck,
   CalendarDays,
@@ -9,16 +10,12 @@ import {
   Home,
   MessagesSquare,
   PenLine,
-  TrendingUp,
-  UserPlus,
   Vault,
   Wrench,
 } from "lucide-react";
 import { DashboardTopBar } from "@/components/dashboard/DashboardTopBar";
 import { HeroStatCard } from "@/components/dashboard/HeroStatCard";
 import { FocusActions } from "@/components/dashboard/FocusActions";
-import { AlertStrip } from "@/components/dashboard/AlertStrip";
-import { IncomeGrowthChart } from "@/components/dashboard/IncomeGrowthChart";
 import { PropertyRow } from "@/components/dashboard/PropertyCard";
 import { PropertyStatusFilter } from "@/components/dashboard/PropertyStatusFilter";
 import { BottomNavigation } from "@/components/dashboard/BottomNavigation";
@@ -32,7 +29,6 @@ import { ChatPanel } from "@/features/chat/ChatPanel";
 import { DocumentsDialog } from "@/features/documents/DocumentsDialog";
 import { PropertyDetailDialog } from "@/features/properties/PropertyDetailDialog";
 import { PropertyListDialog } from "@/features/properties/PropertyListDialog";
-import { AddTenantModal } from "@/features/landlord/AddTenantModal";
 import { RentalsDialog } from "@/features/leases/RentalsDialog";
 import { AnnualReportDialog } from "@/features/reports/AnnualReportDialog";
 import { TicketsDialog } from "@/features/maintenance/TicketsDialog";
@@ -41,20 +37,16 @@ import { useSession } from "@/lib/useSession";
 import { useData } from "@/lib/store";
 import { getCriticalDates } from "@/lib/alerts";
 import {
-  buildPortfolioYieldHistory,
-  buildPortfolioYieldSeries,
-  formatPercent,
-  impliedPortfolioValue,
-  monthlyRentalIncome,
   occupancyPercent,
-  portfolioIncomeGrowth,
-  portfolioJoinDate,
+  formatPercent,
+  propertyMonthlyIncome,
+  summarizePortfolio,
   PORTFOLIO_YIELD_RATE,
 } from "@/lib/portfolio";
-import { formatCurrency, formatMonthYear } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
-type Dialog = "list" | "rentals" | "critical" | "addTenant" | null;
+type Dialog = "list" | "rentals" | "critical" | null;
 type HomePanel = "properties" | "docs" | "report" | "chat" | "tickets";
 
 export default function LandlordDashboard() {
@@ -73,20 +65,16 @@ export default function LandlordDashboard() {
 
   const myProperties = properties.filter((p) => p.landlordId === landlordId);
   const myPropertyIds = myProperties.map((p) => p.id);
-  const myLeases = leases.filter((l) => l.landlordId === landlordId && l.active);
-  const expectedIncome = monthlyRentalIncome(myLeases);
-  const portfolioValue = impliedPortfolioValue(expectedIncome);
+  const myLeases = leases.filter(
+    (l) => l.active && (l.landlordId === landlordId || myPropertyIds.includes(l.propertyId)),
+  );
+  const { monthlyIncome: expectedIncome, portfolioValue } = summarizePortfolio(
+    myProperties,
+    myLeases,
+  );
   const criticalDates = getCriticalDates(myLeases, myProperties);
-  const criticalCount = criticalDates.length;
   const leaseRenewals = criticalDates.filter((d) => d.kind === "lease_end" && d.daysLeft <= 30).length;
   const occupancy = occupancyPercent(myProperties);
-  const yieldHistory = buildPortfolioYieldHistory(myLeases);
-  const yieldSeries = buildPortfolioYieldSeries(myLeases);
-  const incomeSeries = yieldSeries.map((p) => p.monthlyIncome);
-  const incomeGrowth = portfolioIncomeGrowth(myLeases);
-  const joinDate = portfolioJoinDate(myLeases);
-  const firstYield = yieldSeries[0];
-  const lastYield = yieldSeries.at(-1);
   const rentedCount = myProperties.filter((p) => p.status === "rented").length;
   const openTicketCount = tickets.filter(
     (t) =>
@@ -146,7 +134,6 @@ export default function LandlordDashboard() {
 
   const menuItems: MobileMenuItem[] = [
     { icon: Building2, label: "תצוגת נכסים", onClick: () => openPanel("properties") },
-    { icon: UserPlus, label: "שוכר חדש", onClick: () => setDialog("addTenant") },
     { icon: FileText, label: "שכירויות", onClick: () => setDialog("rentals") },
     { icon: Vault, label: "כספת מסמכים", onClick: () => setTab("documents") },
     { icon: FileText, label: "דוח שנתי", onClick: () => openPanel("report") },
@@ -178,13 +165,6 @@ export default function LandlordDashboard() {
 
   return (
     <main className="app-shell flex min-h-[100dvh] flex-col bg-surface-muted">
-      {tab === "dashboard" && criticalCount > 0 && (
-        <AlertStrip
-          title={`${criticalCount} מועדים קריטיים ב-90 הימים הקרובים`}
-          onClick={() => setDialog("critical")}
-        />
-      )}
-
       {tab === "dashboard" ? (
         <div className="dusk-header">
           <DashboardTopBar
@@ -201,23 +181,6 @@ export default function LandlordDashboard() {
               label="שווי נכסים כולל"
               value={formatCurrency(portfolioValue)}
               subtitle={`תפוסה ${occupancy}% · שווי לפי תשואה ${formatPercent(PORTFOLIO_YIELD_RATE * 100)}`}
-              data={incomeSeries.length > 1 ? incomeSeries : undefined}
-              trendPercent={incomeGrowth}
-              trendLabel={
-                joinDate
-                  ? `גידול בהכנסות מאז ההצטרפות · ${formatMonthYear(joinDate)}`
-                  : "גידול בדמי שכירות"
-              }
-              chartStartLabel={
-                firstYield && joinDate
-                  ? `הצטרפות ${formatMonthYear(joinDate)} · ${formatCurrency(firstYield.monthlyIncome)}`
-                  : undefined
-              }
-              chartEndLabel={
-                lastYield
-                  ? `${lastYield.incomeGrowthPercent >= 0 ? "+" : ""}${formatPercent(lastYield.incomeGrowthPercent)} · ${formatCurrency(lastYield.monthlyIncome)}`
-                  : undefined
-              }
               secondary={{
                 label: "הכנסה חודשית",
                 value: formatCurrency(expectedIncome),
@@ -245,21 +208,6 @@ export default function LandlordDashboard() {
                 value={myProperties.length}
                 sublabel={`${rentedCount} מושכרים · תפוסה ${occupancy}%`}
                 onClick={() => openPanel("properties")}
-              />
-              <MetricCard
-                icon={TrendingUp}
-                label="גידול בהכנסות"
-                value={
-                  incomeGrowth != null
-                    ? `${incomeGrowth >= 0 ? "+" : ""}${formatPercent(incomeGrowth)}`
-                    : "—"
-                }
-                sublabel={
-                  incomeGrowth != null && joinDate
-                    ? `מאז ההצטרפות · ${formatMonthYear(joinDate)}`
-                    : "מתעדכן עם דמי השכירות"
-                }
-                onClick={() => openPanel("report")}
               />
               <MetricCard
                 icon={CalendarCheck}
@@ -313,10 +261,6 @@ export default function LandlordDashboard() {
               ]}
             />
 
-            {homePanel === "properties" && yieldHistory.length >= 2 && (
-              <IncomeGrowthChart points={yieldHistory} />
-            )}
-
             <section className="space-y-1 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
               {homePanel === "properties" ? (
                 <>
@@ -331,12 +275,14 @@ export default function LandlordDashboard() {
                     {visibleProperties.map((property) => {
                       const lease = myLeases.find((l) => l.propertyId === property.id);
                       const tenant = myTenants.find((t) => t.id === property.tenantId);
+                      const rent = propertyMonthlyIncome(property, lease);
                       return (
                         <PropertyRow
                           key={property.id}
                           property={property}
-                          rent={lease?.monthlyRent}
+                          rent={rent > 0 ? rent : undefined}
                           tenantName={tenant?.fullName}
+                          detailsLabel="ראה עוד"
                           onClick={() => setDetailProperty(property)}
                         />
                       );
@@ -385,7 +331,20 @@ export default function LandlordDashboard() {
 
         {tab === "documents" && (
           <div className="space-y-3 px-4 pb-8 pt-2">
-            <SectionHeader title="מסמכים" />
+            <SectionHeader
+              title="מסמכים"
+              action={
+                <button
+                  type="button"
+                  onClick={() => onNav("dashboard")}
+                  aria-label="חזרה לדשבורד"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-surface-muted px-3 py-1.5 text-sm font-bold text-navy transition-colors hover:bg-orange-soft hover:text-orange"
+                >
+                  <ArrowRight className="h-4 w-4" />
+                  חזרה
+                </button>
+              }
+            />
             <DocumentsDialog
               inline
               searchable
@@ -443,16 +402,12 @@ export default function LandlordDashboard() {
         }}
       />
       <RentalsDialog open={dialog === "rentals"} onClose={() => setDialog(null)} landlordId={landlordId} />
-      <AddTenantModal
-        open={dialog === "addTenant"}
-        onClose={() => setDialog(null)}
-        properties={myProperties}
-      />
       <CriticalDatesDialog open={dialog === "critical"} onClose={() => setDialog(null)} landlordId={landlordId} />
       <PropertyDetailDialog
         property={detailProperty}
         onClose={() => setDetailProperty(null)}
         canConfirmClearance
+        collapsible
       />
     </main>
   );

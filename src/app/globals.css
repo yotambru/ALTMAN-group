@@ -169,7 +169,7 @@ html.plt-capacitor .app-shell {
   overflow: hidden;
   color: #fff;
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid color-mix(in srgb, var(--orange) 34%, transparent);
   background: linear-gradient(
     160deg,
     rgba(255, 255, 255, 0.14) 0%,

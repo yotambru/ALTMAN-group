@@ -2,6 +2,8 @@ import type { AppDocument, DocumentFolder, DocumentType } from "@/types";
 
 export const ROOT_DOCUMENT_FOLDERS: DocumentFolder[] = [
   "lease",
+  "management",
+  "landlord_id",
   "id_photos",
   "meter_photos",
   "appendices",
@@ -11,7 +13,9 @@ export const ROOT_DOCUMENT_FOLDERS: DocumentFolder[] = [
 export const DOCUMENT_FOLDER_LABEL: Record<DocumentFolder, string> = {
   lease: "הסכם שכירות",
   lease_renewal: "חידוש הסכם שכירות",
-  id_photos: "צילומי ת״ז",
+  management: "הסכמי ניהול",
+  landlord_id: "צילומי ת״ז משכירים",
+  id_photos: "צילומי ת״ז שוכרים",
   guarantor_id: "צילומי ת״ז ערבים",
   meter_photos: "צילומי מונים",
   appendices: "נספחים",
@@ -46,6 +50,8 @@ export function documentFolderAncestors(folder: DocumentFolder): DocumentFolder[
 const FOLDER_TYPE: Record<DocumentFolder, DocumentType> = {
   lease: "contract",
   lease_renewal: "contract",
+  management: "approval",
+  landlord_id: "id",
   id_photos: "id",
   guarantor_id: "id",
   meter_photos: "id",
@@ -57,17 +63,32 @@ export function folderToDocumentType(folder: DocumentFolder): DocumentType {
   return FOLDER_TYPE[folder];
 }
 
+const FILE_LIKE_NAME = /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif|pdf)\b/i;
+
+/**
+ * File pickers keep camera/screenshot filenames. Prefer the Hebrew label so
+ * folder inference still works if `documents.folder` is missing on the server.
+ */
+export function intakeDocumentName(semanticName: string, fileName?: string | null): string {
+  const raw = fileName?.trim() ?? "";
+  if (!raw || FILE_LIKE_NAME.test(raw)) return semanticName;
+  return raw;
+}
+
 export function inferDocumentFolder(
-  doc: Pick<AppDocument, "type" | "name" | "folder">,
+  doc: Pick<AppDocument, "type" | "name" | "folder" | "tenantId">,
 ): DocumentFolder {
+  const name = doc.name ?? "";
+  // Name-based child folders win over a generic parent stamp (schema lag).
+  if (doc.type === "id" && /ערב/.test(name)) return "guarantor_id";
+  if (doc.type === "contract" && /חידוש/.test(name)) return "lease_renewal";
+  if (/הסכם\s+ניהול/.test(name)) return "management";
+  if (doc.type === "id" && /משכיר/.test(name)) return "landlord_id";
+  // Legacy management agreements had no tenant link or folder.
+  if (doc.type === "contract" && !doc.tenantId && !doc.folder) return "management";
   if (doc.folder) return doc.folder;
-  const name = doc.name;
-  if (doc.type === "contract") {
-    return /חידוש/.test(name) ? "lease_renewal" : "lease";
-  }
-  if (doc.type === "id") {
-    return /ערב/.test(name) ? "guarantor_id" : "id_photos";
-  }
+  if (doc.type === "contract") return "lease";
+  if (doc.type === "id") return "id_photos";
   if (doc.type === "protocol") return "entry_protocol";
   if (/מונה/.test(name)) return "meter_photos";
   return "appendices";

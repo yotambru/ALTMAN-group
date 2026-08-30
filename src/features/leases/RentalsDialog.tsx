@@ -5,7 +5,9 @@ import { Modal } from "@/components/ui/Modal";
 import { PropertyImage } from "@/components/brand/PropertyImage";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useData } from "@/lib/store";
-import { formatCurrency, formatDateDots } from "@/lib/utils";
+import { nextPaymentDate } from "@/lib/payment-dates";
+import { currentMonthlyRent } from "@/lib/portfolio";
+import { formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
 
 interface RentalsDialogProps {
   open: boolean;
@@ -40,14 +42,16 @@ export function RentalsDialog({ open, onClose, landlordId }: RentalsDialogProps)
                 </p>
                 <p className="truncate text-xs text-text-muted">שוכר: {tenant?.fullName ?? "—"}</p>
               </div>
-              <span className="text-sm font-extrabold text-orange">{formatCurrency(lease.monthlyRent)}</span>
+              <span className="text-sm font-extrabold text-orange">{formatCurrency(currentMonthlyRent(lease))}</span>
             </div>
             <div className="mt-2 flex items-center justify-between text-xs text-text-muted">
               <span className="flex items-center gap-1.5">
                 <CalendarClock className="h-4 w-4" />
-                תשלום הבא: {formatDateDots(lease.nextPaymentDate)}
+                תשלום הבא: {formatDateDots(nextPaymentDate(lease) ?? "")}
               </span>
-              <StatusBadge tone="navy">עד {formatDateDots(lease.endDate)}</StatusBadge>
+              <StatusBadge tone="navy">
+                עד {isValidIsoDate(lease.endDate) ? formatDateDots(lease.endDate) : "ללא סיום"}
+              </StatusBadge>
             </div>
           </div>
         ))}

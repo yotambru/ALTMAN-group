@@ -58,7 +58,7 @@ export function MobileMenu({
 
   const defaults: MobileMenuItem[] = [
     { icon: LayoutDashboard, label: "דשבורד" },
-    { icon: Building2, label: "הנכסים שלי" },
+    ...(role === "tenant" ? [] : [{ icon: Building2, label: "הנכסים שלי" }]),
     { icon: FileSignature, label: "מסמכים וחתימות" },
     { icon: Wrench, label: "תקלות וקריאות שירות" },
     { icon: MessageSquareText, label: "צ׳אט" },

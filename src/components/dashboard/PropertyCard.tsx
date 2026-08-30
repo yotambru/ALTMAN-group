@@ -11,7 +11,7 @@ import type { Property } from "@/types";
 import { PropertyImage } from "@/components/brand/PropertyImage";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { cn, formatCurrency } from "@/lib/utils";
-import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES } from "@/lib/portfolio";
+import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES, propertyDisplayValue } from "@/lib/portfolio";
 
 const statusLabels = PROPERTY_STATUS_LABELS;
 
@@ -89,7 +89,7 @@ export function PropertyCard({
         <Stat
           icon={<ReceiptText className="h-4 w-4" />}
           label="שווי נכס"
-          value={formatCurrency(property.value)}
+          value={formatCurrency(propertyDisplayValue(property))}
         />
         <Stat
           icon={<FileText className="h-4 w-4" />}
@@ -134,6 +134,7 @@ export function PropertyRow({
   meta,
   rent,
   tenantName,
+  detailsLabel,
   onClick,
 }: {
   property: Property;
@@ -141,6 +142,8 @@ export function PropertyRow({
   meta?: string;
   rent?: number;
   tenantName?: string;
+  /** Visible action label for dashboards that expose the full detail dialog. */
+  detailsLabel?: string;
   onClick?: () => void;
 }) {
   const tone = PROPERTY_STATUS_TONES[property.status];
@@ -179,7 +182,7 @@ export function PropertyRow({
         {rent !== undefined || tenantName || meta ? (
           <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[0.78rem]">
             <span className="font-bold tabular-nums text-navy/85">
-              {formatCurrency(property.value)}
+              {formatCurrency(propertyDisplayValue(property, rent))}
             </span>
             {rent !== undefined && (
               <>
@@ -210,7 +213,13 @@ export function PropertyRow({
         )}
       </div>
 
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-surface-muted text-navy/35 transition-colors group-hover:bg-orange-soft group-hover:text-orange">
+      <span
+        className={cn(
+          "flex shrink-0 items-center justify-center gap-1 rounded-full bg-surface-muted text-navy/35 transition-colors group-hover:bg-orange-soft group-hover:text-orange",
+          detailsLabel ? "px-2.5 py-1.5 text-[0.68rem] font-bold" : "h-8 w-8",
+        )}
+      >
+        {detailsLabel && <span>{detailsLabel}</span>}
         <ChevronLeft className="h-4 w-4" strokeWidth={2} />
       </span>
     </button>
@@ -250,7 +259,7 @@ export function PropertyMiniCard({
       <div className="px-3 py-2.5">
         <p className="text-[0.7rem] text-text-muted">שווי משוער</p>
         <p className="text-sm font-extrabold text-navy">
-          {formatCurrency(property.value)}
+          {formatCurrency(propertyDisplayValue(property))}
         </p>
       </div>
     </button>

@@ -85,9 +85,13 @@ export async function authenticateUser(
   if (demo.ok) {
     const live =
       users.find((u) => u.id === demo.user.id) ??
-      findUserByEmail(users, identifier) ??
-      demo.user;
-    return { ok: true, user: live };
+      findUserByEmail(users, identifier);
+    if (live) return { ok: true, user: live };
+    // Staff demo accounts stay usable; deleted landlord/tenant logins must not.
+    if (role === "manager" || role === "assistant") {
+      return { ok: true, user: demo.user };
+    }
+    return { ok: false, error: "שם משתמש או סיסמה שגויים לתפקיד שנבחר." };
   }
 
   if (!identifier.trim() || !password) {

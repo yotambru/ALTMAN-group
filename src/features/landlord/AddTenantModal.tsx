@@ -14,6 +14,7 @@ import {
 } from "@/lib/lease-periods";
 import { can } from "@/lib/permissions";
 import { useData } from "@/lib/store";
+import { intakeDocumentName } from "@/lib/document-folders";
 import { fileToDataUrl } from "@/lib/utils";
 import type { DocumentFolder, DocumentType, Property } from "@/types";
 
@@ -141,7 +142,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     }> = [];
     if (leaseFile) {
       documents.push({
-        name: leaseFile.name.trim() || "הסכם שכירות",
+        name: intakeDocumentName("הסכם שכירות", leaseFile.name),
         type: "contract",
         folder: "lease",
         fileDataUrl: leaseFile.dataUrl,
@@ -149,7 +150,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     }
     if (idPhoto) {
       documents.push({
-        name: idPhoto.name.trim() || "תצלום תעודת זהות — שוכר",
+        name: intakeDocumentName("תצלום תעודת זהות — שוכר", idPhoto.name),
         type: "id",
         folder: "id_photos",
         fileDataUrl: idPhoto.dataUrl,
@@ -157,7 +158,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     }
     if (guarantorIdPhoto1) {
       documents.push({
-        name: guarantorIdPhoto1.name.trim() || "תצלום תעודת זהות — ערב 1",
+        name: intakeDocumentName("תצלום תעודת זהות — ערב 1", guarantorIdPhoto1.name),
         type: "id",
         folder: "guarantor_id",
         fileDataUrl: guarantorIdPhoto1.dataUrl,
@@ -165,7 +166,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     }
     if (guarantorIdPhoto2) {
       documents.push({
-        name: guarantorIdPhoto2.name.trim() || "תצלום תעודת זהות — ערב 2",
+        name: intakeDocumentName("תצלום תעודת זהות — ערב 2", guarantorIdPhoto2.name),
         type: "id",
         folder: "guarantor_id",
         fileDataUrl: guarantorIdPhoto2.dataUrl,

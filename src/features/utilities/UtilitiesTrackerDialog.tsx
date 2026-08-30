@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { BellRing, CheckCircle2, Clock, FileText, ShieldCheck, X } from "lucide-react";
+import { useState } from "react";
+import { BellRing, CheckCircle2, Clock, ShieldCheck } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { DocumentPreviewDialog } from "@/features/documents/DocumentPreviewDialog";
 import { useData, utilityLabelHe } from "@/lib/store";
 import {
   awaitingManagementApproval,
@@ -32,18 +33,6 @@ export function UtilitiesTrackerDialog({ open, onClose }: UtilitiesTrackerDialog
   } = useData();
 
   const [preview, setPreview] = useState<{ title: string; doc?: AppDocument } | null>(null);
-
-  useEffect(() => {
-    if (!preview) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        setPreview(null);
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  }, [preview]);
 
   const handleClose = () => {
     setPreview(null);
@@ -156,58 +145,15 @@ export function UtilitiesTrackerDialog({ open, onClose }: UtilitiesTrackerDialog
         </div>
       </Modal>
 
-      {open && preview && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center"
-          role="dialog"
-          aria-modal="true"
-          aria-label={preview.title}
-        >
-          <button
-            aria-label="סגירה"
-            className="absolute inset-0 bg-navy-dark/50 backdrop-blur-[2px]"
-            onClick={() => setPreview(null)}
-          />
-          <div className="relative z-10 w-full max-w-[30rem] rounded-t-2xl bg-surface p-5 shadow-lg sm:rounded-2xl">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-bold text-navy">{preview.title}</h3>
-                <p className="mt-1 text-sm text-text-muted">הטופס שהועלה ע״י השוכר</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreview(null)}
-                aria-label="סגירה"
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-text-muted transition-colors hover:bg-surface-muted"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            {preview.doc?.fileDataUrl ? (
-              preview.doc.fileDataUrl.startsWith("data:image/") ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={preview.doc.fileDataUrl}
-                  alt={preview.title}
-                  className="max-h-[55vh] w-full rounded-xl object-contain ring-1 ring-border"
-                />
-              ) : (
-                <iframe
-                  title={preview.title}
-                  src={preview.doc.fileDataUrl}
-                  className="h-[55vh] w-full rounded-xl ring-1 ring-border"
-                />
-              )
-            ) : (
-              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-10 text-center">
-                <FileText className="h-8 w-8 text-text-muted" />
-                <p className="text-sm font-semibold text-navy">טרם הועלה מסמך</p>
-                <p className="text-xs text-text-muted">כשהשוכר יעלה טופס, הוא יופיע כאן.</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <DocumentPreviewDialog
+        open={open && preview !== null}
+        onClose={() => setPreview(null)}
+        document={preview?.doc}
+        title={preview?.title}
+        description="הטופס שהועלה ע״י השוכר"
+        emptyTitle="טרם הועלה מסמך"
+        emptyDescription="כשהשוכר יעלה טופס, הוא יופיע כאן."
+      />
     </>
   );
 }

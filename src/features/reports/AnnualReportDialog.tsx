@@ -17,6 +17,7 @@ import {
   monthlyManagementFee,
   occupancyPercent,
   PORTFOLIO_YIELD_RATE,
+  propertyMonthlyIncome,
 } from "@/lib/portfolio";
 import { fileToDataUrl, formatCurrency, formatDateDots } from "@/lib/utils";
 
@@ -47,11 +48,14 @@ export function AnnualReportDialog({
 
   const rows = owned.map((property) => {
     const propertyLeases = leases.filter(
-      (l) => l.propertyId === property.id && l.startDate.slice(0, 4) <= String(year) && l.endDate.slice(0, 4) >= String(year),
+      (l) =>
+        l.propertyId === property.id &&
+        l.startDate.slice(0, 4) <= String(year) &&
+        (!l.endDate?.trim() || l.endDate.slice(0, 4) >= String(year)),
     );
     // Calendar-year rent: sum months covered by any overlapping lease (prototype: use active / overlapping monthly × months in year).
     const lease = activeLeases.find((l) => l.propertyId === property.id) ?? propertyLeases[0];
-    const yearly = (lease?.monthlyRent ?? 0) * 12;
+    const yearly = propertyMonthlyIncome(property, lease) * 12;
     const landlord = landlordsById.get(property.landlordId);
     const yearlyManagementFee = lease
       ? monthlyManagementFee(lease, landlord?.managementFeePercent) * 12

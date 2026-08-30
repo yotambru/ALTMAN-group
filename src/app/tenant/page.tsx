@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AirVent,
+  Bell,
   CalendarClock,
   CalendarDays,
   CheckCircle2,
@@ -10,11 +11,13 @@ import {
   Droplets,
   FileText,
   Flame,
+  Home,
   Lock,
   MessagesSquare,
   PenLine,
   ShieldAlert,
   ShieldCheck,
+  Settings,
   Wallet,
   Wrench,
   Zap,
@@ -26,7 +29,7 @@ import { FocusActions } from "@/components/dashboard/FocusActions";
 import { AlertStrip } from "@/components/dashboard/AlertStrip";
 import { BottomNavigation } from "@/components/dashboard/BottomNavigation";
 import { MetricCard } from "@/components/dashboard/MetricCard";
-import { MobileMenu } from "@/components/dashboard/MobileMenu";
+import { MobileMenu, type MobileMenuItem } from "@/components/dashboard/MobileMenu";
 import { NotificationsTab } from "@/components/dashboard/NotificationsTab";
 import { ProfileTab } from "@/components/dashboard/ProfileTab";
 import { appBottomNavItems, type AppTab } from "@/components/dashboard/appNav";
@@ -43,6 +46,7 @@ import { UtilityAccountDetails } from "@/features/utilities/UtilityAccountDetail
 import { useSession } from "@/lib/useSession";
 import { useData, utilityLabelHe } from "@/lib/store";
 import { storage } from "@/lib/storage";
+import { inferDocumentFolder } from "@/lib/document-folders";
 import {
   acFilterDue,
   awaitingManagementApproval,
@@ -51,6 +55,8 @@ import {
   pendingOnboardingCount,
   pendingOnboardingLabels,
 } from "@/lib/alerts";
+import { currentMonthlyRent } from "@/lib/portfolio";
+import { nextPaymentDate } from "@/lib/payment-dates";
 import {
   daysUntil,
   fileToDataUrl,
@@ -105,7 +111,12 @@ export default function TenantDashboard() {
 
   const firstName = session.fullName.trim().split(/\s+/)[0] || session.fullName;
   const unread = notifications.filter((n) => !n.read && (n.forUserId === user.id || n.forRole === "tenant")).length;
-  const myDocs = documents.filter((d) => d.ownerUserId === user.id || (d.propertyId && d.propertyId === property?.id));
+  const myDocs = documents.filter((d) => {
+    const belongsToTenant = d.ownerUserId === user.id || (d.propertyId && d.propertyId === property?.id);
+    if (!belongsToTenant) return false;
+    const folder = inferDocumentFolder(d);
+    return folder !== "management" && folder !== "landlord_id";
+  });
   const tenantProperties = property ? [property] : [];
 
   const [tab, setTab] = useState<AppTab>("dashboard");
@@ -173,10 +184,12 @@ export default function TenantDashboard() {
 
   if (!property) return null;
 
-  const paymentDays = lease && isValidIsoDate(lease.nextPaymentDate)
-    ? daysUntil(lease.nextPaymentDate)
+  const nextPayment = lease ? nextPaymentDate(lease) : undefined;
+  const paymentDays = nextPayment
+    ? daysUntil(nextPayment)
     : Number.POSITIVE_INFINITY;
   const leaseEnd = lease && isValidIsoDate(lease.endDate) ? lease.endDate : undefined;
+  const monthlyRent = lease ? currentMonthlyRent(lease) : 0;
   const contractDays = leaseEnd ? daysUntil(leaseEnd) : Number.POSITIVE_INFINITY;
   const acLast = onboarding?.acFilterLastCleaned ?? onboarding?.moveInDate;
   const acNext = acLast ? new Date(new Date(acLast).getTime() + 90 * 86400000).toISOString() : undefined;
@@ -244,6 +257,23 @@ export default function TenantDashboard() {
     docs: "מסמכים לחתימה",
   };
 
+  const menuItems: MobileMenuItem[] = [
+    { icon: Home, label: "דשבורד", onClick: () => onNav("dashboard") },
+    { icon: FileText, label: "מסמכים וחתימות", onClick: () => onNav("documents") },
+    {
+      icon: Wrench,
+      label: "תקלות וקריאות שירות",
+      onClick: guard("לצפות במעקב תקלות", () => openPanel("tickets")),
+    },
+    {
+      icon: MessagesSquare,
+      label: "צ׳אט",
+      onClick: guard("להשתמש בצ׳אט עם המנהל", () => openPanel("chat")),
+    },
+    { icon: Bell, label: "התראות", onClick: () => onNav("notifications") },
+    { icon: Settings, label: "הגדרות", onClick: () => setTab("profile") },
+  ];
+
   if (!ready) return null;
 
   return (
@@ -286,12 +316,12 @@ export default function TenantDashboard() {
             <HeroStatCard
               tone="glass"
               label="דמי שכירות חודשיים"
-              value={formatCurrency(lease?.monthlyRent ?? 0)}
+              value={formatCurrency(monthlyRent)}
               subtitle={
                 lease
                   ? `תשלום הבא · ${
-                      isValidIsoDate(lease.nextPaymentDate)
-                        ? formatDateSlashes(lease.nextPaymentDate)
+                      nextPayment
+                        ? formatDateSlashes(nextPayment)
                         : "—"
                     }`
                   : undefined
@@ -315,8 +345,8 @@ export default function TenantDashboard() {
                 icon={Wallet}
                 label="תשלום הבא"
                 value={
-                  lease && isValidIsoDate(lease.nextPaymentDate)
-                    ? formatDateSlashes(lease.nextPaymentDate)
+                  nextPayment
+                    ? formatDateSlashes(nextPayment)
                     : "—"
                 }
                 onClick={() => setDialog("contract")}
@@ -440,7 +470,9 @@ export default function TenantDashboard() {
               <div className="grid grid-cols-5 gap-2">
                 {utilityOrder.map((u) => {
                   const item = onboarding?.utilities.find((x) => x.utility === u);
-                  const uploaded = item?.status === "submitted" || item?.status === "approved";
+                  const uploaded = Boolean(
+                    onboarding && (item?.status === "submitted" || item?.status === "approved"),
+                  );
                   const Icon = utilityIcon[u];
                   return (
                     <button
@@ -460,30 +492,35 @@ export default function TenantDashboard() {
               </div>
 
               <button
-                onClick={() =>
-                  onboarding?.insurance.status === "pending" && startUpload("insurance")
-                }
-                disabled={onboarding?.insurance.status !== "pending"}
+                onClick={() => {
+                  const pending = !onboarding || onboarding.insurance.status === "pending";
+                  if (pending) startUpload("insurance");
+                }}
+                disabled={Boolean(onboarding && onboarding.insurance.status !== "pending")}
                 className={
                   "flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-start disabled:cursor-default " +
-                  (onboarding?.insurance.status !== "pending" ? "bg-success-soft" : "bg-orange-soft")
+                  (onboarding && onboarding.insurance.status !== "pending"
+                    ? "bg-success-soft"
+                    : "bg-orange-soft")
                 }
               >
                 <ShieldAlert
                   className={
                     "h-6 w-6 shrink-0 " +
-                    (onboarding?.insurance.status !== "pending" ? "text-success" : "text-orange")
+                    (onboarding && onboarding.insurance.status !== "pending"
+                      ? "text-success"
+                      : "text-orange")
                   }
                 />
                 <div className="flex-1">
                   <p className="text-sm font-bold text-navy">פוליסת ביטוח</p>
                   <p className="text-xs text-text-muted">
-                    {onboarding?.insurance.status !== "pending"
+                    {onboarding && onboarding.insurance.status !== "pending"
                       ? "הועלתה בהצלחה"
                       : "נדרש להעלות פוליסת ביטוח בתוקף"}
                   </p>
                 </div>
-                {onboarding?.insurance.status !== "pending" ? (
+                {onboarding && onboarding.insurance.status !== "pending" ? (
                   <StatusBadge tone="success">הועלה</StatusBadge>
                 ) : (
                   <StatusBadge tone="warning">העלאה</StatusBadge>
@@ -595,7 +632,7 @@ export default function TenantDashboard() {
               <Wallet className="h-5 w-5 text-navy" />
               <div className="flex-1 text-start">
                 <p className="text-xs text-text-muted">שכירות חודשית</p>
-                <p className="font-bold text-navy">{formatCurrency(lease?.monthlyRent ?? 0)}</p>
+                <p className="font-bold text-navy">{formatCurrency(monthlyRent)}</p>
               </div>
             </div>
             <UtilityAccountDetails
@@ -609,7 +646,14 @@ export default function TenantDashboard() {
 
       <BottomNavigation items={appBottomNavItems(unread)} active={tab} onSelect={onNav} />
 
-      <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} role="tenant" userName={session.fullName} avatarUrl={user.avatarUrl} />
+      <MobileMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        role="tenant"
+        userName={session.fullName}
+        avatarUrl={user.avatarUrl}
+        extraItems={menuItems}
+      />
       <TicketModal open={dialog === "ticket"} onClose={() => setDialog(null)} propertyId={property.id} createdById={user.id} />
       <PropertyDetailDialog property={dialog === "contract" ? property : null} onClose={() => setDialog(null)} />
 

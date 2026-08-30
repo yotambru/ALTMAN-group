@@ -33,6 +33,26 @@ function formatHebShort(iso: string): string {
   });
 }
 
+/** Local calendar day as YYYY-MM-DD (not UTC). */
+export function localTodayIso(asOf: Date = new Date()): string {
+  return formatYmd(new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()));
+}
+
+/** Monthly rent in force on `atIso`, from starting rent + dated adjustments. */
+export function rentOnDate(
+  startingMonthlyRent: number,
+  adjustments: RentAdjustment[] | undefined,
+  atIso: string,
+): number {
+  let rent = Math.max(0, startingMonthlyRent);
+  const at = atIso.slice(0, 10);
+  const sorted = [...(adjustments ?? [])].sort((a, b) => a.date.localeCompare(b.date));
+  for (const adj of sorted) {
+    if (adj.date.slice(0, 10) <= at) rent = adj.monthlyRent;
+  }
+  return rent;
+}
+
 /** Keep period-rent inputs aligned with the current number of yearly periods. */
 export function alignPeriodRents(prev: string[], count: number, fill = ""): string[] {
   if (count <= 0) return [""];
@@ -47,22 +67,46 @@ export function alignPeriodRents(prev: string[], count: number, fill = ""): stri
 
 /**
  * Split a lease into yearly rent periods (anniversary of start → next anniversary / end).
- * Without an end date, returns a single open period.
+ * Without an end date, returns one period per elapsed year through today (current period open).
  */
-export function buildLeasePeriods(startIso: string, endIso?: string): LeasePeriod[] {
+export function buildLeasePeriods(
+  startIso: string,
+  endIso?: string,
+  asOf: Date = new Date(),
+): LeasePeriod[] {
   if (!startIso?.trim()) return [];
   const startStr = startIso.slice(0, 10);
   const start = parseYmd(startStr);
 
   if (!endIso?.trim()) {
-    return [
-      {
-        index: 1,
-        startDate: startStr,
-        endDate: "",
-        label: "תקופה 1",
-      },
-    ];
+    const today = parseYmd(localTodayIso(asOf));
+    const periods: LeasePeriod[] = [];
+    for (let i = 0; i < 20; i++) {
+      const periodStart = addYears(start, i);
+      if (periodStart > today) break;
+      const anniversary = addYears(start, i + 1);
+      const isCurrent = !(anniversary <= today);
+      const pStart = formatYmd(periodStart);
+      const pEnd = isCurrent ? "" : formatYmd(anniversary);
+      periods.push({
+        index: i + 1,
+        startDate: pStart,
+        endDate: pEnd,
+        label: isCurrent
+          ? `תקופה ${i + 1} (מ-${formatHebShort(pStart)})`
+          : `תקופה ${i + 1} (${formatHebShort(pStart)} – ${formatHebShort(pEnd)})`,
+      });
+    }
+    return periods.length
+      ? periods
+      : [
+          {
+            index: 1,
+            startDate: startStr,
+            endDate: "",
+            label: "תקופה 1",
+          },
+        ];
   }
 
   const endStr = endIso.slice(0, 10);
@@ -126,10 +170,10 @@ export function rentScheduleFromPeriods(
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localTodayIso();
   let current = starting;
   for (const adj of adjustments) {
-    if (adj.date <= today) current = adj.monthlyRent;
+    if (adj.date.slice(0, 10) <= today) current = adj.monthlyRent;
   }
 
   return {

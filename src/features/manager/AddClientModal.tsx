@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { useData } from "@/lib/store";
 import { emailInUse, isValidEmail, normalizeEmail } from "@/lib/auth";
+import { intakeDocumentName } from "@/lib/document-folders";
 import { fileToDataUrl } from "@/lib/utils";
 import { PhotoGridField } from "@/components/ui/PhotoGridField";
 import { LeaseScheduleFields } from "@/features/leases/LeaseScheduleFields";
@@ -266,7 +267,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
         : undefined;
       if (leaseFile) {
         tenantDocuments.push({
-          name: leaseFile.name.trim() || "הסכם שכירות",
+          name: intakeDocumentName("הסכם שכירות", leaseFile.name),
           type: "contract",
           folder: "lease",
           fileDataUrl: leaseFile.dataUrl,
@@ -274,7 +275,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
       }
       if (tenantIdPhoto) {
         tenantDocuments.push({
-          name: tenantIdPhoto.name.trim() || "תצלום תעודת זהות — שוכר",
+          name: intakeDocumentName("תצלום תעודת זהות — שוכר", tenantIdPhoto.name),
           type: "id",
           folder: "id_photos",
           fileDataUrl: tenantIdPhoto.dataUrl,
@@ -282,7 +283,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
       }
       if (guarantorIdPhoto1) {
         tenantDocuments.push({
-          name: guarantorIdPhoto1.name.trim() || "תצלום תעודת זהות — ערב 1",
+          name: intakeDocumentName("תצלום תעודת זהות — ערב 1", guarantorIdPhoto1.name),
           type: "id",
           folder: "guarantor_id",
           fileDataUrl: guarantorIdPhoto1.dataUrl,
@@ -290,7 +291,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
       }
       if (guarantorIdPhoto2) {
         tenantDocuments.push({
-          name: guarantorIdPhoto2.name.trim() || "תצלום תעודת זהות — ערב 2",
+          name: intakeDocumentName("תצלום תעודת זהות — ערב 2", guarantorIdPhoto2.name),
           type: "id",
           folder: "guarantor_id",
           fileDataUrl: guarantorIdPhoto2.dataUrl,
@@ -350,7 +351,9 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
         : Boolean(idPhoto) || undefined,
       landlordIdPhotoDataUrl: mode === "new" && !attaching ? idPhoto?.dataUrl : undefined,
       managementAgreementDataUrl: managementAgreement?.dataUrl,
-      managementAgreementFileName: managementAgreement?.name,
+      managementAgreementFileName: managementAgreement
+        ? intakeDocumentName("הסכם ניהול", managementAgreement.name)
+        : undefined,
       inspectionReportDataUrl:
         hasInspectionReport === "yes" ? inspectionReportFile?.dataUrl : undefined,
       inspectionReportFileName:

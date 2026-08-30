@@ -144,7 +144,7 @@ export interface Lease {
   monthlyRent: number;
   /** Rent on the day the lease / management started. Defaults to `monthlyRent`. */
   startingMonthlyRent?: number;
-  /** Later rent updates, oldest first. Current rent is always `monthlyRent`. */
+  /** Later rent updates, oldest first. Display current rent via `currentMonthlyRent()`. */
   rentAdjustments?: RentAdjustment[];
   startDate: string; // ISO — lease start
   endDate: string; // ISO — lease end
@@ -242,6 +242,8 @@ export type DocumentStatus = "draft" | "awaiting_signature" | "signed";
 export type DocumentFolder =
   | "lease"
   | "lease_renewal"
+  | "management"
+  | "landlord_id"
   | "id_photos"
   | "guarantor_id"
   | "meter_photos"

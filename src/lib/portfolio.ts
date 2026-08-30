@@ -1,4 +1,5 @@
 import type { Lease, Property, PropertyStatus } from "@/types";
+import { localTodayIso, rentOnDate } from "@/lib/lease-periods";
 
 /**
  * Valuation yield: total asset value is the amount of which 2.8% equals
@@ -54,9 +55,72 @@ export function impliedPortfolioValue(monthlyIncome: number): number {
   return estimateMarketValue(monthlyIncome * 12);
 }
 
+/**
+ * Display value for a property: stored appraisal if set, otherwise the 2.8%
+ * yield estimate from current (or listed) monthly rent.
+ */
+export function propertyDisplayValue(
+  property: Pick<Property, "value" | "listedRent">,
+  monthlyRent?: number,
+): number {
+  if (property.value > 0) return property.value;
+  const rent = monthlyRent && monthlyRent > 0 ? monthlyRent : property.listedRent ?? 0;
+  return impliedPortfolioValue(rent);
+}
+
+/** Monthly rent in force today (starting rent + adjustments), not the frozen saved field. */
+export function currentMonthlyRent(
+  lease: Pick<Lease, "monthlyRent" | "startingMonthlyRent" | "rentAdjustments">,
+  asOf: Date = new Date(),
+): number {
+  const starting = lease.startingMonthlyRent ?? lease.monthlyRent;
+  const fromSchedule = rentOnDate(starting, lease.rentAdjustments, localTodayIso(asOf));
+  if (lease.rentAdjustments?.length) return fromSchedule;
+  return lease.monthlyRent > 0 ? lease.monthlyRent : fromSchedule;
+}
+
 /** Sum of current monthly rent from the given leases. */
 export function monthlyRentalIncome(leases: Lease[]): number {
-  return leases.reduce((sum, l) => sum + (l.monthlyRent > 0 ? l.monthlyRent : 0), 0);
+  return leases.reduce((sum, l) => sum + currentMonthlyRent(l), 0);
+}
+
+export function activeLeaseForProperty(leases: Lease[], propertyId: string): Lease | undefined {
+  return leases.find((l) => l.active && l.propertyId === propertyId);
+}
+
+/**
+ * Monthly income for a property: live lease rent, otherwise listed rent when
+ * the unit is occupied. Keeps the hero totals aligned with property rows when
+ * a tenant exists but the lease row never persisted (or has ₪0 rent).
+ */
+export function propertyMonthlyIncome(
+  property: Pick<Property, "listedRent" | "status" | "tenantId">,
+  lease?: Pick<Lease, "monthlyRent" | "startingMonthlyRent" | "rentAdjustments"> | null,
+): number {
+  if (lease) {
+    const rent = currentMonthlyRent(lease);
+    if (rent > 0) return rent;
+  }
+  if (property.tenantId || property.status === "rented") {
+    return property.listedRent && property.listedRent > 0 ? property.listedRent : 0;
+  }
+  return 0;
+}
+
+/** Portfolio totals that match the per-property values shown in the list. */
+export function summarizePortfolio(
+  properties: Property[],
+  leases: Lease[],
+): { monthlyIncome: number; portfolioValue: number } {
+  let monthlyIncome = 0;
+  let portfolioValue = 0;
+  for (const property of properties) {
+    const lease = activeLeaseForProperty(leases, property.id);
+    const rent = propertyMonthlyIncome(property, lease);
+    monthlyIncome += rent;
+    portfolioValue += propertyDisplayValue(property, rent);
+  }
+  return { monthlyIncome, portfolioValue };
 }
 
 export interface YieldPoint {
@@ -112,12 +176,12 @@ function leaseActiveOn(lease: Lease, at: Date, asOf: Date): boolean {
 /** Monthly rent in force on `at` (starting rent + adjustments up to that day). */
 function monthlyRentOnDate(lease: Lease, at: Date, asOf: Date): number {
   if (!leaseActiveOn(lease, at, asOf)) return 0;
-  let rent = lease.startingMonthlyRent ?? lease.monthlyRent;
-  const adjustments = [...(lease.rentAdjustments ?? [])].sort((a, b) => a.date.localeCompare(b.date));
-  for (const adj of adjustments) {
-    if (parseIsoDate(adj.date) <= at) rent = adj.monthlyRent;
-  }
-  return rent;
+  const starting = lease.startingMonthlyRent ?? lease.monthlyRent;
+  return rentOnDate(
+    starting,
+    lease.rentAdjustments,
+    isoDate(at.getFullYear(), at.getMonth(), at.getDate()),
+  );
 }
 
 function portfolioMonthlyOn(leases: Lease[], at: Date, asOf: Date): number {
@@ -148,8 +212,8 @@ export function portfolioJoinDate(leases: Lease[]): string | undefined {
 }
 
 /**
- * Yearly snapshots of the income series: join date, then the last month of
- * each following year (including today). Used by bar charts.
+ * Chart snapshots: join date, each rent change, and a point for every calendar
+ * year through today — so the graph always shows real ₪ amounts, not a flat stub.
  */
 export function buildPortfolioYieldHistory(
   leases: Lease[],
@@ -160,20 +224,29 @@ export function buildPortfolioYieldHistory(
 
   const selected: YieldPoint[] = [];
   const seen = new Set<string>();
-  const take = (p: YieldPoint) => {
-    if (seen.has(p.date)) return;
+  const take = (p: YieldPoint | undefined) => {
+    if (!p || seen.has(p.date)) return;
     seen.add(p.date);
     selected.push(p);
   };
 
   take(series[0]);
+  let prevIncome = series[0].monthlyIncome;
+  for (const point of series.slice(1)) {
+    if (point.monthlyIncome !== prevIncome) {
+      take(point);
+      prevIncome = point.monthlyIncome;
+    }
+  }
+
   const lastByYear = new Map<number, YieldPoint>();
   for (const p of series) lastByYear.set(p.year, p);
   for (const year of [...lastByYear.keys()].sort((a, b) => a - b)) {
-    take(lastByYear.get(year)!);
+    if (selected.some((s) => s.year === year)) continue;
+    take(lastByYear.get(year));
   }
-  take(series.at(-1)!);
-  return selected;
+  take(series.at(-1));
+  return selected.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /**
@@ -243,7 +316,12 @@ export function formatPercent(value: number, digits = 1): string {
 export function monthlyManagementFee(
   lease: Pick<
     Lease,
-    "monthlyRent" | "managementFeePercent" | "managementFeeBeforeVat" | "managementFeeIncVat"
+    | "monthlyRent"
+    | "startingMonthlyRent"
+    | "rentAdjustments"
+    | "managementFeePercent"
+    | "managementFeeBeforeVat"
+    | "managementFeeIncVat"
   >,
   fallbackPercent?: number,
 ): number {
@@ -254,8 +332,9 @@ export function monthlyManagementFee(
     return lease.managementFeeBeforeVat;
   }
   const pct = lease.managementFeePercent ?? fallbackPercent;
-  if (pct != null && pct > 0 && lease.monthlyRent > 0) {
-    return Math.round(lease.monthlyRent * (pct / 100));
+  const rent = currentMonthlyRent(lease);
+  if (pct != null && pct > 0 && rent > 0) {
+    return Math.round(rent * (pct / 100));
   }
   return 0;
 }

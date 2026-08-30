@@ -3,6 +3,7 @@ import { seedState } from "@/lib/data-state";
 import { getSupabase } from "@/lib/supabase/client";
 import { hydrateFileFields, stillEmbedded } from "@/lib/supabase/files";
 import { COLLECTIONS, type Row } from "@/lib/supabase/mappers";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 function emptyState(): DataState {
   return {
@@ -24,6 +25,44 @@ function emptyState(): DataState {
     protocols: [],
     activityLog: [],
   };
+}
+
+function parseMissingColumn(message: string): string | null {
+  const patterns = [
+    /Could not find the '([^']+)' column/i,
+    /column [\w.]+\.([a-z0-9_]+) does not exist/i,
+    /column "([a-z0-9_]+)" does not exist/i,
+  ];
+  for (const re of patterns) {
+    const match = message.match(re);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+/**
+ * Upsert a row; if PostgREST rejects unknown columns (migrations not applied yet),
+ * drop those columns and retry so leases/docs still persist.
+ * Always start with the full row so a just-applied migration (e.g. documents.folder)
+ * begins persisting without a reload.
+ */
+async function upsertRow(
+  supabase: SupabaseClient,
+  table: string,
+  row: Row,
+): Promise<string | null> {
+  let current: Row = { ...row };
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const { error } = await supabase.from(table).upsert(current);
+    if (!error) return null;
+    const missing = parseMissingColumn(error.message);
+    if (!missing || !(missing in current)) return error.message;
+    console.warn(`[supabase] schema lag — omitting ${table}.${missing}`);
+    const stripped = { ...current };
+    delete stripped[missing];
+    current = stripped;
+  }
+  return "schema fallback retries exhausted";
 }
 
 export async function fetchAll(): Promise<DataState | null> {
@@ -50,34 +89,52 @@ export async function persistDiff(prev: DataState, next: DataState): Promise<str
   if (!supabase) return [];
 
   const errors: string[] = [];
-
-  for (const col of COLLECTIONS) {
+  const snapshots = COLLECTIONS.map((col) => {
     const prevList = prev[col.key] as unknown[];
     const nextList = next[col.key] as unknown[];
     const getId = col.getId as (item: unknown) => string;
-    const prevMap = new Map(prevList.map((item) => [getId(item), item]));
-    const nextMap = new Map(nextList.map((item) => [getId(item), item]));
+    return {
+      col,
+      prevMap: new Map(prevList.map((item) => [getId(item), item])),
+      nextMap: new Map(nextList.map((item) => [getId(item), item])),
+    };
+  });
 
+  // Deletes first so removed people/rows cannot come back if a later upsert fails.
+  for (const { col, prevMap, nextMap } of snapshots) {
+    const removedIds = [...prevMap.keys()].filter((id) => id && !nextMap.has(id));
+    if (removedIds.length === 0) continue;
+
+    const { error } = await supabase.from(col.table).delete().in(col.idColumn, removedIds);
+    if (!error) continue;
+    console.warn(`[supabase] batch delete ${col.table}: ${error.message}`);
+
+    for (const id of removedIds) {
+      const { error: rowError } = await supabase.from(col.table).delete().eq(col.idColumn, id);
+      if (rowError) {
+        const message = `${col.table}/${id}: ${rowError.message}`;
+        console.error(`[supabase] delete ${message}`);
+        errors.push(message);
+      }
+    }
+  }
+
+  for (const { col, prevMap, nextMap } of snapshots) {
     for (const [id, item] of nextMap) {
       const old = prevMap.get(id);
       if (old && JSON.stringify(old) === JSON.stringify(item)) continue;
       const prepared = await hydrateFileFields(col.key, item as Record<string, unknown>);
-      if (stillEmbedded(prepared)) continue;
-      const { error } = await supabase.from(col.table).upsert(col.toRow(prepared as never));
-      if (error) {
-        const message = `${col.table}/${id}: ${error.message}`;
-        console.error(`[supabase] upsert ${message}`);
-        errors.push(message);
+      if (stillEmbedded(prepared)) {
+        const full = `${col.table}/${id}: העלאת קובץ לשרת נכשלה — המסמך לא נשמר`;
+        console.error(`[supabase] upsert ${full}`);
+        errors.push(full);
+        continue;
       }
-    }
-
-    for (const [id] of prevMap) {
-      if (nextMap.has(id)) continue;
-      const { error } = await supabase.from(col.table).delete().eq(col.idColumn, id);
-      if (error) {
-        const message = `${col.table}/${id}: ${error.message}`;
-        console.error(`[supabase] delete ${message}`);
-        errors.push(message);
+      const message = await upsertRow(supabase, col.table, col.toRow(prepared as never));
+      if (message) {
+        const full = `${col.table}/${id}: ${message}`;
+        console.error(`[supabase] upsert ${full}`);
+        errors.push(full);
       }
     }
   }
@@ -107,7 +164,12 @@ export function applyRealtimeChange(
     return { ...state, [col.key]: [item, ...list] };
   }
   const copy = list.slice();
-  copy[idx] = item;
+  const existing = copy[idx] as { folder?: string };
+  const incoming = item as { folder?: string };
+  copy[idx] =
+    col.key === "documents"
+      ? { ...(item as object), folder: incoming.folder ?? existing.folder }
+      : item;
   return { ...state, [col.key]: copy };
 }
 

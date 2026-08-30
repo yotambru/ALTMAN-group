@@ -6,9 +6,11 @@ import {
   Building2,
   ChevronLeft,
   ClipboardList,
+  Eye,
   FileCheck2,
   FileText,
   Folder,
+  FolderInput,
   Gauge,
   IdCard,
   Paperclip,
@@ -22,11 +24,13 @@ import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { SearchField } from "@/components/dashboard/ClientRow";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
+import { DocumentPreviewDialog } from "@/features/documents/DocumentPreviewDialog";
 import { SignatureDialog } from "@/features/documents/SignatureDialog";
 import { useData } from "@/lib/store";
 import {
   DOCUMENT_FOLDER_CHILD,
   DOCUMENT_FOLDER_LABEL,
+  DOCUMENT_FOLDER_PARENT,
   ROOT_DOCUMENT_FOLDERS,
   docsInFolder,
   documentFolderAncestors,
@@ -34,6 +38,7 @@ import {
   folderCount,
   folderToDocumentType,
   inferDocumentFolder,
+  intakeDocumentName,
 } from "@/lib/document-folders";
 import { fileToDataUrl, formatDateDots } from "@/lib/utils";
 import type { AppDocument, DocumentFolder, DocumentType, Landlord, Property, Tenant } from "@/types";
@@ -78,6 +83,8 @@ const statusLabel: Record<NonNullable<AppDocument["status"]>, { label: string; t
 const folderIcon: Record<DocumentFolder, LucideIcon> = {
   lease: FileText,
   lease_renewal: FileText,
+  management: FileText,
+  landlord_id: IdCard,
   id_photos: IdCard,
   guarantor_id: Users,
   meter_photos: Gauge,
@@ -160,25 +167,54 @@ function DocRow({
   doc,
   canSign,
   onSign,
+  onPreview,
+  moveToFolder,
+  moveLabel,
+  onMove,
 }: {
   doc: AppDocument;
   canSign: boolean;
   onSign: (doc: AppDocument) => void;
+  onPreview: (doc: AppDocument) => void;
+  moveToFolder?: DocumentFolder;
+  moveLabel?: string;
+  onMove?: (doc: AppDocument, folder: DocumentFolder) => void;
 }) {
   const meta = statusLabel[doc.status ?? (doc.signed ? "signed" : "draft")];
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border p-3">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-navy/5 text-navy">
-        {doc.signed ? <FileCheck2 className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold text-navy">{doc.name}</p>
-        <p className="text-[0.7rem] text-text-muted">
-          {DOCUMENT_FOLDER_LABEL[inferDocumentFolder(doc)]} · {formatDateDots(doc.createdAt)}
-          {doc.signedByName ? ` • נחתם ע״י ${doc.signedByName}` : ""}
-        </p>
-      </div>
-      <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
+    <div className="flex items-center gap-2 rounded-xl border border-border p-3 transition-colors hover:bg-surface-muted/90">
+      <button
+        type="button"
+        onClick={() => onPreview(doc)}
+        aria-label={`תצוגת ${doc.name}`}
+        className="flex min-w-0 flex-1 items-center gap-3 text-start"
+      >
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-navy/5 text-navy">
+          {doc.signed ? <FileCheck2 className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-navy">{doc.name}</p>
+          <p className="text-[0.7rem] text-text-muted">
+            {DOCUMENT_FOLDER_LABEL[inferDocumentFolder(doc)]} · {formatDateDots(doc.createdAt)}
+            {doc.signedByName ? ` • נחתם ע״י ${doc.signedByName}` : ""}
+          </p>
+        </div>
+        <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-navy/5 text-navy">
+          <Eye className="h-4 w-4" />
+        </span>
+      </button>
+      {moveToFolder && onMove && moveLabel && (
+        <button
+          type="button"
+          onClick={() => onMove(doc, moveToFolder)}
+          aria-label={moveLabel}
+          title={moveLabel}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-orange-soft text-orange hover:bg-orange hover:text-white"
+        >
+          <FolderInput className="h-4 w-4" />
+        </button>
+      )}
       {canSign && !doc.signed && (
         <button
           type="button"
@@ -209,8 +245,9 @@ export function DocumentsDialog({
   tenants = [],
   awaitingSignatureOnly = false,
 }: DocumentsDialogProps) {
-  const { addDocument, leases, tenants: allTenants, users } = useData();
+  const { addDocument, updateDocument, leases, tenants: allTenants, users } = useData();
   const [signingDoc, setSigningDoc] = useState<AppDocument | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<AppDocument | null>(null);
   const [uploadName, setUploadName] = useState("");
   const [query, setQuery] = useState("");
   const [landlordFilter, setLandlordFilter] = useState<string>("all");
@@ -499,8 +536,14 @@ export function DocumentsDialog({
   const handleUpload = async (file: File) => {
     if (!selectedFolder) return;
     const dataUrl = await fileToDataUrl(file);
+    const photoLabel =
+      selectedFolder === "guarantor_id"
+        ? "תצלום תעודת זהות — ערב"
+        : selectedFolder === "id_photos"
+          ? "תצלום תעודת זהות"
+          : null;
     addDocument({
-      name: uploadName.trim() || file.name,
+      name: uploadName.trim() || (photoLabel ? intakeDocumentName(photoLabel, file.name) : file.name),
       type: folderToDocumentType(selectedFolder),
       folder: selectedFolder,
       propertyId:
@@ -514,6 +557,20 @@ export function DocumentsDialog({
     });
     setUploadName("");
     if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const parentFolder = selectedFolder ? DOCUMENT_FOLDER_PARENT[selectedFolder] : undefined;
+  const moveToFolder = upload ? (childFolder ?? parentFolder) : undefined;
+  const moveLabel = moveToFolder
+    ? `העברה לתיקיית ${DOCUMENT_FOLDER_LABEL[moveToFolder]}`
+    : undefined;
+
+  const handleMove = (doc: AppDocument, folder: DocumentFolder) => {
+    const name =
+      folder === "guarantor_id"
+        ? intakeDocumentName("תצלום תעודת זהות — ערב", doc.name)
+        : doc.name;
+    updateDocument(doc.id, { folder, name });
   };
 
   const searchPlaceholder = selectedFolder
@@ -638,7 +695,16 @@ export function DocumentsDialog({
             <p className="py-6 text-center text-sm text-text-muted">אין מסמכים בתיקייה זו.</p>
           ) : (
             folderDocs.map((doc) => (
-              <DocRow key={doc.id} doc={doc} canSign={canSign} onSign={setSigningDoc} />
+              <DocRow
+                key={doc.id}
+                doc={doc}
+                canSign={canSign}
+                onSign={setSigningDoc}
+                onPreview={setPreviewDoc}
+                moveToFolder={moveToFolder}
+                moveLabel={moveLabel}
+                onMove={handleMove}
+              />
             ))
           )}
           {childFolder && ChildIcon && folderCount(tenantDocs, childFolder) === 0 && (
@@ -727,6 +793,17 @@ export function DocumentsDialog({
           {body}
         </Modal>
       )}
+
+      <DocumentPreviewDialog
+        open={previewDoc !== null}
+        onClose={() => setPreviewDoc(null)}
+        document={previewDoc}
+        description={
+          previewDoc
+            ? `${DOCUMENT_FOLDER_LABEL[inferDocumentFolder(previewDoc)]} · ${formatDateDots(previewDoc.createdAt)}`
+            : undefined
+        }
+      />
 
       <SignatureDialog
         open={signingDoc !== null}

@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PropertyImage } from "@/components/brand/PropertyImage";
 import { PropertyStatusFilter } from "@/components/dashboard/PropertyStatusFilter";
 import { formatCurrency } from "@/lib/utils";
-import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES } from "@/lib/portfolio";
+import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES, propertyDisplayValue } from "@/lib/portfolio";
 import type { Property, PropertyStatus } from "@/types";
 
 interface PropertyListDialogProps {
@@ -68,7 +68,7 @@ export function PropertyListDialog({
             </div>
             <div className="flex flex-col items-end gap-1">
               <span className="text-sm font-extrabold text-navy">
-                {formatCurrency(property.value)}
+                {formatCurrency(propertyDisplayValue(property))}
               </span>
               <StatusBadge tone={PROPERTY_STATUS_TONES[property.status]}>
                 {PROPERTY_STATUS_LABELS[property.status]}

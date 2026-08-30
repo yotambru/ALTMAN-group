@@ -1,4 +1,4 @@
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatMonthYear } from "@/lib/utils";
 import { formatPercent, type YieldPoint } from "@/lib/portfolio";
 
 interface IncomeGrowthChartProps {
@@ -20,12 +20,12 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
   }
 
   const w = 320;
-  const h = 132;
+  const h = 148;
   const padX = 16;
-  const padTop = 22;
-  const padBottom = 30;
+  const padTop = 28;
+  const padBottom = 32;
   const values = points.map((p) => p.monthlyIncome);
-  const min = Math.min(...values) * 0.92;
+  const min = Math.min(...values) * 0.85;
   const max = Math.max(...values);
   const range = max - min || 1;
   const gap = 10;
@@ -38,7 +38,6 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
     return { ...p, x, y, barH };
   });
 
-  const first = points[0];
   const last = points.at(-1)!;
   const growth = last.incomeGrowthPercent;
 
@@ -48,7 +47,7 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
         <div>
           <p className="text-sm font-semibold text-navy">גידול בהכנסות מאז ההצטרפות</p>
           <p className="mt-0.5 text-xs text-text-muted">
-            דמי שכירות ביום ההצטרפות, ואז בכל עדכון שכירות
+            דמי שכירות לפי תקופה — מיום ההצטרפות ועד היום
           </p>
         </div>
         <div className="text-end">
@@ -63,7 +62,7 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
       <div dir="ltr">
         <svg
           viewBox={`0 0 ${w} ${h}`}
-          className="mt-3 h-32 w-full"
+          className="mt-3 h-36 w-full"
           role="img"
           aria-label="גרף גידול בהכנסות ממועד ההצטרפות"
         >
@@ -73,20 +72,20 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
                 x={b.x}
                 y={b.y}
                 width={barW}
-                height={Math.max(b.barH, 4)}
+                height={Math.max(b.barH, 8)}
                 rx={6}
                 fill={i === bars.length - 1 ? "var(--orange)" : "var(--navy)"}
                 opacity={i === bars.length - 1 ? 1 : 0.75}
               />
               <text
                 x={b.x + barW / 2}
-                y={Math.max(11, b.y - 4)}
+                y={Math.max(12, b.y - 6)}
                 textAnchor="middle"
                 className="fill-[var(--navy)]"
                 fontSize="9"
                 fontWeight="700"
               >
-                {i === 0 ? formatCurrency(b.monthlyIncome) : `${b.incomeGrowthPercent >= 0 ? "+" : ""}${formatPercent(b.incomeGrowthPercent)}`}
+                {formatCurrency(b.monthlyIncome)}
               </text>
               <text
                 x={b.x + barW / 2}
@@ -95,17 +94,35 @@ export function IncomeGrowthChart({ points, className }: IncomeGrowthChartProps)
                 className="fill-[var(--text-muted)]"
                 fontSize="10"
               >
-                {i === 0 ? "הצטרפות" : b.year}
+                {i === 0 ? "הצטרפות" : i === bars.length - 1 ? "היום" : String(b.year)}
               </text>
             </g>
           ))}
         </svg>
-
-        <div className="mt-1 flex justify-between text-[0.7rem] text-text-muted">
-          <span>הצטרפות: {formatCurrency(first.monthlyIncome)} / חודש</span>
-          <span>היום: {formatCurrency(last.monthlyIncome)} / חודש</span>
-        </div>
       </div>
+
+      <ul className="mt-3 space-y-1.5 border-t border-border pt-3">
+        {points.map((p, i) => (
+          <li key={p.date} className="flex items-center justify-between text-xs">
+            <span className="text-text-muted">
+              {i === 0
+                ? `הצטרפות · ${formatMonthYear(p.date)}`
+                : i === points.length - 1
+                  ? `היום · ${formatMonthYear(p.date)}`
+                  : formatMonthYear(p.date)}
+            </span>
+            <span className="font-bold tabular-nums text-navy">
+              {formatCurrency(p.monthlyIncome)}
+              {i > 0 && (
+                <span className="ms-1.5 font-medium text-success">
+                  {p.incomeGrowthPercent >= 0 ? "+" : ""}
+                  {formatPercent(p.incomeGrowthPercent)}
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

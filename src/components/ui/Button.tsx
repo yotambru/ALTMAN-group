@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-type Variant = "primary" | "navy" | "ghost" | "outline";
+type Variant = "primary" | "navy" | "ghost" | "outline" | "danger";
 type Size = "md" | "lg";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -15,6 +15,7 @@ const variants: Record<Variant, string> = {
   navy: "bg-navy text-white hover:bg-navy-dark active:translate-y-px",
   ghost: "bg-surface-muted text-navy hover:bg-border",
   outline: "border border-border bg-surface text-navy hover:bg-surface-muted",
+  danger: "bg-danger text-white shadow-sm hover:bg-danger/90 active:translate-y-px",
 };
 
 const sizes: Record<Size, string> = {

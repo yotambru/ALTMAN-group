@@ -1,5 +1,6 @@
 import type { DataState } from "@/lib/data-state";
 import { inferDocumentFolder, isDocumentFolder } from "@/lib/document-folders";
+import { localTodayIso, rentOnDate } from "@/lib/lease-periods";
 import type {
   ActivityLogEntry,
   AirDirection,
@@ -50,7 +51,12 @@ function str(value: unknown, fallback = ""): string {
 }
 
 function num(value: unknown, fallback = 0): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
 }
 
 function bool(value: unknown, fallback = false): boolean {
@@ -218,7 +224,7 @@ function propertyFromRow(row: Row): Property {
     parkingNumber: opt(row.parking_number as string | null),
     hasStorage: opt(row.has_storage as boolean | null),
     storageNumber: opt(row.storage_number as string | null),
-    listedRent: opt(row.listed_rent as number | null),
+    listedRent: row.listed_rent == null ? undefined : num(row.listed_rent) || undefined,
     entryDate: opt(row.entry_date as string | null),
     keysReceived: opt(row.keys_received as number | null),
     subcontractorPhones: opt(row.subcontractor_phones as string | null),
@@ -279,14 +285,21 @@ function leaseToRow(l: Lease): Row {
 }
 
 function leaseFromRow(row: Row): Lease {
+  const storedRent = num(row.monthly_rent);
+  const startingMonthlyRent =
+    row.starting_monthly_rent == null ? undefined : num(row.starting_monthly_rent);
+  const rentAdjustments = parseRentAdjustments(row.rent_adjustments);
+  const currentRent = rentAdjustments?.length
+    ? rentOnDate(startingMonthlyRent ?? storedRent, rentAdjustments, localTodayIso())
+    : storedRent;
   return {
     id: str(row.id),
     propertyId: str(row.property_id),
     tenantId: str(row.tenant_id),
     landlordId: str(row.landlord_id),
-    monthlyRent: num(row.monthly_rent),
-    startingMonthlyRent: row.starting_monthly_rent == null ? undefined : num(row.starting_monthly_rent),
-    rentAdjustments: parseRentAdjustments(row.rent_adjustments),
+    monthlyRent: currentRent > 0 ? currentRent : storedRent,
+    startingMonthlyRent,
+    rentAdjustments,
     startDate: str(row.start_date),
     endDate: str(row.end_date),
     nextPaymentDate: str(row.next_payment_date),
@@ -423,11 +436,9 @@ function documentFromRow(row: Row): AppDocument {
     id: str(row.id),
     name,
     type,
-    folder: inferDocumentFolder({
-      type,
-      name,
-      folder: isDocumentFolder(folderRaw) ? folderRaw : undefined,
-    }),
+    // Keep folder unset when the column is missing — infer at display time.
+    // Stamping a guess here lets realtime overwrite a correct local folder.
+    folder: isDocumentFolder(folderRaw) ? folderRaw : undefined,
     propertyId: opt(row.property_id as string | null),
     landlordId: opt(row.landlord_id as string | null),
     tenantId: opt(row.tenant_id as string | null),
