@@ -951,6 +951,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         });
         return {
           ...p,
+          properties: p.properties.map((it) =>
+            it.id === propertyId ? { ...it, photoUrls } : it,
+          ),
           documents: [...photoDocs, ...others],
           activityLog: [makeLog("עדכון תמונות נכס", "property", propertyId), ...p.activityLog],
         };

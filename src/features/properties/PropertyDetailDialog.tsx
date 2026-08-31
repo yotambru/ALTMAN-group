@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bath,
   BedDouble,
@@ -30,7 +30,7 @@ import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { UtilityAccountDetails } from "@/features/utilities/UtilityAccountDetails";
 import { useData } from "@/lib/store";
 import { can } from "@/lib/permissions";
-import { cn, formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
+import { cn, fileToDataUrl, formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
 import { currentMonthlyRent, PROPERTY_STATUS_LABELS, propertyDisplayValue } from "@/lib/portfolio";
 import { buildLeasePeriods, rentOnDate } from "@/lib/lease-periods";
 import type { CheckDepositMode, Payment, PaymentStatus, Property } from "@/types";
@@ -50,9 +50,16 @@ const paymentStatusLabel: Record<PaymentStatus, { label: string; tone: "success"
   overdue: { label: "באיחור", tone: "danger" },
 };
 
-function PropertyHero({ property }: { property: Property }) {
+function PropertyHero({
+  property,
+  onEditPhoto,
+}: {
+  property: Property;
+  onEditPhoto?: (file: File) => void | Promise<void>;
+}) {
   const photos = (property.photoUrls ?? []).filter(Boolean);
   const [index, setIndex] = useState(0);
+  const fileRef = useRef<HTMLInputElement>(null);
   const safeIndex = photos.length ? Math.min(index, photos.length - 1) : 0;
   const cover = photos[safeIndex];
   const floorLabel = property.floor === 0 ? "קומת קרקע" : `קומה ${property.floor}`;
@@ -79,6 +86,29 @@ function PropertyHero({ property }: { property: Property }) {
             {statusLabels[property.status]}
           </StatusBadge>
         </div>
+        {onEditPhoto && (
+          <>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="absolute end-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-surface/95 px-2.5 py-1.5 text-xs font-bold text-navy shadow-sm backdrop-blur transition-colors hover:bg-orange-soft hover:text-orange"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              ערוך תמונה
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void onEditPhoto(file);
+                event.target.value = "";
+              }}
+            />
+          </>
+        )}
       </div>
       {photos.length > 1 && (
         <div className="no-scrollbar flex gap-2 overflow-x-auto pb-0.5">
@@ -132,6 +162,8 @@ interface PropertyDetailDialogProps {
   onClose: () => void;
   /** When provided, shows an edit button (manager/assistant). */
   onEdit?: (property: Property) => void;
+  /** Shows a compact image replacement button when photo editing is allowed. */
+  onEditPhoto?: (file: File) => void | Promise<void>;
   /** Allow confirming check clearance (manager / landlord). */
   canConfirmClearance?: boolean;
   /** Show a compact preview first, with the rest behind a "ראה עוד" action. */
@@ -142,6 +174,7 @@ export function PropertyDetailDialog({
   property,
   onClose,
   onEdit,
+  onEditPhoto,
   canConfirmClearance = false,
   collapsible = false,
 }: PropertyDetailDialogProps) {
@@ -155,6 +188,7 @@ export function PropertyDetailDialog({
     actor,
     confirmPaymentClearance,
     deleteTenant,
+    setPropertyPhotos,
   } = useData();
   const [pendingTenant, setPendingTenant] = useState<{ id: string; name: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -227,6 +261,19 @@ export function PropertyDetailDialog({
     : [];
   const showSchedule = periodRows.length > 1 && new Set(periodRows.map((p) => p.rent)).size > 1;
   const endDateLabel = lease && isValidIsoDate(lease.endDate) ? formatDateDots(lease.endDate) : "לא הוזן";
+  const replaceCoverPhoto = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      setToast("יש לבחור קובץ תמונה.");
+      return;
+    }
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setPropertyPhotos(property.id, [dataUrl, ...(property.photoUrls ?? []).slice(1)]);
+      setToast("תמונת הנכס עודכנה");
+    } catch {
+      setToast("לא הצלחנו לעדכן את תמונת הנכס.");
+    }
+  };
 
   return (
     <>
@@ -239,7 +286,11 @@ export function PropertyDetailDialog({
     >
       <div className="relative space-y-5 pb-14">
         {/* Hero — address only */}
-        <PropertyHero key={property.id} property={property} />
+        <PropertyHero
+          key={property.id}
+          property={property}
+          onEditPhoto={onEditPhoto ?? (onEdit ? replaceCoverPhoto : undefined)}
+        />
 
         {/* 1. מפרט דירה — רק שורת האייקונים */}
         <section className="space-y-2">
