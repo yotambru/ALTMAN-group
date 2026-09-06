@@ -9,10 +9,11 @@ interface NotificationsTabProps {
   forUserId: string;
   forRole: Role;
   onOpen?: (notification: AppNotification) => void;
+  onBack?: () => void;
 }
 
 /** Inline notifications list for the unified bottom-nav "הודעות" tab. */
-export function NotificationsTab({ forUserId, forRole, onOpen }: NotificationsTabProps) {
+export function NotificationsTab({ forUserId, forRole, onOpen, onBack }: NotificationsTabProps) {
   const { notifications, markNotificationRead, markAllNotificationsRead } = useData();
 
   const mine = notifications.filter(
@@ -27,6 +28,7 @@ export function NotificationsTab({ forUserId, forRole, onOpen }: NotificationsTa
     <div className="space-y-3 px-4 pt-4 pb-8">
       <SectionHeader
         title="הודעות"
+        onBack={onBack}
         action={
           mine.length > 0 ? (
             <button

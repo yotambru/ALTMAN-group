@@ -68,6 +68,8 @@ interface DocumentsDialogProps {
   properties?: Property[];
   /** Enable free-text search + client filter on the apartments list. */
   searchable?: boolean;
+  /** Hide folders and their documents for role-specific views. */
+  hiddenFolders?: DocumentFolder[];
   landlords?: Landlord[];
   tenants?: Tenant[];
   /** Prefocus signature-only view. */
@@ -241,6 +243,7 @@ export function DocumentsDialog({
   upload,
   properties = [],
   searchable = false,
+  hiddenFolders = [],
   landlords = [],
   tenants = [],
   awaitingSignatureOnly = false,
@@ -267,11 +270,12 @@ export function DocumentsDialog({
     () =>
       documents.filter((d) => {
         if (d.type === "property_photo") return false;
+        if (hiddenFolders.includes(inferDocumentFolder(d))) return false;
         if (!awaitingSignatureOnly) return true;
         const st = d.status ?? (d.signed ? "signed" : "draft");
         return st === "awaiting_signature";
       }),
-    [documents, awaitingSignatureOnly],
+    [documents, awaitingSignatureOnly, hiddenFolders],
   );
 
   const knownIds = useMemo(() => new Set(properties.map((p) => p.id)), [properties]);
@@ -443,7 +447,7 @@ export function DocumentsDialog({
   const categoryFolders = useMemo(() => {
     if (!atTenantLevel) return [];
     const q = query.trim().toLowerCase();
-    const folders = ROOT_DOCUMENT_FOLDERS.map((folder) => ({
+    const folders = ROOT_DOCUMENT_FOLDERS.filter((folder) => !hiddenFolders.includes(folder)).map((folder) => ({
       folder,
       title: DOCUMENT_FOLDER_LABEL[folder],
       count: folderCount(tenantDocs, folder),
@@ -460,7 +464,7 @@ export function DocumentsDialog({
             d.name.toLowerCase().includes(q),
         ),
     );
-  }, [atTenantLevel, tenantDocs, awaitingSignatureOnly, query, selectedFolder]);
+  }, [atTenantLevel, tenantDocs, awaitingSignatureOnly, query, selectedFolder, hiddenFolders]);
 
   const childFolder = selectedFolder ? DOCUMENT_FOLDER_CHILD[selectedFolder] : undefined;
   const ChildIcon = childFolder ? folderIcon[childFolder] : null;

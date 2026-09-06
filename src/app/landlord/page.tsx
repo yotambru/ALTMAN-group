@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import {
-  ArrowRight,
   Building2,
   CalendarCheck,
   CalendarDays,
@@ -43,6 +42,7 @@ import {
   summarizePortfolio,
   PORTFOLIO_YIELD_RATE,
 } from "@/lib/portfolio";
+import { heroIncomeChartProps } from "@/lib/hero-income-chart";
 import { formatCurrency } from "@/lib/utils";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
@@ -68,6 +68,7 @@ export default function LandlordDashboard() {
   const myLeases = leases.filter(
     (l) => l.active && (l.landlordId === landlordId || myPropertyIds.includes(l.propertyId)),
   );
+  const incomeChart = heroIncomeChartProps(myLeases);
   const { monthlyIncome: expectedIncome, portfolioValue } = summarizePortfolio(
     myProperties,
     myLeases,
@@ -187,6 +188,10 @@ export default function LandlordDashboard() {
                 sublabel: "סך דמי שכירות מכל הנכסים",
                 onClick: () => setDialog("rentals"),
               }}
+              data={incomeChart.data}
+              chartProgress={incomeChart.progress}
+              chartStartLabel={incomeChart.chartStartLabel}
+              chartEndLabel={incomeChart.chartEndLabel}
             />
           </div>
         </div>
@@ -294,7 +299,7 @@ export default function LandlordDashboard() {
                 </>
               ) : (
                 <>
-                  <SectionHeader title={panelTitles[homePanel]} />
+                  <SectionHeader title={panelTitles[homePanel]} onBack={() => onNav("dashboard")} />
                   {homePanel === "docs" && (
                     <DocumentsDialog
                       inline
@@ -331,20 +336,7 @@ export default function LandlordDashboard() {
 
         {tab === "documents" && (
           <div className="space-y-3 px-4 pb-8 pt-2">
-            <SectionHeader
-              title="מסמכים"
-              action={
-                <button
-                  type="button"
-                  onClick={() => onNav("dashboard")}
-                  aria-label="חזרה לדשבורד"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-surface-muted px-3 py-1.5 text-sm font-bold text-navy transition-colors hover:bg-orange-soft hover:text-orange"
-                >
-                  <ArrowRight className="h-4 w-4" />
-                  חזרה
-                </button>
-              }
-            />
+            <SectionHeader title="מסמכים" onBack={() => onNav("dashboard")} />
             <DocumentsDialog
               inline
               searchable
@@ -363,6 +355,7 @@ export default function LandlordDashboard() {
           <NotificationsTab
             forUserId={user.id}
             forRole="landlord"
+            onBack={() => onNav("dashboard")}
             onOpen={(n) => {
               setTab("dashboard");
               openNotification(n);
@@ -377,6 +370,7 @@ export default function LandlordDashboard() {
             role="landlord"
             detail={`${myProperties.length} נכסים · ${formatCurrency(expectedIncome)} / חודש`}
             onLogout={logout}
+            onBack={() => onNav("dashboard")}
           />
         )}
       </div>

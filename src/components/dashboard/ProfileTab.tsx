@@ -1,9 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Camera, LogOut, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Camera, LogOut, Trash2, UserX } from "lucide-react";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { roleLabels } from "@/lib/permissions";
 import { useData } from "@/lib/store";
@@ -19,6 +21,7 @@ interface ProfileTabProps {
   /** Optional extra content between the card and logout. */
   children?: React.ReactNode;
   onLogout: () => void;
+  onBack?: () => void;
 }
 
 /** Shared profile screen for the unified bottom-nav "פרופיל" tab. */
@@ -29,11 +32,13 @@ export function ProfileTab({
   detail,
   children,
   onLogout,
+  onBack,
 }: ProfileTabProps) {
-  const { users, updateUser } = useData();
+  const { users, updateUser, deleteOwnAccount } = useData();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const avatarUrl = users.find((u) => u.id === userId)?.avatarUrl;
 
   const pickPhoto = async (file: File | undefined) => {
@@ -67,9 +72,15 @@ export function ProfileTab({
     updateUser(userId, { avatarUrl: undefined });
   };
 
+  const handleDeleteAccount = () => {
+    setConfirmDelete(false);
+    deleteOwnAccount(userId);
+    onLogout();
+  };
+
   return (
     <div className="space-y-4 px-4 pt-4 pb-8">
-      <SectionHeader title="פרופיל" />
+      <SectionHeader title="פרופיל" onBack={onBack} />
       <div className="flex flex-col items-center gap-2 rounded-[var(--radius)] bg-surface p-6 text-center ring-1 ring-border">
         <div className="relative">
           <UserAvatar name={fullName} avatarUrl={avatarUrl} size="xl" />
@@ -117,10 +128,39 @@ export function ProfileTab({
         </div>
       </div>
       {children}
-      <Button variant="outline" fullWidth onClick={onLogout}>
+      <Button variant="outline" fullWidth onClick={onLogout} disabled={busy}>
         <LogOut className="h-5 w-5" />
         התנתקות
       </Button>
+      <div className="rounded-[var(--radius)] bg-surface p-4 ring-1 ring-border">
+        <p className="text-sm font-bold text-navy">מחיקת חשבון</p>
+        <p className="mt-1 text-sm leading-relaxed text-text-muted">
+          מחיקת החשבון מסירה לצמיתות את פרטי הכניסה ואת הנתונים האישיים מהשרת.
+        </p>
+        <Button
+          variant="danger"
+          fullWidth
+          className="mt-3"
+          disabled={busy}
+          onClick={() => setConfirmDelete(true)}
+        >
+          <UserX className="h-5 w-5" />
+          מחיקת חשבון
+        </Button>
+      </div>
+      <p className="text-center text-sm text-text-muted">
+        <Link href="/privacy" className="font-semibold text-navy underline-offset-2 hover:underline">
+          מדיניות פרטיות
+        </Link>
+      </p>
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDeleteAccount}
+        title="מחיקת החשבון"
+        description="החשבון והנתונים האישיים יימחקו לצמיתות ולא ניתן לשחזר אותם. לאחר האישור תנותקו מהמערכת."
+        confirmLabel="מחיקה סופית"
+      />
     </div>
   );
 }

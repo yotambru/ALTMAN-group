@@ -19,7 +19,7 @@ import { accountDisplayName, normalizeEmail } from "@/lib/auth";
 import { generateId } from "@/lib/utils";
 import { localTodayIso } from "@/lib/lease-periods";
 import { inferDocumentFolder } from "@/lib/document-folders";
-import { removeLandlord, removeTenant } from "@/lib/delete-users";
+import { removeLandlord, removeOwnAccount, removeTenant } from "@/lib/delete-users";
 import type {
   ActivityLogEntry,
   AppDocument,
@@ -143,6 +143,8 @@ export interface NewTenantInput {
   rentAdjustments?: RentAdjustment[];
   startDate?: string;
   endDate?: string;
+  /** Replace the property's current tenant after an explicit UI confirmation. */
+  replaceExistingTenant?: boolean;
   /** Lease / ID files attached while opening the tenant account. */
   documents?: Array<{
     name: string;
@@ -260,6 +262,8 @@ interface DataContextValue extends DataState {
   deleteLandlord: (id: string) => void;
   /** Manager: delete a tenant, their login, and vacate the current property. */
   deleteTenant: (id: string) => void;
+  /** Signed-in user: permanently delete this login and related personal data. */
+  deleteOwnAccount: (userId: string) => void;
 
   // payments / expenses
   confirmPaymentClearance: (paymentId: string) => void;
@@ -745,8 +749,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const fullName = accountDisplayName(input.name, email);
 
       setState((p) => {
-        const property = p.properties.find((it) => it.id === input.propertyId);
-        if (!property || property.tenantId) return p;
+        let nextState = p;
+        let property = nextState.properties.find((it) => it.id === input.propertyId);
+        if (!property) return p;
+        if (property.tenantId) {
+          if (!input.replaceExistingTenant) return p;
+          nextState =
+            removeTenant(
+              nextState,
+              property.tenantId,
+              makeLog("החלפת שוכר", "tenant", property.tenantId),
+            ) ?? p;
+          property = nextState.properties.find((it) => it.id === input.propertyId);
+          if (!property) return p;
+        }
 
         const startDate = input.startDate || property.entryDate || nowIso.slice(0, 10);
         const baseRent = input.monthlyRent ?? property.listedRent ?? 0;
@@ -797,7 +813,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           phone: input.phone?.trim() || undefined,
           tenantId,
         };
-        const emailTaken = p.users.some(
+        const emailTaken = nextState.users.some(
           (u) => u.email && normalizeEmail(u.email) === email,
         );
 
@@ -816,12 +832,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }));
 
         return {
-          ...p,
-          users: emailTaken ? p.users : [loginUser, ...p.users],
-          tenants: [tenant, ...p.tenants],
-          leases: [lease, ...p.leases],
-          onboardings: [onboarding, ...p.onboardings],
-          documents: docs.length ? [...docs, ...p.documents] : p.documents,
+          ...nextState,
+          users: emailTaken ? nextState.users : [loginUser, ...nextState.users],
+          tenants: [tenant, ...nextState.tenants],
+          leases: [lease, ...nextState.leases],
+          onboardings: [onboarding, ...nextState.onboardings],
+          documents: docs.length ? [...docs, ...nextState.documents] : nextState.documents,
           properties: p.properties.map((it) =>
             it.id === property.id
               ? {
@@ -839,7 +855,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               ? []
               : [makeLog("פתיחת חשבון שוכר", "user", userId, email)]),
             ...docs.map((d) => makeLog("העלאת מסמך", "document", d.id, d.name)),
-            ...p.activityLog,
+            ...nextState.activityLog,
           ],
         };
       });
@@ -1035,6 +1051,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           p,
           id,
           makeLog("מחיקת שוכר", "tenant", id, tenant?.fullName),
+        );
+        return next ?? p;
+      });
+    },
+    [makeLog],
+  );
+
+  const deleteOwnAccount = useCallback<DataContextValue["deleteOwnAccount"]>(
+    (userId) => {
+      setState((p) => {
+        const user = p.users.find((u) => u.id === userId);
+        const next = removeOwnAccount(
+          p,
+          userId,
+          makeLog("מחיקת חשבון", "user", userId, user?.fullName),
         );
         return next ?? p;
       });
@@ -1607,6 +1638,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     updateTenant,
     deleteLandlord,
     deleteTenant,
+    deleteOwnAccount,
     confirmPaymentClearance,
     updatePayment,
     addExpense,

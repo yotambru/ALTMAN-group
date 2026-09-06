@@ -37,6 +37,8 @@ interface TicketsDialogProps {
   inline?: boolean;
   propertyIds?: string[];
   readOnly?: boolean;
+  /** Keep treatment invoices private from tenants when viewing tickets. */
+  canViewInvoices?: boolean;
   title?: string;
   /** Ticket to emphasize after navigating from a notification. */
   highlightTicketId?: string | null;
@@ -48,6 +50,7 @@ export function TicketsDialog({
   inline = false,
   propertyIds,
   readOnly = false,
+  canViewInvoices = true,
   title = "ניהול קריאות ותקלות",
   highlightTicketId = null,
 }: TicketsDialogProps) {
@@ -134,7 +137,12 @@ export function TicketsDialog({
             propertyLabel={propertyById(t.propertyId)?.address}
             professionalName={professionals.find((p) => p.id === t.assignedProfessionalId)?.fullName}
             professionals={professionals}
-            invoice={t.invoiceDocId ? documents.find((d) => d.id === t.invoiceDocId) : undefined}
+            invoice={
+              canViewInvoices && t.invoiceDocId
+                ? documents.find((d) => d.id === t.invoiceDocId)
+                : undefined
+            }
+            canViewInvoices={canViewInvoices}
             readOnly={readOnly}
             onStatus={(s) => setTicketStatus(t.id, s)}
             onAssign={(pid, when) => assignTicket(t.id, pid, when)}
@@ -167,6 +175,7 @@ function TicketRow({
   professionalName,
   professionals,
   invoice,
+  canViewInvoices,
   readOnly,
   onStatus,
   onAssign,
@@ -178,6 +187,7 @@ function TicketRow({
   professionalName?: string;
   professionals: { id: string; fullName: string; trade: string }[];
   invoice?: AppDocument;
+  canViewInvoices: boolean;
   readOnly: boolean;
   onStatus: (s: TicketStatus) => void;
   onAssign: (professionalId: string, scheduledAt?: string) => void;
@@ -267,66 +277,68 @@ function TicketRow({
             </p>
           )}
 
-          <div>
-            <p className="mb-1.5 text-xs font-semibold text-navy">חשבונית</p>
-            {invoice ? (
-              <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-muted/60 p-2.5">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-navy/5 text-navy">
-                  <FileText className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-navy">{invoice.name}</p>
-                  <p className="text-[0.7rem] text-text-muted">{formatDateDots(invoice.createdAt)}</p>
+          {canViewInvoices && (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-navy">חשבונית</p>
+              {invoice ? (
+                <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-muted/60 p-2.5">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-navy/5 text-navy">
+                    <FileText className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-navy">{invoice.name}</p>
+                    <p className="text-[0.7rem] text-text-muted">{formatDateDots(invoice.createdAt)}</p>
+                  </div>
+                  {invoice.fileDataUrl && (
+                    <a
+                      href={invoice.fileDataUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-bold text-orange hover:bg-orange-soft"
+                    >
+                      צפייה
+                    </a>
+                  )}
+                  {!readOnly && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 shrink-0 px-2.5 text-xs"
+                      disabled={uploading}
+                      onClick={() => invoiceInputRef.current?.click()}
+                    >
+                      החלפה
+                    </Button>
+                  )}
                 </div>
-                {invoice.fileDataUrl && (
-                  <a
-                    href={invoice.fileDataUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-bold text-orange hover:bg-orange-soft"
-                  >
-                    צפייה
-                  </a>
-                )}
-                {!readOnly && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 shrink-0 px-2.5 text-xs"
-                    disabled={uploading}
-                    onClick={() => invoiceInputRef.current?.click()}
-                  >
-                    החלפה
-                  </Button>
-                )}
-              </div>
-            ) : readOnly ? (
-              <p className="rounded-xl border border-dashed border-border px-3 py-2.5 text-center text-xs text-text-muted">
-                לא הועלתה חשבונית לתקלה זו
-              </p>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                fullWidth
-                disabled={uploading}
-                onClick={() => invoiceInputRef.current?.click()}
-              >
-                <Upload className="h-4 w-4" />
-                {uploading ? "מעלה…" : "העלאת חשבונית"}
-              </Button>
-            )}
-            {!readOnly && (
-              <input
-                ref={invoiceInputRef}
-                type="file"
-                accept="image/*,application/pdf"
-                className="hidden"
-                aria-label="העלאת חשבונית"
-                onChange={(e) => void handleInvoicePick(e.target.files?.[0])}
-              />
-            )}
-          </div>
+              ) : readOnly ? (
+                <p className="rounded-xl border border-dashed border-border px-3 py-2.5 text-center text-xs text-text-muted">
+                  לא הועלתה חשבונית לתקלה זו
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  fullWidth
+                  disabled={uploading}
+                  onClick={() => invoiceInputRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4" />
+                  {uploading ? "מעלה…" : "העלאת חשבונית"}
+                </Button>
+              )}
+              {!readOnly && (
+                <input
+                  ref={invoiceInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  aria-label="העלאת חשבונית"
+                  onChange={(e) => void handleInvoicePick(e.target.files?.[0])}
+                />
+              )}
+            </div>
+          )}
 
           {!readOnly && (
             <>

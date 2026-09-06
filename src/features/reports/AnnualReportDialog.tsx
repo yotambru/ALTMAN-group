@@ -40,7 +40,20 @@ export function AnnualReportDialog({
   canAddExpenses = false,
 }: AnnualReportDialogProps) {
   const { properties, leases, landlords, expenses, addExpense, addDocument } = useData();
-  const owned = properties.filter((p) => !landlordId || p.landlordId === landlordId);
+  const [filterLandlordId, setFilterLandlordId] = useState("");
+  const [filterPropertyId, setFilterPropertyId] = useState("");
+  const [expenseDesc, setExpenseDesc] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expensePropertyId, setExpensePropertyId] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const managerProperties = properties.filter((p) => !landlordId || p.landlordId === landlordId);
+  const filterableProperties = managerProperties.filter(
+    (p) => !filterLandlordId || p.landlordId === filterLandlordId,
+  );
+  const owned = filterableProperties.filter((p) => !filterPropertyId || p.id === filterPropertyId);
   const ownedIds = new Set(owned.map((p) => p.id));
   const activeLeases = leases.filter((l) => l.active && ownedIds.has(l.propertyId));
   const year = new Date().getFullYear();
@@ -73,6 +86,7 @@ export function AnnualReportDialog({
       const landlordIds = new Set(owned.map((p) => p.landlordId));
       if (!landlordIds.has(e.landlordId)) return false;
     }
+    if (filterPropertyId && e.propertyId !== filterPropertyId) return false;
     return e.date.startsWith(String(year));
   });
   const recordedExpenses = yearExpenses.reduce((sum, e) => sum + e.amount, 0);
@@ -107,13 +121,6 @@ export function AnnualReportDialog({
   const yieldHistory = buildPortfolioYieldHistory(activeLeases);
   const portfolioYield = totalIncome > 0 ? PORTFOLIO_YIELD_RATE * 100 : 0;
   const occupancy = occupancyPercent(owned);
-
-  const [expenseDesc, setExpenseDesc] = useState("");
-  const [expenseAmount, setExpenseAmount] = useState("");
-  const [expensePropertyId, setExpensePropertyId] = useState("");
-  const [downloading, setDownloading] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const handleDownloadPdf = async () => {
     if (downloading) return;
@@ -181,6 +188,65 @@ export function AnnualReportDialog({
 
   const body = (
     <div className="space-y-3">
+      {!landlordId && (
+        <section className="space-y-2 rounded-2xl border border-border bg-surface-muted p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-bold text-navy">סינון הדוח</p>
+            {(filterLandlordId || filterPropertyId) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterLandlordId("");
+                  setFilterPropertyId("");
+                }}
+                className="text-xs font-semibold text-orange underline underline-offset-2"
+              >
+                איפוס סינון
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="space-y-1 text-xs font-semibold text-text-muted">
+              <span>משכיר</span>
+              <select
+                value={filterLandlordId}
+                onChange={(event) => {
+                  setFilterLandlordId(event.target.value);
+                  setFilterPropertyId("");
+                }}
+                className="w-full rounded-lg border border-border bg-surface px-2 py-2 text-sm font-normal text-navy focus:border-orange focus:outline-none"
+                aria-label="סינון לפי משכיר"
+              >
+                <option value="">כל המשכירים</option>
+                {landlords
+                  .filter((landlord) => managerProperties.some((property) => property.landlordId === landlord.id))
+                  .map((landlord) => (
+                    <option key={landlord.id} value={landlord.id}>
+                      {landlord.fullName}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-xs font-semibold text-text-muted">
+              <span>דירה</span>
+              <select
+                value={filterPropertyId}
+                onChange={(event) => setFilterPropertyId(event.target.value)}
+                className="w-full rounded-lg border border-border bg-surface px-2 py-2 text-sm font-normal text-navy focus:border-orange focus:outline-none"
+                aria-label="סינון לפי דירה"
+              >
+                <option value="">כל הדירות</option>
+                {filterableProperties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.address} · דירה {property.apartmentNumber}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
+      )}
+
       <div className="rounded-2xl bg-gradient-to-l from-navy-dark to-navy-light p-4 text-white">
         <p className="flex items-center gap-1.5 text-sm text-white/80">
           <TrendingUp className="h-4 w-4" />

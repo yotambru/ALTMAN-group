@@ -24,6 +24,8 @@ interface HeroStatCardProps {
   chartStartLabel?: string;
   /** Caption under the right (today) of the sparkline. */
   chartEndLabel?: string;
+  /** 0–1: how far the sparkline reaches. New clients stay partial. */
+  chartProgress?: number;
   /**
    * `navy` — dark gradient card.
    * `focus` — light centered metric.
@@ -46,6 +48,7 @@ export function HeroStatCard({
   secondary,
   chartStartLabel,
   chartEndLabel,
+  chartProgress = 1,
   tone = "navy",
   className,
 }: HeroStatCardProps) {
@@ -115,7 +118,7 @@ export function HeroStatCard({
             )}
           </SecondaryTag>
         )}
-        {data && data.length > 1 && (
+        {data && (
           <div dir="ltr" className="relative mt-3 -mx-1">
             <Sparkline
               data={data}
@@ -124,11 +127,15 @@ export function HeroStatCard({
               fillOpacity={0.16}
               showStartDot
               startDotColor="white"
+              endDotColor="white"
+              progress={chartProgress}
             />
             {(chartStartLabel || chartEndLabel) && (
               <div className="mt-1 flex justify-between gap-2 text-[0.65rem] font-medium text-white/50">
-                <span>{chartStartLabel}</span>
-                <span className="text-end">{chartEndLabel}</span>
+                <span dir="rtl">{chartStartLabel}</span>
+                <span dir="rtl" className="text-end">
+                  {chartEndLabel}
+                </span>
               </div>
             )}
           </div>

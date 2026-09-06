@@ -114,8 +114,9 @@ export default function TenantDashboard() {
   const myDocs = documents.filter((d) => {
     const belongsToTenant = d.ownerUserId === user.id || (d.propertyId && d.propertyId === property?.id);
     if (!belongsToTenant) return false;
+    if (d.type === "invoice") return false;
     const folder = inferDocumentFolder(d);
-    return folder !== "management" && folder !== "landlord_id";
+    return folder !== "management" && folder !== "landlord_id" && folder !== "id_photos";
   });
   const tenantProperties = property ? [property] : [];
 
@@ -410,7 +411,7 @@ export default function TenantDashboard() {
 
             {homePanel !== "home" && !locked ? (
               <section className="space-y-3 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
-                <SectionHeader title={panelTitles[homePanel]} />
+                <SectionHeader title={panelTitles[homePanel]} onBack={() => setHomePanel("home")} />
                 {homePanel === "chat" && (
                   <ChatPanel
                     inline
@@ -420,7 +421,13 @@ export default function TenantDashboard() {
                   />
                 )}
                 {homePanel === "tickets" && (
-                  <TicketsDialog inline propertyIds={[property.id]} readOnly title="מעקב תקלות" />
+                    <TicketsDialog
+                      inline
+                      propertyIds={[property.id]}
+                      readOnly
+                      canViewInvoices={false}
+                      title="מעקב תקלות"
+                    />
                 )}
                 {homePanel === "docs" && (
                   <DocumentsDialog
@@ -430,6 +437,7 @@ export default function TenantDashboard() {
                     canSign
                     signerName={session.fullName}
                     properties={tenantProperties}
+                    hiddenFolders={["id_photos", "landlord_id", "management"]}
                     upload={{
                       ownerUserId: user.id,
                       propertyId: property.id,
@@ -591,7 +599,7 @@ export default function TenantDashboard() {
 
         {tab === "documents" && (
           <div className="space-y-4 px-4 pb-8 pt-2">
-            <SectionHeader title="מסמכים" />
+            <SectionHeader title="מסמכים" onBack={() => onNav("dashboard")} />
             <DocumentsDialog
               inline
               searchable
@@ -599,6 +607,7 @@ export default function TenantDashboard() {
               canSign
               signerName={session.fullName}
               properties={tenantProperties}
+              hiddenFolders={["id_photos", "landlord_id", "management"]}
               upload={{
                 ownerUserId: user.id,
                 propertyId: property.id,
@@ -614,6 +623,7 @@ export default function TenantDashboard() {
           <NotificationsTab
             forUserId={user.id}
             forRole="tenant"
+            onBack={() => onNav("dashboard")}
             onOpen={(n) => {
               openNotification(n);
             }}
@@ -627,6 +637,7 @@ export default function TenantDashboard() {
             role="tenant"
             detail={`${property.address}, ${property.city}`}
             onLogout={logout}
+            onBack={() => onNav("dashboard")}
           >
             <div className="flex items-center gap-3 border-y border-border py-3">
               <Wallet className="h-5 w-5 text-navy" />

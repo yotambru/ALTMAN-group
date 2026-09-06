@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  Archive,
   Bath,
   BedDouble,
+  Building2,
+  Car,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -12,6 +15,7 @@ import {
   IdCard,
   Layers,
   Mail,
+  MapPin,
   Pencil,
   Phone,
   Plus,
@@ -19,6 +23,7 @@ import {
   Trash2,
   Users,
   Wrench,
+  KeyRound,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -36,6 +41,13 @@ import { buildLeasePeriods, rentOnDate } from "@/lib/lease-periods";
 import type { CheckDepositMode, Payment, PaymentStatus, Property } from "@/types";
 
 const statusLabels = PROPERTY_STATUS_LABELS;
+
+const airDirectionLabels: Record<NonNullable<Property["airDirections"]>[number], string> = {
+  north: "צפון",
+  south: "דרום",
+  east: "מזרח",
+  west: "מערב",
+};
 
 const depositModeLabel: Record<CheckDepositMode, string> = {
   client: "הפקדה אצל הלקוח",
@@ -154,6 +166,58 @@ function DetailRow({ icon: Icon, label, value }: { icon: typeof Bath; label: str
         <p className="truncate text-sm font-bold leading-tight text-navy">{value}</p>
       </div>
     </div>
+  );
+}
+
+function PropertyFullDetails({ property }: { property: Property }) {
+  const text = (value: string | number | undefined) =>
+    value === undefined || value === "" || value === 0 ? "לא הוזן" : String(value);
+  const yesNo = (value: boolean | undefined) => (value === undefined ? "לא הוזן" : value ? "כן" : "לא");
+  const directions = property.airDirections?.length
+    ? property.airDirections.map((direction) => airDirectionLabels[direction]).join(" · ")
+    : "לא הוזן";
+  const balcony = property.hasBalcony
+    ? property.balconySqm
+      ? `כן · ${property.balconySqm} מ״ר`
+      : "כן"
+    : yesNo(property.hasBalcony);
+  const parking = property.hasParking
+    ? property.parkingNumber
+      ? `כן · מס׳ ${property.parkingNumber}`
+      : "כן"
+    : yesNo(property.hasParking);
+  const storage = property.hasStorage
+    ? property.storageNumber
+      ? `כן · מס׳ ${property.storageNumber}`
+      : "כן"
+    : yesNo(property.hasStorage);
+
+  return (
+    <section className="space-y-2">
+      <p className="text-sm font-bold text-navy">פרטי נכס מלאים</p>
+      <div className="grid grid-cols-2 gap-2">
+        <DetailRow icon={MapPin} label="שכונה" value={text(property.neighborhood)} />
+        <DetailRow icon={Building2} label="מס׳ נכס בארנונה" value={text(property.municipalPropertyNumber)} />
+        <DetailRow icon={Building2} label="סטטוס" value={statusLabels[property.status]} />
+        <DetailRow icon={CalendarDays} label="תאריך כניסה" value={property.entryDate ? formatDateDots(property.entryDate) : "לא הוזן"} />
+        <DetailRow icon={KeyRound} label="מפתחות שהתקבלו" value={text(property.keysReceived)} />
+        <DetailRow icon={Ruler} label="מס׳ שירותים" value={text(property.toilets)} />
+        <DetailRow icon={Car} label="חניה" value={parking} />
+        <DetailRow icon={Archive} label="מחסן" value={storage} />
+        <DetailRow icon={Building2} label="מרפסת" value={balcony} />
+        <DetailRow icon={Building2} label="מעלית" value={yesNo(property.hasElevator)} />
+        <DetailRow icon={Building2} label="חיות מחמד" value={yesNo(property.petsAllowed)} />
+        <DetailRow icon={Building2} label="נגישות לנכים" value={yesNo(property.accessible)} />
+        <DetailRow icon={MapPin} label="כיווני אוויר" value={directions} />
+        <DetailRow icon={FileText} label="דוח בדק" value={yesNo(property.hasInspectionReport)} />
+        <DetailRow icon={Phone} label="טלפון חברת ניהול" value={text(property.managementCompanyPhone)} />
+        <DetailRow icon={Phone} label="טלפוני קבלנים" value={text(property.subcontractorPhones)} />
+        <DetailRow icon={Ruler} label="שכ״ד מבוקש" value={property.listedRent ? formatCurrency(property.listedRent) : "לא הוזן"} />
+        <DetailRow icon={FileText} label="מונה חשמל" value={text(property.electricityMeter)} />
+        <DetailRow icon={FileText} label="מונה מים" value={text(property.waterMeter)} />
+        <DetailRow icon={FileText} label="מונה גז" value={text(property.gasMeter)} />
+      </div>
+    </section>
   );
 }
 
@@ -292,19 +356,22 @@ export function PropertyDetailDialog({
           onEditPhoto={onEditPhoto ?? (onEdit ? replaceCoverPhoto : undefined)}
         />
 
-        {/* 1. מפרט דירה — רק שורת האייקונים */}
-        <section className="space-y-2">
-          <p className="text-sm font-bold text-navy">מפרט דירה</p>
-          <div className="flex items-center rounded-2xl bg-surface-muted p-2">
-            <Spec icon={Layers} value={floorLabel} />
-            <span className="h-8 w-px bg-border" />
-            <Spec icon={Ruler} value={`${property.sizeSqm} מ״ר`} />
-            <span className="h-8 w-px bg-border" />
-            <Spec icon={BedDouble} value={`${property.rooms} חדרים`} />
-            <span className="h-8 w-px bg-border" />
-            <Spec icon={Bath} value={`${property.bathrooms} רחצה`} />
-          </div>
-        </section>
+        {(!collapsible || showFullDetails) && (
+          <section className="space-y-2">
+            <p className="text-sm font-bold text-navy">מפרט דירה</p>
+            <div className="flex items-center rounded-2xl bg-surface-muted p-2">
+              <Spec icon={Layers} value={floorLabel} />
+              <span className="h-8 w-px bg-border" />
+              <Spec icon={Ruler} value={`${property.sizeSqm} מ״ר`} />
+              <span className="h-8 w-px bg-border" />
+              <Spec icon={BedDouble} value={`${property.rooms} חדרים`} />
+              <span className="h-8 w-px bg-border" />
+              <Spec icon={Bath} value={`${property.bathrooms} רחצה`} />
+            </div>
+          </section>
+        )}
+
+        {(!collapsible || showFullDetails) && <PropertyFullDetails property={property} />}
 
         {/* 2. פרטי שוכר */}
         <section className="space-y-2">

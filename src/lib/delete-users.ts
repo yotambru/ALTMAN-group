@@ -174,3 +174,41 @@ export function removeLandlord(
     activityLog: [log, ...state.activityLog],
   };
 }
+
+/** Remove the signed-in login and the personal data tied to that account. */
+export function removeOwnAccount(
+  state: DataState,
+  userId: string,
+  log: ActivityLogEntry,
+): DataState | null {
+  const user = state.users.find((u) => u.id === userId);
+  if (!user) return null;
+
+  if (user.tenantId) {
+    const next = removeTenant(state, user.tenantId, log);
+    if (next) return next;
+  }
+  if (user.landlordId) {
+    const next = removeLandlord(state, user.landlordId, log);
+    if (next) return next;
+  }
+
+  const userIds = new Set([userId]);
+  const social = stripUsers(state, userIds);
+  return {
+    ...state,
+    ...social,
+    users: state.users.filter((u) => u.id !== userId),
+    professionals: user.professionalId
+      ? state.professionals.filter((p) => p.id !== user.professionalId)
+      : state.professionals,
+    tickets: user.professionalId
+      ? state.tickets.map((t) =>
+          t.assignedProfessionalId === user.professionalId
+            ? { ...t, assignedProfessionalId: undefined }
+            : t,
+        )
+      : state.tickets,
+    activityLog: [log, ...state.activityLog],
+  };
+}

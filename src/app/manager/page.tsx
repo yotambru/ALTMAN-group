@@ -66,6 +66,7 @@ import {
   summarizePortfolio,
   PORTFOLIO_YIELD_RATE,
 } from "@/lib/portfolio";
+import { heroIncomeChartProps } from "@/lib/hero-income-chart";
 import { formatCurrency } from "@/lib/utils";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
@@ -120,6 +121,7 @@ export default function ManagerDashboard() {
   ).length;
 
   const activeLeases = leases.filter((l) => l.active);
+  const incomeChart = heroIncomeChartProps(activeLeases, { startCaption: "התחלה" });
   const { monthlyIncome, portfolioValue } = summarizePortfolio(properties, activeLeases);
   const occupancy = occupancyPercent(properties);
   const openTicketCount = tickets.filter((t) => t.status === "open" || t.status === "in_progress").length;
@@ -350,6 +352,10 @@ export default function ManagerDashboard() {
                 value: formatCurrency(monthlyIncome),
                 sublabel: "סך דמי שכירות מכל הנכסים",
               }}
+              data={incomeChart.data}
+              chartProgress={incomeChart.progress}
+              chartStartLabel={incomeChart.chartStartLabel}
+              chartEndLabel={incomeChart.chartEndLabel}
             />
           </div>
         </div>
@@ -562,7 +568,7 @@ export default function ManagerDashboard() {
                 )
               ) : (
                 <>
-                  <SectionHeader title={panelTitles[homePanel]} />
+                  <SectionHeader title={panelTitles[homePanel]} onBack={() => onNav("dashboard")} />
                   {homePanel === "tickets" && (
                     <TicketsDialog inline highlightTicketId={focusTicketId} />
                   )}
@@ -598,20 +604,7 @@ export default function ManagerDashboard() {
 
         {tab === "documents" && (
           <div className="space-y-3 px-4 pb-8 pt-2">
-            <SectionHeader
-              title="מסמכים"
-              action={
-                <button
-                  type="button"
-                  onClick={() => onNav("dashboard")}
-                  aria-label="חזרה לדשבורד"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-surface-muted px-3 py-1.5 text-sm font-bold text-navy transition-colors hover:bg-orange-soft hover:text-orange"
-                >
-                  <ArrowRight className="h-4 w-4" />
-                  חזרה
-                </button>
-              }
-            />
+            <SectionHeader title="מסמכים" onBack={() => onNav("dashboard")} />
             <DocumentsDialog
               inline
               searchable
@@ -628,6 +621,7 @@ export default function ManagerDashboard() {
           <NotificationsTab
             forUserId={user.id}
             forRole="manager"
+            onBack={() => onNav("dashboard")}
             onOpen={(n) => {
               setTab("dashboard");
               openNotification(n);
@@ -636,7 +630,13 @@ export default function ManagerDashboard() {
         )}
 
         {tab === "profile" && (
-          <ProfileTab userId={user.id} fullName={session.fullName} role={role} onLogout={logout} />
+          <ProfileTab
+            userId={user.id}
+            fullName={session.fullName}
+            role={role}
+            onLogout={logout}
+            onBack={() => onNav("dashboard")}
+          />
         )}
       </div>
 

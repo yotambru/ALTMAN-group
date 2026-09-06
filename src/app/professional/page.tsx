@@ -193,7 +193,7 @@ export default function ProfessionalDashboard() {
 
         {tab === "documents" && (
           <div className="space-y-3 px-4 pb-8 pt-2">
-            <SectionHeader title="מסמכים" />
+            <SectionHeader title="מסמכים" onBack={() => onNav("dashboard")} />
             {myInvoices.length === 0 ? (
               <p className="py-8 text-center text-sm text-text-muted">
                 חשבוניות הקריאות יופיעו כאן לאחר העלאה.
@@ -229,7 +229,11 @@ export default function ProfessionalDashboard() {
         )}
 
         {tab === "notifications" && (
-          <NotificationsTab forUserId={user.id} forRole="professional" />
+          <NotificationsTab
+            forUserId={user.id}
+            forRole="professional"
+            onBack={() => onNav("dashboard")}
+          />
         )}
 
         {tab === "profile" && (
@@ -239,6 +243,7 @@ export default function ProfessionalDashboard() {
             role="professional"
             detail={me?.trade}
             onLogout={logout}
+            onBack={() => onNav("dashboard")}
           />
         )}
       </div>

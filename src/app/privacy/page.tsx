@@ -14,7 +14,7 @@ export default function PrivacyPage() {
       </div>
 
       <h1 className="text-2xl font-extrabold text-navy">מדיניות פרטיות</h1>
-      <p className="mt-2 text-sm text-text-muted">עדכון אחרון: אוגוסט 2026</p>
+      <p className="mt-2 text-sm text-text-muted">עדכון אחרון: ספטמבר 2026</p>
 
       <div className="mt-6 space-y-5 text-sm leading-relaxed text-text">
         <section className="space-y-2">
@@ -61,10 +61,27 @@ export default function PrivacyPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-base font-bold text-navy">זכויות המשתמש</h2>
+          <h2 className="text-base font-bold text-navy">זכויות המשתמש ומחיקת חשבון</h2>
           <p>
-            ניתן להתנתק מהמערכת ולמחוק את סשן ההתחברות המקומי במכשיר. בקשות
-            למחיקת נתונים שמורים בשרת ניתן להפנות אל ALTMAN Group.
+            ניתן להתנתק מהמערכת בכל עת. מחיקת חשבון מתבצעת מתוך האפליקציה:
+            פרופיל ← מחיקת חשבון. המחיקה מסירה לצמיתות את חשבון הכניסה ואת
+            הנתונים האישיים מהשרת, ולא ניתן לשחזר אותם. בקשות נוספות ניתן
+            להפנות אל{" "}
+            <a
+              className="font-semibold text-orange underline-offset-2 hover:underline"
+              href="mailto:privacy@altmangroup.co.il"
+            >
+              privacy@altmangroup.co.il
+            </a>
+            .
+          </p>
+        </section>
+        <section className="space-y-2">
+          <h2 className="text-base font-bold text-navy">מצלמה וגלריה</h2>
+          <p>
+            האפליקציה מבקשת גישה למצלמה ולגלריה רק כדי לצלם או לבחור תמונות
+            לנכסים, לקריאות תחזוקה, למסמכים ולתמונת פרופיל. אין שימוש במצלמה
+            ברקע ואין שיתוף התמונות לצדדים שלישיים למטרות פרסום.
           </p>
         </section>
 
