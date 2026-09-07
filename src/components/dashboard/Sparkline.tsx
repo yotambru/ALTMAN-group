@@ -73,6 +73,41 @@ function nearestIndex(x: number, points: { x: number }[]): number {
   return best;
 }
 
+/** CSS pixels — stays circular even when the SVG viewBox is stretched. */
+function ChartDot({
+  x,
+  y,
+  vw,
+  vh,
+  size,
+  fill,
+  ring,
+}: {
+  x: number;
+  y: number;
+  vw: number;
+  vh: number;
+  size: number;
+  fill: string;
+  ring?: string;
+}) {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute rounded-full"
+      style={{
+        width: size,
+        height: size,
+        left: `${(x / vw) * 100}%`,
+        top: `${(y / vh) * 100}%`,
+        transform: "translate(-50%, -50%)",
+        backgroundColor: fill,
+        boxShadow: ring ? `0 0 0 2px ${ring}` : undefined,
+      }}
+    />
+  );
+}
+
 /** Minimal wave chart used under the hero income metric. */
 export function Sparkline({
   data,
@@ -170,64 +205,66 @@ export function Sparkline({
             d={line}
             fill="none"
             stroke={color}
-            strokeWidth={2.25}
+            strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
+            vectorEffect="nonScalingStroke"
           />
         </g>
-        {showStartDot && (
-          <circle
-            cx={first.x}
-            cy={first.y}
-            r={3.5}
-            fill={startDotColor ?? color}
-            stroke={startDotColor ?? color}
-            strokeWidth={1.5}
-          />
-        )}
-        <circle
-          cx={last.x}
-          cy={last.y}
-          r={3.5}
-          fill={endDotColor ?? color}
-          stroke={endDotColor ?? color}
-          strokeWidth={1.5}
-        />
-        {active && (
-          <>
-            <line
-              x1={active.x}
-              x2={active.x}
-              y1={padY}
-              y2={h - padY}
-              stroke={color}
-              strokeWidth={1}
-              strokeDasharray="3 3"
-              opacity={0.55}
-            />
-            <circle
-              cx={active.x}
-              cy={active.y}
-              r={4.5}
-              fill={color}
-              stroke="white"
-              strokeWidth={1.75}
-            />
-          </>
-        )}
       </svg>
+      {showStartDot && (
+        <ChartDot
+          x={first.x}
+          y={first.y}
+          vw={w}
+          vh={h}
+          size={8}
+          fill={startDotColor ?? color}
+        />
+      )}
+      <ChartDot
+        x={last.x}
+        y={last.y}
+        vw={w}
+        vh={h}
+        size={8}
+        fill={endDotColor ?? color}
+      />
+      {active && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-1 w-px opacity-55"
+          style={{
+            left: `${(active.x / w) * 100}%`,
+            transform: "translateX(-50%)",
+            backgroundImage: `repeating-linear-gradient(${color} 0 3px, transparent 3px 6px)`,
+          }}
+        />
+      )}
+      {active && (
+        <ChartDot
+          x={active.x}
+          y={active.y}
+          vw={w}
+          vh={h}
+          size={11}
+          fill={color}
+          ring="#fff"
+        />
+      )}
       {active && activeSample && (
         <div
           dir="rtl"
-          className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg bg-white px-2 py-1 text-[0.65rem] font-bold leading-tight text-navy shadow-sm"
+          className="pointer-events-none absolute z-10 flex items-center gap-1 whitespace-nowrap rounded-lg bg-white px-2 py-1 text-[0.65rem] font-bold leading-tight text-navy shadow-sm"
           style={{
             left: `${Math.min(86, Math.max(14, (active.x / w) * 100))}%`,
             top: `${(active.y / h) * 100}%`,
             transform: "translate(-50%, calc(-100% - 0.45rem))",
           }}
         >
-          {activeSample.label}
-          <span dir="ltr"> · {formatCurrency(activeSample.value)}</span>
+          <span>{activeSample.label}</span>
+          <span aria-hidden>·</span>
+          <span dir="ltr">{formatCurrency(activeSample.value)}</span>
         </div>
       )}
     </div>
