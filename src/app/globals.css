@@ -45,6 +45,12 @@
   --shadow: 0 8px 24px -12px rgba(20, 40, 90, 0.14);
   --shadow-lg: 0 24px 48px -20px rgba(20, 40, 90, 0.22);
   --shadow-hero: 0 20px 40px -18px rgba(20, 40, 90, 0.45);
+
+  /* Overlay stack — chrome stays below, sheets/confirms/toasts go to document.body */
+  --z-nav: 40;
+  --z-overlay: 80;
+  --z-overlay-nested: 90;
+  --z-toast: 100;
 }
 
 @theme inline {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, FileText, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Portal } from "@/components/ui/Portal";
 import type { AppDocument } from "@/types";
 
 interface DocumentPreviewDialogProps {
@@ -67,8 +68,9 @@ export function DocumentPreviewDialog({
   const showPdf = Boolean(url && !showImage && isPdfSource(url, doc));
 
   return (
+    <Portal>
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center"
+      className="fixed inset-0 z-[var(--z-overlay-nested)] flex items-end justify-center sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-label={heading}
@@ -138,5 +140,6 @@ export function DocumentPreviewDialog({
         )}
       </div>
     </div>
+    </Portal>
   );
 }

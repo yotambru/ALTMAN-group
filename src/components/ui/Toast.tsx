@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { CheckCircle2 } from "lucide-react";
+import { Portal } from "@/components/ui/Portal";
 
 interface ToastProps {
   message: string | null;
@@ -20,11 +21,13 @@ export function Toast({ message, onDone, duration = 2200 }: ToastProps) {
   if (!message) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[60] flex justify-center px-4">
+    <Portal>
+    <div className="pointer-events-none fixed inset-x-0 bottom-[max(1.5rem,calc(env(safe-area-inset-bottom)+4.75rem))] z-[var(--z-toast)] flex justify-center px-4 lg:bottom-6">
       <div className="animate-sheet pointer-events-auto flex max-w-[26rem] items-center gap-2 rounded-full bg-navy px-4 py-3 text-sm font-semibold text-white shadow-lg">
         <CheckCircle2 className="h-5 w-5 text-orange" />
         {message}
       </div>
     </div>
+    </Portal>
   );
 }

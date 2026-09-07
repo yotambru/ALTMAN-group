@@ -30,7 +30,7 @@ export function BottomNavigation({
       <div className="h-[5.5rem] shrink-0" aria-hidden />
       <nav
         aria-label="ניווט ראשי"
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[30rem] px-4 pb-[calc(env(safe-area-inset-bottom)+0.55rem)]"
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-[var(--z-nav)] mx-auto w-full max-w-[30rem] px-4 pb-[calc(env(safe-area-inset-bottom)+0.55rem)]"
       >
         <div className="liquid-glass-bar pointer-events-auto flex items-stretch justify-around gap-0.5 px-1.5 py-1.5 backdrop-blur-[28px] backdrop-saturate-150">
           {items.map((tab) => {

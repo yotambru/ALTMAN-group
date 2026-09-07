@@ -19,6 +19,7 @@ import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { storage } from "@/lib/storage";
 import { roleLabels } from "@/lib/permissions";
 import type { Role } from "@/types";
+import { Portal } from "@/components/ui/Portal";
 import { cn } from "@/lib/utils";
 
 export interface MobileMenuItem {
@@ -74,7 +75,8 @@ export function MobileMenu({
   };
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="תפריט">
+    <Portal>
+    <div className="fixed inset-0 z-[var(--z-overlay)]" role="dialog" aria-modal="true" aria-label="תפריט">
       <button
         aria-label="סגירה"
         className="animate-overlay absolute inset-0 bg-navy-dark/50 backdrop-blur-[2px]"
@@ -129,5 +131,6 @@ export function MobileMenu({
         </div>
       </aside>
     </div>
+    </Portal>
   );
 }

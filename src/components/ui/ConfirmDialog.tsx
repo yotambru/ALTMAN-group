@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/Button";
+import { Portal } from "@/components/ui/Portal";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -37,8 +38,9 @@ export function ConfirmDialog({
   if (!open) return null;
 
   return (
+    <Portal>
     <div
-      className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center"
+      className="fixed inset-0 z-[var(--z-overlay-nested)] flex items-end justify-center sm:items-center"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="confirm-title"
@@ -50,7 +52,7 @@ export function ConfirmDialog({
         className="animate-overlay absolute inset-0 bg-navy-dark/50 backdrop-blur-[2px]"
         onClick={onClose}
       />
-      <div className="animate-sheet relative z-10 mx-3 mb-3 w-full max-w-[30rem] rounded-2xl bg-surface p-5 shadow-lg sm:mb-0">
+      <div className="animate-sheet relative z-10 mx-3 mb-[max(0.75rem,env(safe-area-inset-bottom))] w-full max-w-[30rem] rounded-2xl bg-surface p-5 shadow-lg sm:mb-0">
         <h3 id="confirm-title" className="text-lg font-bold text-navy">
           {title}
         </h3>
@@ -67,5 +69,6 @@ export function ConfirmDialog({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

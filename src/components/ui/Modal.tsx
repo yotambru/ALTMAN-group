@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { X } from "lucide-react";
+import { Portal } from "@/components/ui/Portal";
 import { cn } from "@/lib/utils";
 
 interface ModalProps {
@@ -40,8 +41,9 @@ export function Modal({
   if (!open) return null;
 
   return (
+    <Portal>
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      className="fixed inset-0 z-[var(--z-overlay)] flex items-end justify-center sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -53,7 +55,7 @@ export function Modal({
       />
       <div
         className={cn(
-          "animate-sheet relative z-10 w-full max-w-[30rem] rounded-t-2xl bg-surface p-5 shadow-lg sm:rounded-2xl lg:max-w-xl",
+          "animate-sheet relative z-10 w-full max-w-[30rem] rounded-t-2xl bg-surface p-5 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] shadow-lg sm:rounded-2xl sm:pb-5 lg:max-w-xl",
           className,
         )}
       >
@@ -77,5 +79,6 @@ export function Modal({
         {footer && <div className="mt-5">{footer}</div>}
       </div>
     </div>
+    </Portal>
   );
 }
