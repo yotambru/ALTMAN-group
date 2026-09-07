@@ -109,8 +109,8 @@ body {
   min-height: 100svh;
   background: var(--background);
   position: relative;
-  /* Native notch / home-indicator insets (Capacitor + iOS/Android) */
-  padding-top: env(safe-area-inset-top);
+  /* Home indicator + landscape insets. Top inset lives on .dusk-header / top bars
+     so the navy band can paint behind the iOS status bar / Dynamic Island. */
   padding-bottom: env(safe-area-inset-bottom);
   padding-inline-start: env(safe-area-inset-left);
   padding-inline-end: env(safe-area-inset-right);
@@ -120,6 +120,13 @@ body {
 html[data-capacitor="true"] .app-shell,
 html.plt-capacitor .app-shell {
   max-width: none;
+}
+
+html[data-capacitor="true"],
+html.plt-capacitor,
+html[data-capacitor="true"] body,
+html.plt-capacitor body {
+  background: var(--navy);
 }
 
 @media (min-width: 480px) and (max-width: 1023px) {
@@ -164,11 +171,12 @@ html.plt-capacitor .app-shell {
   box-shadow: var(--shadow-hero);
 }
 
-/* Dusk Glass — immersive navy header band */
+/* Dusk Glass — immersive navy header band (extends under the status bar) */
 .dusk-header {
   position: relative;
   overflow: hidden;
   color: #fff;
+  padding-top: env(safe-area-inset-top);
   background:
     radial-gradient(90% 80% at 100% 0%, rgba(242, 106, 33, 0.18) 0%, rgba(242, 106, 33, 0) 50%),
     linear-gradient(165deg, #1a3570 0%, var(--navy) 45%, var(--navy-dark) 100%);
@@ -237,6 +245,41 @@ html.plt-capacitor .app-shell {
     0 6px 14px -8px color-mix(in srgb, var(--navy) 28%, transparent);
 }
 
+/* Frosted cards for metrics / quick actions. No overflow:hidden — it kills backdrop-filter. */
+.liquid-glass-card {
+  position: relative;
+    background:
+      linear-gradient(
+        165deg,
+        rgb(255 255 255 / 0.58) 0%,
+        rgb(255 255 255 / 0.28) 100%
+      );
+  border: 1px solid rgb(255 255 255 / 0.88);
+  box-shadow:
+    0 20px 44px -20px color-mix(in srgb, var(--navy) 42%, transparent),
+    0 8px 18px -10px color-mix(in srgb, var(--navy) 18%, transparent),
+    inset 0 1.5px 0 rgb(255 255 255 / 1),
+    inset 0 -1px 0 color-mix(in srgb, var(--navy) 10%, transparent);
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+}
+
+.liquid-glass-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 50% -20%, rgb(255 255 255 / 0.7) 0%, transparent 55%),
+    linear-gradient(
+      165deg,
+      rgb(255 255 255 / 0.45) 0%,
+      rgb(255 255 255 / 0.08) 34%,
+      transparent 58%
+    );
+}
+
 /* Floating action button */
 .fab {
   position: absolute;
@@ -298,6 +341,9 @@ html.plt-capacitor .app-shell {
     row-gap: 1.5rem;
     padding-bottom: 2.5rem;
     width: 100%;
+    background:
+      radial-gradient(70% 22rem at 100% 8%, color-mix(in srgb, var(--orange) 16%, transparent), transparent 58%),
+      radial-gradient(55% 18rem at 0% 18%, color-mix(in srgb, var(--navy) 12%, transparent), transparent 52%);
   }
 
   .dash-wide-chrome {
@@ -317,6 +363,8 @@ html.plt-capacitor .app-shell {
   .dash-wide-hero {
     grid-area: hero;
     padding: 0 !important;
+    width: 70%;
+    justify-self: center;
   }
 
   /* Glass hero sits on a light canvas here — use opaque navy, not frosted-over-white */

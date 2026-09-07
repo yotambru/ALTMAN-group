@@ -10,7 +10,7 @@ interface AlertStripProps {
 /** Thin critical-alert strip at the top of Focus Strip home. */
 export function AlertStrip({ title, onClick, className }: AlertStripProps) {
   const classes = cn(
-    "flex w-full items-center gap-2 border-b border-danger/15 bg-[#fdecee] px-4 py-2.5 text-start",
+    "flex w-full items-center gap-2 border-b border-danger/15 bg-[#fdecee] px-4 pb-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] text-start",
     onClick && "transition-colors hover:bg-[#fbd8dc]",
     className,
   );

@@ -41,7 +41,7 @@ export default function LoginPage() {
           className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-black/10"
           aria-hidden
         />
-        <div className="absolute inset-x-0 top-0 flex justify-center pt-8 drop-shadow-[0_2px_12px_rgba(0,0,0,0.35)] lg:justify-start lg:px-10 lg:pt-10">
+        <div className="absolute inset-x-0 top-0 flex justify-center pt-[max(2rem,calc(env(safe-area-inset-top)+0.75rem))] drop-shadow-[0_2px_12px_rgba(0,0,0,0.35)] lg:justify-start lg:px-10 lg:pt-10">
           <Logo tone="light" size="lg" withTagline={false} />
         </div>
       </div>

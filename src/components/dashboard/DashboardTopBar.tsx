@@ -35,7 +35,7 @@ export function DashboardTopBar({
 }: DashboardTopBarProps) {
   if (tone === "brand") {
     return (
-      <header className={cn("flex items-center justify-between gap-3 bg-surface px-4 pb-3 pt-5", className)}>
+      <header className={cn("flex items-center justify-between gap-3 bg-surface px-4 pb-3 pt-[max(1.25rem,env(safe-area-inset-top))]", className)}>
         {onMenu ? (
           <button
             type="button"
@@ -139,7 +139,7 @@ export function DashboardTopBar({
   return (
     <header
       className={cn(
-        "flex items-center justify-between gap-3 px-5 pt-6 pb-4",
+        "flex items-center justify-between gap-3 px-5 pb-4 pt-[max(1.5rem,env(safe-area-inset-top))]",
         dark && "bg-navy text-white",
         className,
       )}

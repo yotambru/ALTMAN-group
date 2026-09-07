@@ -22,6 +22,7 @@ const config: CapacitorConfig = {
     StatusBar: {
       style: "DARK",
       backgroundColor: "#14285a",
+      overlaysWebView: true,
     },
     Keyboard: {
       resize: KeyboardResize.Body,

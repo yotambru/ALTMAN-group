@@ -43,10 +43,10 @@ export function FocusActions({ items, title, className }: FocusActionsProps) {
               onClick={item.onClick}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex flex-col items-center gap-1.5 rounded-2xl bg-surface px-1 py-3 text-center shadow-sm transition-all lg:gap-2 lg:px-2 lg:py-4",
+                "liquid-glass-card flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3 text-center backdrop-blur-[22px] backdrop-saturate-150 transition-all lg:gap-2 lg:px-2 lg:py-4",
                 isActive
                   ? "ring-2 ring-orange"
-                  : "ring-1 ring-border hover:shadow",
+                  : "hover:shadow-lg",
               )}
             >
               <Icon

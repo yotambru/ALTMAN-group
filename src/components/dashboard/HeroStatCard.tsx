@@ -124,10 +124,10 @@ export function HeroStatCard({
           )}
         </div>
         {data && (
-          <div dir="ltr" className="relative z-10 mt-3 -mx-1 overflow-visible lg:mt-auto lg:pt-5">
+          <div dir="ltr" className="relative z-10 mt-3 -mx-1 overflow-visible lg:mt-4 lg:pt-2">
             <Sparkline
               data={data}
-              className="h-14 w-full lg:h-16"
+              className="h-14 w-full lg:h-14"
               color="var(--orange)"
               fillOpacity={0.16}
               showStartDot

@@ -23,6 +23,7 @@ export function CapacitorBootstrap() {
 
     const boot = async () => {
       try {
+        await StatusBar.setOverlaysWebView({ overlay: true });
         await StatusBar.setStyle({ style: Style.Dark });
         if (Capacitor.getPlatform() === "android") {
           await StatusBar.setBackgroundColor({ color: "#14285a" });

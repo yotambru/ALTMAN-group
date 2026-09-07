@@ -11,8 +11,7 @@ interface MetricCardProps {
 }
 
 /**
- * Stat card matching the reference: muted label + plain line icon on top,
- * large navy value below. Soft white card with light border.
+ * Centered metric card with a liquid-glass surface over the dashboard canvas.
  */
 export function MetricCard({
   icon: Icon,
@@ -27,8 +26,8 @@ export function MetricCard({
     <Comp
       onClick={onClick}
       className={cn(
-        "card flex w-full flex-col items-center gap-2 p-4 text-center shadow-sm",
-        onClick && "transition-shadow hover:shadow",
+        "liquid-glass-card flex w-full flex-col items-center gap-2 rounded-[var(--radius)] p-4 text-center backdrop-blur-[22px] backdrop-saturate-150",
+        onClick && "transition-shadow hover:shadow-lg",
         className,
       )}
     >
