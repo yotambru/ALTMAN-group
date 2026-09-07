@@ -13,7 +13,7 @@
 
 1. היכנסו ל-[play.google.com/console](https://play.google.com/console).
 2. שלמו את דמי הרישום והשלימו אימות זהות / ארגון.
-3. צרו אפליקציה חדשה: שם `ALTMAN Group`, שפת ברירת מחדל עברית, package `il.co.altmangroup.app`.
+3. האפליקציה כבר קיימת ב-Play Console: שם `ALTMAN Group`, package `il.co.altmangroup.android` (כי `il.co.altmangroup.app` היה תפוס). iOS נשאר `il.co.altmangroup.app`.
 4. לבנייה נדרשים: Android Studio + JDK.
 
 ## אחרי שהחשבונות מאושרים

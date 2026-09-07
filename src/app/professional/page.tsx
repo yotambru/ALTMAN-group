@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { CalendarClock, CheckCircle2, FileText, ListChecks, MapPin, Receipt, Upload, Wrench } from "lucide-react";
 import { DashboardTopBar } from "@/components/dashboard/DashboardTopBar";
 import { HeroStatCard } from "@/components/dashboard/HeroStatCard";
-import { BottomNavigation } from "@/components/dashboard/BottomNavigation";
+import { DashboardFrame } from "@/components/dashboard/DashboardFrame";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { MobileMenu } from "@/components/dashboard/MobileMenu";
 import { NotificationsTab } from "@/components/dashboard/NotificationsTab";
@@ -58,9 +58,10 @@ export default function ProfessionalDashboard() {
   if (!ready) return null;
 
   return (
-    <main className="app-shell flex min-h-[100dvh] flex-col bg-surface-muted">
+    <DashboardFrame items={appBottomNavItems(unread)} active={tab} onSelect={onNav}>
       {tab === "dashboard" ? (
-        <div className="dusk-header">
+        <div className="dash-wide">
+        <div className="dusk-header dash-wide-chrome">
           <DashboardTopBar
             tone="dusk"
             greeting={`שלום, ${firstName}`}
@@ -69,7 +70,7 @@ export default function ProfessionalDashboard() {
             onBell={() => setTab("notifications")}
             notificationCount={unread}
           />
-          <div className="px-4 pb-6 pt-1">
+          <div className="dash-wide-hero px-4 pb-6 pt-1">
             <HeroStatCard
               tone="glass"
               label="קריאות פעילות"
@@ -78,18 +79,9 @@ export default function ProfessionalDashboard() {
             />
           </div>
         </div>
-      ) : (
-        <DashboardTopBar
-          tone="brand"
-          onMenu={() => setMenuOpen(true)}
-          onProfile={() => setTab("profile")}
-        />
-      )}
 
-      <div className="flex-1">
-        {tab === "dashboard" && (
-          <div className="dash-sheet space-y-5 px-4 pb-8 pt-5">
-            <div className="grid grid-cols-2 gap-3">
+          <div className="dash-sheet dash-wide-body space-y-5 px-4 pb-8 pt-5 lg:space-y-0">
+            <div className="dash-wide-metrics grid grid-cols-2 gap-3">
               <MetricCard
                 icon={Wrench}
                 label="פתוחות"
@@ -116,6 +108,7 @@ export default function ProfessionalDashboard() {
               />
             </div>
 
+            <div className="dash-wide-main space-y-5">
             <section className="rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
               <SectionHeader title="הקריאות שלי" />
               {myJobs.length === 0 && (
@@ -188,11 +181,19 @@ export default function ProfessionalDashboard() {
                 })}
               </div>
             </section>
+            </div>
           </div>
-        )}
-
+        </div>
+      ) : (
+        <>
+          <DashboardTopBar
+            tone="brand"
+            onMenu={() => setMenuOpen(true)}
+            onProfile={() => setTab("profile")}
+          />
+          <div className="flex-1">
         {tab === "documents" && (
-          <div className="space-y-3 px-4 pb-8 pt-2">
+          <div className="dash-tab space-y-3 px-4 pb-8 pt-2">
             <SectionHeader title="מסמכים" onBack={() => onNav("dashboard")} />
             {myInvoices.length === 0 ? (
               <p className="py-8 text-center text-sm text-text-muted">
@@ -229,29 +230,33 @@ export default function ProfessionalDashboard() {
         )}
 
         {tab === "notifications" && (
-          <NotificationsTab
-            forUserId={user.id}
-            forRole="professional"
-            onBack={() => onNav("dashboard")}
-          />
+          <div className="dash-tab">
+            <NotificationsTab
+              forUserId={user.id}
+              forRole="professional"
+              onBack={() => onNav("dashboard")}
+            />
+          </div>
         )}
 
         {tab === "profile" && (
-          <ProfileTab
-            userId={user.id}
-            fullName={session.fullName}
-            role="professional"
-            detail={me?.trade}
-            onLogout={logout}
-            onBack={() => onNav("dashboard")}
-          />
+          <div className="dash-tab">
+            <ProfileTab
+              userId={user.id}
+              fullName={session.fullName}
+              role="professional"
+              detail={me?.trade}
+              onLogout={logout}
+              onBack={() => onNav("dashboard")}
+            />
+          </div>
         )}
-      </div>
-
-      <BottomNavigation items={appBottomNavItems(unread)} active={tab} onSelect={onNav} />
+          </div>
+        </>
+      )}
 
       <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} role="professional" userName={session.fullName} avatarUrl={user.avatarUrl} />
-    </main>
+    </DashboardFrame>
   );
 }
 

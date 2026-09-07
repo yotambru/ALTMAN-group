@@ -146,6 +146,7 @@ export function TicketModal({ open, onClose, propertyId, createdById }: TicketMo
               className="hidden"
               onChange={async (e) => {
                 const f = e.target.files?.[0];
+                e.target.value = "";
                 if (f) setPhoto(await fileToDataUrl(f));
               }}
             />
@@ -163,7 +164,7 @@ export function TicketModal({ open, onClose, propertyId, createdById }: TicketMo
                 </button>
               </div>
             ) : (
-              <Button variant="outline" onClick={() => fileRef.current?.click()}>
+              <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>
                 <ImagePlus className="h-5 w-5" />
                 צירוף תמונה
               </Button>

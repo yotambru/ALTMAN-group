@@ -24,7 +24,12 @@ function emptyState(): DataState {
     onboardings: [],
     protocols: [],
     activityLog: [],
+    withdrawals: [],
   };
+}
+
+function isMissingRelation(message: string): boolean {
+  return /Could not find the table/i.test(message) || /relation .+ does not exist/i.test(message);
 }
 
 function parseMissingColumn(message: string): string | null {
@@ -73,7 +78,13 @@ export async function fetchAll(): Promise<DataState | null> {
   const results = await Promise.all(
     COLLECTIONS.map(async (col) => {
       const { data, error } = await supabase.from(col.table).select("*");
-      if (error) throw error;
+      if (error) {
+        if (isMissingRelation(error.message)) {
+          console.warn(`[supabase] missing table ${col.table} — skipping`);
+          return { key: col.key, rows: [] as Row[], col };
+        }
+        throw error;
+      }
       return { key: col.key, rows: (data ?? []) as Row[], col };
     }),
   );
@@ -90,8 +101,8 @@ export async function persistDiff(prev: DataState, next: DataState): Promise<str
 
   const errors: string[] = [];
   const snapshots = COLLECTIONS.map((col) => {
-    const prevList = prev[col.key] as unknown[];
-    const nextList = next[col.key] as unknown[];
+    const prevList = (prev[col.key] as unknown[] | undefined) ?? [];
+    const nextList = (next[col.key] as unknown[] | undefined) ?? [];
     const getId = col.getId as (item: unknown) => string;
     return {
       col,
@@ -107,6 +118,10 @@ export async function persistDiff(prev: DataState, next: DataState): Promise<str
 
     const { error } = await supabase.from(col.table).delete().in(col.idColumn, removedIds);
     if (!error) continue;
+    if (isMissingRelation(error.message)) {
+      console.warn(`[supabase] missing table ${col.table} — skipping delete`);
+      continue;
+    }
     console.warn(`[supabase] batch delete ${col.table}: ${error.message}`);
 
     for (const id of removedIds) {
@@ -132,6 +147,10 @@ export async function persistDiff(prev: DataState, next: DataState): Promise<str
       }
       const message = await upsertRow(supabase, col.table, col.toRow(prepared as never));
       if (message) {
+        if (isMissingRelation(message)) {
+          console.warn(`[supabase] missing table ${col.table} — skipping upsert`);
+          continue;
+        }
         const full = `${col.table}/${id}: ${message}`;
         console.error(`[supabase] upsert ${full}`);
         errors.push(full);

@@ -38,6 +38,8 @@ import type {
   TicketUpdate,
   User,
   UtilitySwitch,
+  WithdrawalRequest,
+  WithdrawalStatus,
 } from "@/types";
 
 export type Row = Record<string, unknown>;
@@ -665,6 +667,44 @@ function logFromRow(row: Row): ActivityLogEntry {
   };
 }
 
+function withdrawalToRow(w: WithdrawalRequest): Row {
+  return {
+    id: w.id,
+    landlord_id: w.landlordId,
+    property_id: w.propertyId,
+    lease_id: w.leaseId ?? null,
+    amount: w.amount,
+    rent_amount: w.rentAmount,
+    rent_due_date: w.rentDueDate ?? null,
+    note: w.note ?? null,
+    status: w.status,
+    created_at: w.createdAt,
+    created_by_user_id: w.createdByUserId,
+    decided_at: w.decidedAt ?? null,
+    decided_by_user_id: w.decidedByUserId ?? null,
+    decision_note: w.decisionNote ?? null,
+  };
+}
+
+function withdrawalFromRow(row: Row): WithdrawalRequest {
+  return {
+    id: str(row.id),
+    landlordId: str(row.landlord_id),
+    propertyId: str(row.property_id),
+    leaseId: opt(row.lease_id as string | null),
+    amount: num(row.amount),
+    rentAmount: num(row.rent_amount),
+    rentDueDate: opt(row.rent_due_date as string | null),
+    note: opt(row.note as string | null),
+    status: (str(row.status, "pending") as WithdrawalStatus) || "pending",
+    createdAt: str(row.created_at),
+    createdByUserId: str(row.created_by_user_id),
+    decidedAt: opt(row.decided_at as string | null),
+    decidedByUserId: opt(row.decided_by_user_id as string | null),
+    decisionNote: opt(row.decision_note as string | null),
+  };
+}
+
 export const COLLECTIONS = [
   { key: "users", table: "app_users", idColumn: "id", getId: (x: User) => x.id, toRow: userToRow, fromRow: userFromRow },
   { key: "landlords", table: "landlords", idColumn: "id", getId: (x: Landlord) => x.id, toRow: landlordToRow, fromRow: landlordFromRow },
@@ -683,4 +723,5 @@ export const COLLECTIONS = [
   { key: "onboardings", table: "onboardings", idColumn: "tenant_id", getId: (x: TenantOnboarding) => x.tenantId, toRow: onboardingToRow, fromRow: onboardingFromRow },
   { key: "protocols", table: "protocols", idColumn: "id", getId: (x: ProtocolRecord) => x.id, toRow: protocolToRow, fromRow: protocolFromRow },
   { key: "activityLog", table: "activity_log", idColumn: "id", getId: (x: ActivityLogEntry) => x.id, toRow: logToRow, fromRow: logFromRow },
+  { key: "withdrawals", table: "withdrawal_requests", idColumn: "id", getId: (x: WithdrawalRequest) => x.id, toRow: withdrawalToRow, fromRow: withdrawalFromRow },
 ] as const;

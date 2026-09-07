@@ -26,7 +26,7 @@ export function BottomNavigation({
   onSelect,
 }: BottomNavigationProps) {
   return (
-    <>
+    <div className="lg:hidden">
       <div className="h-[5.5rem] shrink-0" aria-hidden />
       <nav
         aria-label="ניווט ראשי"
@@ -60,6 +60,6 @@ export function BottomNavigation({
           })}
         </div>
       </nav>
-    </>
+    </div>
   );
 }

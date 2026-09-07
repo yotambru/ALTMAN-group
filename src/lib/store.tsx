@@ -16,10 +16,15 @@ import {
   subscribeToData,
 } from "@/lib/supabase/sync";
 import { accountDisplayName, normalizeEmail } from "@/lib/auth";
-import { generateId } from "@/lib/utils";
+import { generateId, formatCurrency } from "@/lib/utils";
 import { localTodayIso } from "@/lib/lease-periods";
 import { inferDocumentFolder } from "@/lib/document-folders";
 import { removeLandlord, removeOwnAccount, removeTenant } from "@/lib/delete-users";
+import {
+  availableWithdrawalAmount,
+  propertyAddressLabel,
+  upcomingRentCycle,
+} from "@/lib/withdrawals";
 import type {
   ActivityLogEntry,
   AppDocument,
@@ -45,6 +50,8 @@ import type {
   UtilityKind,
   OnboardingItemStatus,
   CheckDepositMode,
+  WithdrawalRequest,
+  WithdrawalStatus,
 } from "@/types";
 
 export interface Actor {
@@ -317,6 +324,16 @@ interface DataContextValue extends DataState {
 
   // protocols
   addProtocol: (p: Omit<ProtocolRecord, "id">) => void;
+
+  // withdrawals
+  addWithdrawalRequest: (input: {
+    landlordId: string;
+    propertyId: string;
+    amount: number;
+    note?: string;
+    createdByUserId: string;
+  }) => WithdrawalRequest | null;
+  decideWithdrawal: (id: string, status: Exclude<WithdrawalStatus, "pending">, decisionNote?: string) => void;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -379,6 +396,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           const merged: DataState = {
             ...remote,
             expenses: remote.expenses ?? [],
+            withdrawals: remote.withdrawals ?? [],
             notifications: collapseChatNotifications(remote.notifications ?? []),
           };
           const healed = repairMissingLeases(merged);
@@ -1618,6 +1636,127 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [makeLog],
   );
 
+  const addWithdrawalRequest = useCallback<DataContextValue["addWithdrawalRequest"]>(
+    (input) => {
+      const amount = Math.round(input.amount * 100) / 100;
+      if (!(amount > 0)) return null;
+
+      let created: WithdrawalRequest | null = null;
+      setState((p) => {
+        const property = p.properties.find((prop) => prop.id === input.propertyId);
+        if (!property || property.landlordId !== input.landlordId) return p;
+
+        const cycle = upcomingRentCycle(property, p.leases);
+        if (cycle.rent <= 0) return p;
+
+        const available = availableWithdrawalAmount(p.withdrawals, property.id, cycle.rent, cycle.dueDate);
+        if (amount > available + 0.009) return p;
+
+        const request: WithdrawalRequest = {
+          id: generateId("wd"),
+          landlordId: input.landlordId,
+          propertyId: property.id,
+          leaseId: cycle.leaseId,
+          amount,
+          rentAmount: cycle.rent,
+          rentDueDate: cycle.dueDate,
+          note: input.note?.trim() || undefined,
+          status: "pending",
+          createdAt: new Date().toISOString(),
+          createdByUserId: input.createdByUserId,
+        };
+        created = request;
+
+        const landlordName = p.landlords.find((l) => l.id === input.landlordId)?.fullName ?? "משכיר";
+        const address = propertyAddressLabel(property);
+
+        return {
+          ...p,
+          withdrawals: [request, ...p.withdrawals],
+          notifications: [
+            {
+              id: generateId("n"),
+              kind: "withdrawal",
+              title: "בקשת משיכה מיידית",
+              body: `${landlordName} מבקש למשוך ${formatCurrency(amount)} מ${address}`,
+              createdAt: request.createdAt,
+              read: false,
+              forRole: "manager",
+              relatedId: request.id,
+              actionRequired: true,
+            },
+            ...p.notifications,
+          ],
+          activityLog: [
+            makeLog("בקשת משיכה מיידית", "withdrawal", request.id, `${address} · ${formatCurrency(amount)}`),
+            ...p.activityLog,
+          ],
+        };
+      });
+      return created;
+    },
+    [makeLog],
+  );
+
+  const decideWithdrawal = useCallback<DataContextValue["decideWithdrawal"]>(
+    (id, status, decisionNote) => {
+      const at = new Date().toISOString();
+      setState((p) => {
+        const request = p.withdrawals.find((w) => w.id === id);
+        if (!request || request.status !== "pending") return p;
+
+        const property = p.properties.find((prop) => prop.id === request.propertyId);
+        const address = property ? propertyAddressLabel(property) : "הדירה";
+        const landlordUser = p.users.find((u) => u.landlordId === request.landlordId);
+        const approved = status === "approved";
+        const title = approved ? "המשיכה אושרה" : "המשיכה נדחתה";
+        const body = approved
+          ? `אושרה משיכה של ${formatCurrency(request.amount)} מ${address}`
+          : `הבקשה למשיכת ${formatCurrency(request.amount)} מ${address} נדחתה`;
+        const note = decisionNote?.trim();
+
+        return {
+          ...p,
+          withdrawals: p.withdrawals.map((w) =>
+            w.id === id
+              ? {
+                  ...w,
+                  status,
+                  decidedAt: at,
+                  decidedByUserId: actorRef.current.id,
+                  decisionNote: note || undefined,
+                }
+              : w,
+          ),
+          notifications: [
+            {
+              id: generateId("n"),
+              kind: "withdrawal" as const,
+              title,
+              body: note ? `${body}. ${note}` : body,
+              createdAt: at,
+              read: false,
+              forUserId: landlordUser?.id,
+              forRole: landlordUser ? undefined : "landlord",
+              relatedId: request.id,
+            },
+            ...p.notifications,
+          ],
+          activityLog: [
+            makeLog(
+              approved ? "אישור משיכה מיידית" : "דחיית משיכה מיידית",
+              "withdrawal",
+              id,
+              `${address} · ${formatCurrency(request.amount)}`,
+            ),
+            ...p.activityLog,
+          ],
+        };
+      });
+    },
+    [makeLog],
+  );
+
   const value: DataContextValue = {
     ...state,
     properties: withPropertyPhotos(state.properties, state.documents),
@@ -1662,6 +1801,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     approveOnboarding,
     markAcFilterCleaned,
     addProtocol,
+    addWithdrawalRequest,
+    decideWithdrawal,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

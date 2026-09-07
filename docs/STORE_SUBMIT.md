@@ -6,23 +6,28 @@
 
 | שדה | ערך |
 |-----|-----|
-| Bundle / Package ID | `il.co.altmangroup.app` |
+| iOS Bundle ID | `il.co.altmangroup.app` |
+| Android package | `il.co.altmangroup.android` |
 | שם האפליקציה | ALTMAN Group |
 | כתובת האפליקציה | https://altman-group.vercel.app |
 | מדיניות פרטיות | https://altman-group.vercel.app/privacy |
 
-## Google Play — Internal Testing → Production
+`il.co.altmangroup.app` היה תפוס ב-Play, לכן חבילת Android בקונסולה היא `il.co.altmangroup.android`. ה-AAB חייב להתאים בדיוק. iOS לא משתנה.
 
-1. Play Console → Create app → מלאים פרטי החנות בעברית.
-2. הגדרות → App integrity / signing (Play App Signing).
-3. ב-Android Studio: Build → Generate Signed Bundle (AAB), או:
+טקסטים, שאלון תוכן ונכסים: [PLAY_LISTING.md](./PLAY_LISTING.md). נכסי גרפיקה: `store/play/`.
+
+## Google Play — Internal Testing → Closed → Production
+
+1. ממלאים דף חנות + שאלון תוכן לפי [PLAY_LISTING.md](./PLAY_LISTING.md).
+2. Play App Signing (ברירת המחדל בקונסולה).
+3. יצירת `android/keystore.properties` ממפתח ההעלאה, ואז:
    ```bash
    npm run cap:sync
    cd android && ./gradlew bundleRelease
    ```
-4. Release → Testing → Internal testing → העלאת ה-AAB והזמנת בודקים.
-5. אחרי בדיקה: Closed testing / Production.
-6. חובה: קישור מדיניות פרטיות, צילומי מסך, דירוג תוכן.
+4. בדיקה פנימית → העלאת `app-release.aab` והזמנת בודקים.
+5. בדיקות בקבוצות מוגדרות (בחשבון חדש: בדרך כלל 12 בודקים × 14 ימים).
+6. בקשת גישה לייצור רק אחרי סיום הבדיקות הסגורות.
 
 ## App Store — TestFlight → Review
 
@@ -33,17 +38,14 @@
 5. הכנת עמוד המוצר: צילומי מסך iPhone, תיאור בעברית, Privacy Nutrition Labels.
 6. Submit for Review.
 
-## צילומי מסך מומלצים
+## צילומי מסך
 
-- מסך כניסה
-- דשבורד מנהל
-- דשבורד משכיר
-- דשבורד שוכר
-
-רצוי בגדלים הרשמיים של כל חנות (iPhone 6.7", Android phone).
+Android: `store/play/` (1080×1920).  
+iOS: `store/appstore/`.
 
 ## הערות חשובות
 
 - עדכוני UI ב-Next.js → דיפלוי ל-Vercel בלבד (בלי הגשה מחדש).
 - שינוי מעטפת נייטיבית (אייקון, הרשאות, גרסת Capacitor) → בילד חדש + הגשה לחנות.
 - אל תסמנו את האפליקציה כ"אתר בלבד" — יש splash, אייקון ומדיניות פרטיות כחלק מהמעטפת.
+- אל תריצו `npx cap add android` מחדש — זה עלול לדרוס את `applicationId`.

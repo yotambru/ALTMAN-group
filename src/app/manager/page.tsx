@@ -21,6 +21,7 @@ import {
   Users,
   UsersRound,
   Wrench,
+  Banknote,
 } from "lucide-react";
 import { DashboardTopBar } from "@/components/dashboard/DashboardTopBar";
 import { HeroStatCard } from "@/components/dashboard/HeroStatCard";
@@ -28,7 +29,7 @@ import { FocusActions } from "@/components/dashboard/FocusActions";
 import { ClientRow, SearchField } from "@/components/dashboard/ClientRow";
 import { PropertyRow } from "@/components/dashboard/PropertyCard";
 import { PropertyStatusFilter } from "@/components/dashboard/PropertyStatusFilter";
-import { BottomNavigation } from "@/components/dashboard/BottomNavigation";
+import { DashboardFrame } from "@/components/dashboard/DashboardFrame";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { MobileMenu, type MobileMenuItem } from "@/components/dashboard/MobileMenu";
 import { NotificationsTab } from "@/components/dashboard/NotificationsTab";
@@ -55,6 +56,7 @@ import { ActivityLogDialog } from "@/features/activity/ActivityLogDialog";
 import { ProtocolDialog } from "@/features/protocol/ProtocolDialog";
 import { CriticalDatesDialog } from "@/features/alerts/CriticalDatesDialog";
 import { AnnualReportDialog } from "@/features/reports/AnnualReportDialog";
+import { WithdrawalsDialog } from "@/features/withdrawals/WithdrawalsDialog";
 import { useSession } from "@/lib/useSession";
 import { useData } from "@/lib/store";
 import { can } from "@/lib/permissions";
@@ -86,7 +88,7 @@ type Dialog =
   | null;
 
 /** Inline panels that replace the clients list on the dashboard. */
-type HomePanel = "clients" | "tickets" | "docs" | "chat" | "report";
+type HomePanel = "clients" | "tickets" | "docs" | "chat" | "report" | "withdrawals";
 
 export default function ManagerDashboard() {
   const { session, user, ready, logout } = useSession(["manager", "assistant"]);
@@ -102,6 +104,7 @@ export default function ManagerDashboard() {
   const [editProperty, setEditProperty] = useState<Property | null>(null);
   const [chatPeerId, setChatPeerId] = useState<string | null>(null);
   const [focusTicketId, setFocusTicketId] = useState<string | null>(null);
+  const [focusWithdrawalId, setFocusWithdrawalId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<PropertyStatus | "all">("all");
   const [clientQuery, setClientQuery] = useState("");
   const [propertyQuery, setPropertyQuery] = useState("");
@@ -185,6 +188,7 @@ export default function ManagerDashboard() {
 
   const openPanel = (panel: HomePanel) => {
     if (panel !== "tickets") setFocusTicketId(null);
+    if (panel !== "withdrawals") setFocusWithdrawalId(null);
     setHomePanel(panel);
     setTab("dashboard");
   };
@@ -209,6 +213,12 @@ export default function ManagerDashboard() {
   const openTickets = (ticketId: string | null = null) => {
     setFocusTicketId(ticketId);
     setHomePanel("tickets");
+    setTab("dashboard");
+  };
+
+  const openWithdrawals = (withdrawalId: string | null = null) => {
+    setFocusWithdrawalId(withdrawalId);
+    setHomePanel("withdrawals");
     setTab("dashboard");
   };
 
@@ -243,6 +253,9 @@ export default function ManagerDashboard() {
       case "reminder":
         setDialog("critical");
         break;
+      case "withdrawal":
+        openWithdrawals(n.relatedId ?? null);
+        break;
       case "payment":
       case "info":
       default:
@@ -256,6 +269,7 @@ export default function ManagerDashboard() {
       ? { icon: UserPlus, label: "משכיר חדש", kind: "dialog" as const, dialog: "add" as const }
       : { icon: UsersRound, label: "לקוחות", kind: "panel" as const, panel: "clients" as const },
     { icon: Bell, label: "קריאות", kind: "panel" as const, panel: "tickets" as const },
+    { icon: Banknote, label: "משיכה מיידית", kind: "panel" as const, panel: "withdrawals" as const },
     { icon: FileText, label: "מסמכים", kind: "tab" as const, tab: "documents" as const },
     { icon: MessagesSquare, label: "צ׳אט", kind: "panel" as const, panel: "chat" as const },
   ].filter((a) => {
@@ -273,6 +287,7 @@ export default function ManagerDashboard() {
     { icon: Building2, label: "כל הנכסים", onClick: () => setDialog("properties") },
     { icon: FileBarChart, label: "דוח שנתי", onClick: () => openPanel("report") },
     { icon: Wrench, label: "ניהול קריאות", onClick: () => openPanel("tickets") },
+    { icon: Banknote, label: "משיכה מיידית", onClick: () => openWithdrawals() },
     { icon: Repeat, label: "החלפת חשבונות", onClick: () => setDialog("utilities") },
     { icon: FileText, label: "כספת מסמכים", onClick: () => setTab("documents") },
     { icon: Send, label: "שליחה לחתימה", onClick: () => setDialog("send") },
@@ -291,6 +306,7 @@ export default function ManagerDashboard() {
       "כל הנכסים": true,
       "דוח שנתי": can(role, "reports.view"),
       "ניהול קריאות": can(role, "tickets.manage"),
+      "משיכה מיידית": true,
       "החלפת חשבונות": can(role, "utilities.track"),
       "כספת מסמכים": can(role, "documents.viewAll"),
       "שליחה לחתימה": can(role, "documents.sendForSignature"),
@@ -309,6 +325,7 @@ export default function ManagerDashboard() {
     if (next === "dashboard") {
       if (tab === "dashboard") window.scrollTo({ top: 0, behavior: "smooth" });
       setFocusTicketId(null);
+      setFocusWithdrawalId(null);
       setHomePanel("clients");
     }
     setTab(next);
@@ -325,14 +342,16 @@ export default function ManagerDashboard() {
     docs: "מסמכים",
     chat: "צ׳אט",
     report: `דוח שנתי ${new Date().getFullYear()}`,
+    withdrawals: "משיכה מיידית",
   };
 
   if (!ready) return null;
 
   return (
-    <main className="app-shell flex min-h-[100dvh] flex-col bg-surface-muted">
+    <DashboardFrame items={appBottomNavItems(unread)} active={tab} onSelect={onNav}>
       {tab === "dashboard" ? (
-        <div className="dusk-header">
+        <div className="dash-wide">
+        <div className="dusk-header dash-wide-chrome">
           <DashboardTopBar
             tone="dusk"
             greeting={`שלום, ${firstName}`}
@@ -341,7 +360,7 @@ export default function ManagerDashboard() {
             onBell={() => setTab("notifications")}
             notificationCount={unread}
           />
-          <div className="px-4 pb-6 pt-1">
+          <div className="dash-wide-hero px-4 pb-6 pt-1">
             <HeroStatCard
               tone="glass"
               label="שווי נכסים כולל"
@@ -356,21 +375,13 @@ export default function ManagerDashboard() {
               chartProgress={incomeChart.progress}
               chartStartLabel={incomeChart.chartStartLabel}
               chartEndLabel={incomeChart.chartEndLabel}
+              chartPoints={incomeChart.points}
             />
           </div>
         </div>
-      ) : (
-        <DashboardTopBar
-          tone="brand"
-          onMenu={() => setMenuOpen(true)}
-          onProfile={() => setTab("profile")}
-        />
-      )}
 
-      <div className="flex-1">
-        {tab === "dashboard" && (
-          <div className="dash-sheet space-y-5 px-4 pb-8 pt-5">
-            <div className="grid grid-cols-2 gap-3">
+          <div className="dash-sheet dash-wide-body space-y-5 px-4 pb-8 pt-5 lg:space-y-0">
+            <div className="dash-wide-metrics grid grid-cols-2 gap-3">
               <MetricCard
                 icon={Home}
                 label="נכסים פעילים"
@@ -401,6 +412,7 @@ export default function ManagerDashboard() {
               />
             </div>
 
+            <div className="dash-wide-main space-y-5">
             <FocusActions
               title="פעולות מהירות"
               items={primaryActions.map((a) => ({
@@ -532,7 +544,7 @@ export default function ManagerDashboard() {
                       placeholder="חיפוש לפי שם לקוח, כתובת או שוכר…"
                       className="mb-3"
                     />
-                    <div className="space-y-0.5">
+                    <div className="grid grid-cols-1 gap-0.5 lg:grid-cols-2">
                       {filteredClients.map((l) => {
                         const owned = properties.filter((p) => p.landlordId === l.id);
                         const first = owned[0];
@@ -596,14 +608,32 @@ export default function ManagerDashboard() {
                       initialPeerId={chatPeerId}
                     />
                   )}
+                  {homePanel === "withdrawals" && (
+                    <WithdrawalsDialog
+                      inline
+                      canDecide
+                      highlightId={focusWithdrawalId}
+                      onDecided={(status) =>
+                        setToast(status === "approved" ? "המשיכה אושרה" : "הבקשה נדחתה")
+                      }
+                    />
+                  )}
                 </>
               )}
             </section>
+            </div>
           </div>
-        )}
-
+        </div>
+      ) : (
+        <>
+          <DashboardTopBar
+            tone="brand"
+            onMenu={() => setMenuOpen(true)}
+            onProfile={() => setTab("profile")}
+          />
+          <div className="flex-1">
         {tab === "documents" && (
-          <div className="space-y-3 px-4 pb-8 pt-2">
+          <div className="dash-tab space-y-3 px-4 pb-8 pt-2">
             <SectionHeader title="מסמכים" onBack={() => onNav("dashboard")} />
             <DocumentsDialog
               inline
@@ -618,29 +648,33 @@ export default function ManagerDashboard() {
         )}
 
         {tab === "notifications" && (
-          <NotificationsTab
-            forUserId={user.id}
-            forRole="manager"
-            onBack={() => onNav("dashboard")}
-            onOpen={(n) => {
-              setTab("dashboard");
-              openNotification(n);
-            }}
-          />
+          <div className="dash-tab">
+            <NotificationsTab
+              forUserId={user.id}
+              forRole="manager"
+              onBack={() => onNav("dashboard")}
+              onOpen={(n) => {
+                setTab("dashboard");
+                openNotification(n);
+              }}
+            />
+          </div>
         )}
 
         {tab === "profile" && (
-          <ProfileTab
-            userId={user.id}
-            fullName={session.fullName}
-            role={role}
-            onLogout={logout}
-            onBack={() => onNav("dashboard")}
-          />
+          <div className="dash-tab">
+            <ProfileTab
+              userId={user.id}
+              fullName={session.fullName}
+              role={role}
+              onLogout={logout}
+              onBack={() => onNav("dashboard")}
+            />
+          </div>
         )}
-      </div>
-
-      <BottomNavigation items={appBottomNavItems(unread)} active={tab} onSelect={onNav} />
+          </div>
+        </>
+      )}
 
       <MobileMenu
         open={menuOpen}
@@ -721,6 +755,6 @@ export default function ManagerDashboard() {
         confirmLabel="מחיקה"
       />
       <Toast message={toast} onDone={() => setToast(null)} />
-    </main>
+    </DashboardFrame>
   );
 }

@@ -176,7 +176,7 @@ export function ChatPanel({
       </div>
     </div>
   ) : (
-    <div className={cn("flex flex-col", inline ? "h-[min(28rem,55dvh)]" : "h-80")}>
+    <div className={cn("flex flex-col", inline ? "h-[min(28rem,55dvh)] lg:h-[min(40rem,72dvh)]" : "h-80")}>
       {peers.length > 1 && (
         <button
           type="button"

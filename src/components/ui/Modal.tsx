@@ -53,7 +53,7 @@ export function Modal({
       />
       <div
         className={cn(
-          "animate-sheet relative z-10 w-full max-w-[30rem] rounded-t-2xl bg-surface p-5 shadow-lg sm:rounded-2xl",
+          "animate-sheet relative z-10 w-full max-w-[30rem] rounded-t-2xl bg-surface p-5 shadow-lg sm:rounded-2xl lg:max-w-xl",
           className,
         )}
       >

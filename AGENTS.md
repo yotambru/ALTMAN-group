@@ -30,15 +30,17 @@ Keep UI decoupled from the data layer (`src/lib/store.tsx` + `src/lib/supabase/*
 - Brand palette (do not redesign): deep **navy** primary, bright **orange** accent,
   white / very-light-gray surfaces, rounded white cards, subtle borders & shadows,
   large dark-blue Hebrew headings, orange highlights/underlines/CTAs.
-- The mobile canvas is centered on large screens via the `.app-shell` class
-  (`max-width: 30rem; margin-inline: auto`). Wrap each route's root in `app-shell`.
+- On viewports below `lg` (1024px) the mobile canvas is centered via `.app-shell`
+  (`max-width: 30rem; margin-inline: auto`). From `lg` up, `.app-shell` is full-width:
+  dashboards use `DashboardFrame` (navy sidebar + scrolling main), and login becomes a
+  split layout. Wrap each route's root in `app-shell` (or `DashboardFrame`, which includes it).
 
 ## Component conventions
 
 - **No monolithic files.** Compose from the shared components in `components/ui`,
   `components/dashboard`, and `components/brand`. Feature flows live in `src/features/*`.
 - Reusable building blocks (keep using these): `BrandHeader`, `MobileMenu`,
-  `BottomNavigation`, `DashboardHero`, `MetricCard`, `ActionCard`, `PropertyCard`,
+  `BottomNavigation`, `DesktopSidebar`, `DashboardFrame`, `DashboardHero`, `MetricCard`, `ActionCard`, `PropertyCard`,
   `PaymentCard`, `StatusBadge`, `SectionHeader`, `Modal`, `FormField`, `Button`, `Toast`.
 - Client components need `"use client"`. Reading `localStorage` must go through
   `src/lib/storage.ts` and happen **after mount** (in an effect) to avoid hydration
@@ -75,5 +77,6 @@ Roles are typed in `src/types` (`Role = "manager" | "landlord" | "tenant"`).
    - `npm run build`
 6. No console errors, no unused imports, no placeholder lorem ipsum, no giant files,
    and never embed the reference screenshots as UI.
-7. Verify changes at an iPhone-sized viewport (~390×844) and confirm the desktop
-   layout keeps the mobile canvas centered.
+7. Verify changes at an iPhone-sized viewport (~390×844) **and** a desktop viewport
+   (~1280×800). Confirm the mobile canvas stays centered below `lg`, and the wide web
+   layout (sidebar + multi-column home) is used from `lg` up.

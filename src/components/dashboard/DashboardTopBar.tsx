@@ -49,7 +49,7 @@ export function DashboardTopBar({
           <span className="h-10 w-10 shrink-0" />
         )}
 
-        <Logo size="sm" withTagline={false} className="shrink-0" />
+        <Logo size="sm" withTagline={false} className="shrink-0 lg:hidden" />
 
         {onProfile ? (
           <button

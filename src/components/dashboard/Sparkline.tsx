@@ -1,7 +1,13 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
+import { cn, formatCurrency } from "@/lib/utils";
 import { smoothLinePath, smoothSeries } from "./smooth-path";
+
+export interface SparklineHoverPoint {
+  label: string;
+  value: number;
+}
 
 interface SparklineProps {
   data: number[];
@@ -18,6 +24,11 @@ interface SparklineProps {
   endDotColor?: string;
   /** 0–1: how far across the viewBox the line reaches. */
   progress?: number;
+  /**
+   * Month/value samples aligned with `data`. When set, hovering (or dragging)
+   * snaps to the nearest sample and shows its label.
+   */
+  hoverPoints?: SparklineHoverPoint[];
 }
 
 function placeholderRise(): number[] {
@@ -49,6 +60,19 @@ function risingDisplaySeries(data: number[]): number[] {
   return out.map((value, i) => value + (n === 0 ? lift : (i / n) * lift));
 }
 
+function nearestIndex(x: number, points: { x: number }[]): number {
+  let best = 0;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < points.length; i += 1) {
+    const dist = Math.abs(points[i].x - x);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = i;
+    }
+  }
+  return best;
+}
+
 /** Minimal wave chart used under the hero income metric. */
 export function Sparkline({
   data,
@@ -59,8 +83,10 @@ export function Sparkline({
   startDotColor,
   endDotColor,
   progress = 1,
+  hoverPoints,
 }: SparklineProps) {
   const uid = useId().replace(/:/g, "");
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const series = smoothSeries(risingDisplaySeries(data));
   const w = 320;
   const h = 48;
@@ -85,57 +111,125 @@ export function Sparkline({
   const fade = span < 0.98;
   const fadeId = `spark-fade-${uid}`;
   const maskId = `spark-mask-${uid}`;
+  const samples = hoverPoints && hoverPoints.length > 0 ? hoverPoints : null;
+  const interactive = samples != null;
+  const active =
+    interactive && hoverIndex != null ? points[hoverIndex] : undefined;
+  const activeSample =
+    samples && hoverIndex != null
+      ? (samples[hoverIndex] ?? samples[0])
+      : undefined;
+
+  const setFromPointer = (clientX: number, target: SVGSVGElement) => {
+    const rect = target.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const x = ((clientX - rect.left) / rect.width) * w;
+    setHoverIndex(nearestIndex(x, points));
+  };
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className={className} preserveAspectRatio="none" aria-hidden>
-      {fade && (
-        <defs>
-          <linearGradient
-            id={fadeId}
-            gradientUnits="userSpaceOnUse"
-            x1={first.x}
-            y1="0"
-            x2={last.x}
-            y2="0"
-          >
-            <stop offset="0%" stopColor="white" />
-            <stop offset="70%" stopColor="white" />
-            <stop offset="100%" stopColor="white" stopOpacity="0" />
-          </linearGradient>
-          <mask id={maskId}>
-            <rect x="0" y="0" width={w} height={h} fill={`url(#${fadeId})`} />
-          </mask>
-        </defs>
-      )}
-      <g mask={fade ? `url(#${maskId})` : undefined}>
-        <path d={area} fill={color} fillOpacity={fillOpacity} />
-        <path
-          d={line}
-          fill="none"
-          stroke={color}
-          strokeWidth={2.25}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </g>
-      {showStartDot && (
+    <div className={cn("relative", className)}>
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        className={cn("h-full w-full", interactive && "cursor-crosshair")}
+        preserveAspectRatio="none"
+        aria-hidden={!interactive}
+        role={interactive ? "img" : undefined}
+        aria-label={interactive ? "גרף הכנסה חודשית לפי חודש" : undefined}
+        onPointerMove={
+          interactive
+            ? (e) => setFromPointer(e.clientX, e.currentTarget)
+            : undefined
+        }
+        onPointerLeave={interactive ? () => setHoverIndex(null) : undefined}
+        style={interactive ? { touchAction: "none" } : undefined}
+      >
+        {fade && (
+          <defs>
+            <linearGradient
+              id={fadeId}
+              gradientUnits="userSpaceOnUse"
+              x1={first.x}
+              y1="0"
+              x2={last.x}
+              y2="0"
+            >
+              <stop offset="0%" stopColor="white" />
+              <stop offset="70%" stopColor="white" />
+              <stop offset="100%" stopColor="white" stopOpacity="0" />
+            </linearGradient>
+            <mask id={maskId}>
+              <rect x="0" y="0" width={w} height={h} fill={`url(#${fadeId})`} />
+            </mask>
+          </defs>
+        )}
+        {interactive && <rect x="0" y="0" width={w} height={h} fill="transparent" />}
+        <g mask={fade ? `url(#${maskId})` : undefined}>
+          <path d={area} fill={color} fillOpacity={fillOpacity} />
+          <path
+            d={line}
+            fill="none"
+            stroke={color}
+            strokeWidth={2.25}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
+        {showStartDot && (
+          <circle
+            cx={first.x}
+            cy={first.y}
+            r={3.5}
+            fill={startDotColor ?? color}
+            stroke={startDotColor ?? color}
+            strokeWidth={1.5}
+          />
+        )}
         <circle
-          cx={first.x}
-          cy={first.y}
+          cx={last.x}
+          cy={last.y}
           r={3.5}
-          fill={startDotColor ?? color}
-          stroke={startDotColor ?? color}
+          fill={endDotColor ?? color}
+          stroke={endDotColor ?? color}
           strokeWidth={1.5}
         />
+        {active && (
+          <>
+            <line
+              x1={active.x}
+              x2={active.x}
+              y1={padY}
+              y2={h - padY}
+              stroke={color}
+              strokeWidth={1}
+              strokeDasharray="3 3"
+              opacity={0.55}
+            />
+            <circle
+              cx={active.x}
+              cy={active.y}
+              r={4.5}
+              fill={color}
+              stroke="white"
+              strokeWidth={1.75}
+            />
+          </>
+        )}
+      </svg>
+      {active && activeSample && (
+        <div
+          dir="rtl"
+          className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg bg-white px-2 py-1 text-[0.65rem] font-bold leading-tight text-navy shadow-sm"
+          style={{
+            left: `${Math.min(86, Math.max(14, (active.x / w) * 100))}%`,
+            top: `${(active.y / h) * 100}%`,
+            transform: "translate(-50%, calc(-100% - 0.45rem))",
+          }}
+        >
+          {activeSample.label}
+          <span dir="ltr"> · {formatCurrency(activeSample.value)}</span>
+        </div>
       )}
-      <circle
-        cx={last.x}
-        cy={last.y}
-        r={3.5}
-        fill={endDotColor ?? color}
-        stroke={endDotColor ?? color}
-        strokeWidth={1.5}
-      />
-    </svg>
+    </div>
   );
 }

@@ -100,7 +100,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* App shell — center the mobile canvas on large screens */
+/* App shell — phone canvas on small screens, full-width web layout from lg */
 .app-shell {
   width: 100%;
   max-width: 30rem; /* ~480px mobile canvas */
@@ -122,12 +122,23 @@ html.plt-capacitor .app-shell {
   max-width: none;
 }
 
-@media (min-width: 480px) {
+@media (min-width: 480px) and (max-width: 1023px) {
   body {
     background:
       radial-gradient(1200px 600px at 50% -10%, #f4f7fc 0%, #e6ecf6 55%, #dfe6f2 100%);
   }
   .app-shell {
+    min-height: 100dvh;
+  }
+}
+
+@media (min-width: 1024px) {
+  body {
+    background: var(--surface-muted);
+  }
+  .app-shell {
+    max-width: none;
+    margin-inline: 0;
     min-height: 100dvh;
   }
 }
@@ -273,3 +284,84 @@ html.plt-capacitor .app-shell {
 .animate-overlay { animation: overlay-in 0.18s ease-out; }
 .animate-sheet { animation: sheet-up 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
 .animate-menu { animation: menu-in 0.2s ease-out; }
+
+/* Wide web dashboard: sidebar chrome + multi-column home */
+@media (min-width: 1024px) {
+  .dash-wide {
+    display: grid;
+    grid-template-columns: minmax(1.5rem, 1fr) minmax(0, 38rem) minmax(0, 34rem) minmax(1.5rem, 1fr);
+    grid-template-areas:
+      "topbar topbar topbar topbar"
+      ". hero metrics ."
+      ". main main .";
+    column-gap: 1.5rem;
+    row-gap: 1.5rem;
+    padding-bottom: 2.5rem;
+    width: 100%;
+  }
+
+  .dash-wide-chrome {
+    display: contents;
+  }
+
+  .dash-wide-chrome > header {
+    grid-area: topbar;
+    padding-inline: clamp(1.5rem, 4vw, 3rem);
+    padding-top: 1.35rem;
+    padding-bottom: 1.35rem;
+    background:
+      radial-gradient(90% 80% at 100% 0%, rgba(242, 106, 33, 0.18) 0%, rgba(242, 106, 33, 0) 50%),
+      linear-gradient(165deg, #1a3570 0%, var(--navy) 45%, var(--navy-dark) 100%);
+  }
+
+  .dash-wide-hero {
+    grid-area: hero;
+    padding: 0 !important;
+    min-height: 100%;
+  }
+
+  .dash-wide-hero > * {
+    height: 100%;
+  }
+
+  /* Glass hero sits on a light canvas here — use opaque navy, not frosted-over-white */
+  .dash-wide-hero .glass-card {
+    background:
+      radial-gradient(90% 120% at 100% 0%, rgba(242, 106, 33, 0.28) 0%, rgba(242, 106, 33, 0) 48%),
+      radial-gradient(70% 80% at 0% 100%, rgba(35, 66, 127, 0.9) 0%, rgba(35, 66, 127, 0) 55%),
+      linear-gradient(160deg, #1a3570 0%, var(--navy) 48%, var(--navy-dark) 100%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .dash-wide-body {
+    display: contents;
+  }
+
+  .dash-sheet.dash-wide-body {
+    margin-top: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+    padding: 0 !important;
+  }
+
+  .dash-wide-metrics {
+    grid-area: metrics;
+    align-self: stretch;
+  }
+
+  .dash-wide-metrics > * {
+    height: 100%;
+  }
+
+  .dash-wide-main {
+    grid-area: main;
+  }
+
+  .dash-tab {
+    width: min(100%, 56rem);
+    margin-inline: auto;
+    padding-inline: clamp(1.5rem, 4vw, 2.5rem);
+  }
+}

@@ -24,6 +24,8 @@ export interface HeroIncomeChartProps {
   chartEndLabel?: string;
   trendPercent?: number;
   trendLabel?: string;
+  /** Real month/value samples for hover. Omitted when the line is a placeholder. */
+  points?: { label: string; value: number }[];
 }
 
 /**
@@ -52,12 +54,18 @@ export function heroIncomeChartProps(
   const first = series[0];
   const last = series[series.length - 1];
   const values = series.map((p) => p.monthlyIncome);
+  const samples = series.map((p) => ({
+    label: formatMonthYear(p.date),
+    value: p.monthlyIncome,
+  }));
   const data = values.length === 1 ? [values[0], values[0]] : values;
+  const points = values.length === 1 ? [samples[0], samples[0]] : samples;
   const joinLabel = joinDate ? formatMonthYear(joinDate) : "";
   const growth = last.incomeGrowthPercent;
 
   return {
     data,
+    points,
     progress: series.length < 4 ? 0.55 : 1,
     chartStartLabel: joinDate
       ? `${startCaption} ${joinLabel} · ${formatCurrency(first.monthlyIncome)}`

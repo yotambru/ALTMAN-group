@@ -36,6 +36,8 @@ const config: CapacitorConfig = {
     scheme: "AltmanGroup",
   },
   android: {
+    // Play Console package is il.co.altmangroup.android (set in android/app/build.gradle).
+    // Do not change appId above — iOS still uses il.co.altmangroup.app.
     allowMixedContent: false,
     backgroundColor: "#14285a",
   },

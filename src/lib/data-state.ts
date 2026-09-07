@@ -35,6 +35,7 @@ import type {
   Tenant,
   TenantOnboarding,
   User,
+  WithdrawalRequest,
 } from "@/types";
 
 export interface DataState {
@@ -55,6 +56,7 @@ export interface DataState {
   onboardings: TenantOnboarding[];
   protocols: ProtocolRecord[];
   activityLog: ActivityLogEntry[];
+  withdrawals: WithdrawalRequest[];
 }
 
 export function seedState(): DataState {
@@ -76,5 +78,6 @@ export function seedState(): DataState {
     onboardings: seedOnboardings,
     protocols: seedProtocols,
     activityLog: seedActivityLog,
+    withdrawals: [],
   };
 }

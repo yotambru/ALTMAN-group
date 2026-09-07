@@ -26,6 +26,8 @@ interface HeroStatCardProps {
   chartEndLabel?: string;
   /** 0–1: how far the sparkline reaches. New clients stay partial. */
   chartProgress?: number;
+  /** Month/value samples for hover on the sparkline. */
+  chartPoints?: { label: string; value: number }[];
   /**
    * `navy` — dark gradient card.
    * `focus` — light centered metric.
@@ -49,6 +51,7 @@ export function HeroStatCard({
   chartStartLabel,
   chartEndLabel,
   chartProgress = 1,
+  chartPoints,
   tone = "navy",
   className,
 }: HeroStatCardProps) {
@@ -75,63 +78,66 @@ export function HeroStatCard({
     const trendUp = trendPercent != null && trendPercent >= 0;
     const SecondaryTag = secondary?.onClick ? "button" : "div";
     return (
-      <section className={cn("glass-card px-5 pt-5 pb-3", className)}>
-        <div className="relative text-start">
-          <p className="text-sm font-medium text-white/70">{label}</p>
-          <p className="mt-1.5 text-[2.15rem] font-extrabold leading-none tracking-tight">
-            {value}
-          </p>
-          {subtitle && (
-            <p className="mt-2 text-xs font-medium text-white/60">{subtitle}</p>
-          )}
-          {trendPercent != null && (
-            <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              <span
-                className={cn(
-                  "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold",
-                  trendUp ? "bg-success/20 text-[#7dffb2]" : "bg-danger/25 text-[#ffb4ac]",
-                )}
-              >
-                {trendUp ? "↑" : "↓"} {Math.abs(trendPercent).toFixed(1)}%
-              </span>
-              <span className="text-xs text-white/55">{trendLabel}</span>
-            </div>
+      <section className={cn("glass-card flex flex-col px-5 pt-5 pb-3 lg:p-6", className)}>
+        <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">
+          <div className="relative text-start">
+            <p className="text-sm font-medium text-white/70">{label}</p>
+            <p className="mt-1.5 text-[2.15rem] font-extrabold leading-none tracking-tight lg:text-[2.45rem]">
+              {value}
+            </p>
+            {subtitle && (
+              <p className="mt-2 text-xs font-medium text-white/60">{subtitle}</p>
+            )}
+            {trendPercent != null && (
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold",
+                    trendUp ? "bg-success/20 text-[#7dffb2]" : "bg-danger/25 text-[#ffb4ac]",
+                  )}
+                >
+                  {trendUp ? "↑" : "↓"} {Math.abs(trendPercent).toFixed(1)}%
+                </span>
+                <span className="text-xs text-white/55">{trendLabel}</span>
+              </div>
+            )}
+          </div>
+          {secondary && (
+            <SecondaryTag
+              type={secondary.onClick ? "button" : undefined}
+              onClick={secondary.onClick}
+              className={cn(
+                "relative mt-4 w-full rounded-2xl border-2 border-orange/70 bg-gradient-to-l from-orange/30 via-orange/15 to-white/8 px-3.5 py-3 text-start shadow-lg lg:mt-0 lg:self-start lg:px-4 lg:py-4",
+                secondary.onClick && "transition-colors hover:from-orange/40 hover:via-orange/20",
+              )}
+            >
+              <p className="text-xs font-medium text-white/70">{secondary.label}</p>
+              <p className="mt-1 text-xl font-extrabold leading-none tracking-tight text-white">
+                {secondary.value}
+              </p>
+              {secondary.sublabel && (
+                <p className="mt-1.5 text-[0.7rem] font-medium text-white/60">
+                  {secondary.sublabel}
+                </p>
+              )}
+            </SecondaryTag>
           )}
         </div>
-        {secondary && (
-          <SecondaryTag
-            type={secondary.onClick ? "button" : undefined}
-            onClick={secondary.onClick}
-            className={cn(
-              "relative mt-4 w-full rounded-2xl border-2 border-orange/70 bg-gradient-to-l from-orange/30 via-orange/15 to-white/8 px-3.5 py-3 text-start shadow-lg",
-              secondary.onClick && "transition-colors hover:from-orange/40 hover:via-orange/20",
-            )}
-          >
-            <p className="text-xs font-medium text-white/65">{secondary.label}</p>
-            <p className="mt-1 text-xl font-extrabold leading-none tracking-tight text-white">
-              {secondary.value}
-            </p>
-            {secondary.sublabel && (
-              <p className="mt-1.5 text-[0.7rem] font-medium text-white/50">
-                {secondary.sublabel}
-              </p>
-            )}
-          </SecondaryTag>
-        )}
         {data && (
-          <div dir="ltr" className="relative mt-3 -mx-1">
+          <div dir="ltr" className="relative z-10 mt-3 -mx-1 overflow-visible lg:mt-auto lg:pt-5">
             <Sparkline
               data={data}
-              className="h-14 w-full"
+              className="h-14 w-full lg:h-16"
               color="var(--orange)"
               fillOpacity={0.16}
               showStartDot
               startDotColor="white"
               endDotColor="white"
               progress={chartProgress}
+              hoverPoints={chartPoints}
             />
             {(chartStartLabel || chartEndLabel) && (
-              <div className="mt-1 flex justify-between gap-2 text-[0.65rem] font-medium text-white/50">
+              <div className="mt-1 flex justify-between gap-2 text-[0.65rem] font-semibold text-white/70 lg:text-xs">
                 <span dir="rtl">{chartStartLabel}</span>
                 <span dir="rtl" className="text-end">
                   {chartEndLabel}

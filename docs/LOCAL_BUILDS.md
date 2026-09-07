@@ -59,10 +59,11 @@ cd android && ./gradlew assembleDebug
 
 ה-APK יופיע ב-`android/app/build/outputs/apk/debug/`.
 
-בילד AAB להעלאה ל-Play:
+בילד AAB להעלאה ל-Play (אחרי `android/keystore.properties` — ראו [PLAY_LISTING.md](./PLAY_LISTING.md)):
 ```bash
 cd android && ./gradlew bundleRelease
 ```
+החבילה בחנות היא `il.co.altmangroup.android`.
 
 ## בדיקת תקינות מהירה
 

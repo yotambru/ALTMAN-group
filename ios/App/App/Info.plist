@@ -69,5 +69,13 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>האפליקציה משתמשת במצלמה כדי לצלם תמונות לנכסים, לקריאות תחזוקה ולתמונת פרופיל.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>האפליקציה ניגשת לגלריה כדי לבחור תמונות ומסמכים לנכסים, לתחזוקה ולתמונת פרופיל.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>האפליקציה עשויה לשמור תמונות שצולמו לגלריה במכשיר.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>המצלמה עשויה לבקש גישה למיקרופון בעת צילום וידאו.</string>
 </dict>
 </plist>

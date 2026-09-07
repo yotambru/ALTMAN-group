@@ -9,6 +9,7 @@ import {
   Home,
   MessagesSquare,
   PenLine,
+  Banknote,
   Vault,
   Wrench,
 } from "lucide-react";
@@ -17,7 +18,7 @@ import { HeroStatCard } from "@/components/dashboard/HeroStatCard";
 import { FocusActions } from "@/components/dashboard/FocusActions";
 import { PropertyRow } from "@/components/dashboard/PropertyCard";
 import { PropertyStatusFilter } from "@/components/dashboard/PropertyStatusFilter";
-import { BottomNavigation } from "@/components/dashboard/BottomNavigation";
+import { DashboardFrame } from "@/components/dashboard/DashboardFrame";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { MobileMenu, type MobileMenuItem } from "@/components/dashboard/MobileMenu";
 import { NotificationsTab } from "@/components/dashboard/NotificationsTab";
@@ -32,6 +33,8 @@ import { RentalsDialog } from "@/features/leases/RentalsDialog";
 import { AnnualReportDialog } from "@/features/reports/AnnualReportDialog";
 import { TicketsDialog } from "@/features/maintenance/TicketsDialog";
 import { CriticalDatesDialog } from "@/features/alerts/CriticalDatesDialog";
+import { WithdrawalsDialog } from "@/features/withdrawals/WithdrawalsDialog";
+import { Toast } from "@/components/ui/Toast";
 import { useSession } from "@/lib/useSession";
 import { useData } from "@/lib/store";
 import { getCriticalDates } from "@/lib/alerts";
@@ -47,7 +50,7 @@ import { formatCurrency } from "@/lib/utils";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
 type Dialog = "list" | "rentals" | "critical" | null;
-type HomePanel = "properties" | "docs" | "report" | "chat" | "tickets";
+type HomePanel = "properties" | "docs" | "report" | "chat" | "tickets" | "withdrawals";
 
 export default function LandlordDashboard() {
   const { session, user, ready, logout } = useSession("landlord");
@@ -61,6 +64,8 @@ export default function LandlordDashboard() {
   const [docsCanSign, setDocsCanSign] = useState(false);
   const [detailProperty, setDetailProperty] = useState<Property | null>(null);
   const [statusFilter, setStatusFilter] = useState<PropertyStatus | "all">("all");
+  const [focusWithdrawalId, setFocusWithdrawalId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const firstName = session.fullName.trim().split(/\s+/)[0] || session.fullName;
 
   const myProperties = properties.filter((p) => p.landlordId === landlordId);
@@ -98,8 +103,9 @@ export default function LandlordDashboard() {
     (n) => !n.read && (n.forRole === "landlord" || n.forUserId === user.id),
   ).length;
 
-  const openPanel = (panel: HomePanel, opts?: { canSign?: boolean }) => {
+  const openPanel = (panel: HomePanel, opts?: { canSign?: boolean; withdrawalId?: string | null }) => {
     if (opts?.canSign !== undefined) setDocsCanSign(opts.canSign);
+    setFocusWithdrawalId(panel === "withdrawals" ? (opts?.withdrawalId ?? null) : null);
     setHomePanel(panel);
     setTab("dashboard");
   };
@@ -119,6 +125,9 @@ export default function LandlordDashboard() {
         break;
       case "payment":
         setDialog("rentals");
+        break;
+      case "withdrawal":
+        openPanel("withdrawals", { withdrawalId: n.relatedId ?? null });
         break;
       case "critical":
       case "reminder":
@@ -140,6 +149,7 @@ export default function LandlordDashboard() {
     { icon: FileText, label: "דוח שנתי", onClick: () => openPanel("report") },
     { icon: PenLine, label: "מסמכים לחתימה", onClick: () => openDocs(true) },
     { icon: MessagesSquare, label: "צ׳אט עם מנהל", onClick: () => openPanel("chat") },
+    { icon: Banknote, label: "משיכה מיידית", onClick: () => openPanel("withdrawals") },
     { icon: Wrench, label: "סטטוס תקלות", onClick: () => openPanel("tickets") },
     { icon: CalendarDays, label: "התראות קריטיות", onClick: () => setDialog("critical") },
   ];
@@ -150,6 +160,7 @@ export default function LandlordDashboard() {
       if (tab === "dashboard") window.scrollTo({ top: 0, behavior: "smooth" });
       setHomePanel("properties");
       setDocsCanSign(false);
+      setFocusWithdrawalId(null);
     }
     if (next === "documents") setDocsCanSign(false);
     setTab(next);
@@ -160,53 +171,47 @@ export default function LandlordDashboard() {
     report: `דוח שנתי ${new Date().getFullYear()}`,
     chat: "צ׳אט עם מנהל",
     tickets: "סטטוס תקלות",
+    withdrawals: "משיכה מיידית",
   };
 
   if (!ready) return null;
 
   return (
-    <main className="app-shell flex min-h-[100dvh] flex-col bg-surface-muted">
+    <DashboardFrame items={appBottomNavItems(unread)} active={tab} onSelect={onNav}>
       {tab === "dashboard" ? (
-        <div className="dusk-header">
-          <DashboardTopBar
-            tone="dusk"
-            greeting={`שלום, ${firstName}`}
-            subtitle="התיק שלך במבט אחד"
-            onMenu={() => setMenuOpen(true)}
-            onBell={() => setTab("notifications")}
-            notificationCount={unread}
-          />
-          <div className="px-4 pb-6 pt-1">
-            <HeroStatCard
-              tone="glass"
-              label="שווי נכסים כולל"
-              value={formatCurrency(portfolioValue)}
-              subtitle={`תפוסה ${occupancy}% · שווי לפי תשואה ${formatPercent(PORTFOLIO_YIELD_RATE * 100)}`}
-              secondary={{
-                label: "הכנסה חודשית",
-                value: formatCurrency(expectedIncome),
-                sublabel: "סך דמי שכירות מכל הנכסים",
-                onClick: () => setDialog("rentals"),
-              }}
-              data={incomeChart.data}
-              chartProgress={incomeChart.progress}
-              chartStartLabel={incomeChart.chartStartLabel}
-              chartEndLabel={incomeChart.chartEndLabel}
+        <div className="dash-wide">
+          <div className="dusk-header dash-wide-chrome">
+            <DashboardTopBar
+              tone="dusk"
+              greeting={`שלום, ${firstName}`}
+              subtitle="התיק שלך במבט אחד"
+              onMenu={() => setMenuOpen(true)}
+              onBell={() => setTab("notifications")}
+              notificationCount={unread}
             />
+            <div className="dash-wide-hero px-4 pb-6 pt-1">
+              <HeroStatCard
+                tone="glass"
+                label="שווי נכסים כולל"
+                value={formatCurrency(portfolioValue)}
+                subtitle={`תפוסה ${occupancy}% · שווי לפי תשואה ${formatPercent(PORTFOLIO_YIELD_RATE * 100)}`}
+                secondary={{
+                  label: "הכנסה חודשית",
+                  value: formatCurrency(expectedIncome),
+                  sublabel: "סך דמי שכירות מכל הנכסים",
+                  onClick: () => setDialog("rentals"),
+                }}
+                data={incomeChart.data}
+                chartProgress={incomeChart.progress}
+                chartStartLabel={incomeChart.chartStartLabel}
+                chartEndLabel={incomeChart.chartEndLabel}
+                chartPoints={incomeChart.points}
+              />
+            </div>
           </div>
-        </div>
-      ) : (
-        <DashboardTopBar
-          tone="brand"
-          onMenu={() => setMenuOpen(true)}
-          onProfile={() => setTab("profile")}
-        />
-      )}
 
-      <div className="flex-1">
-        {tab === "dashboard" && (
-          <div className="dash-sheet space-y-5 px-4 pb-8 pt-5">
-            <div className="grid grid-cols-2 gap-3">
+          <div className="dash-sheet dash-wide-body space-y-5 px-4 pb-8 pt-5 lg:space-y-0">
+            <div className="dash-wide-metrics grid grid-cols-2 gap-3">
               <MetricCard
                 icon={Home}
                 label="הנכסים שלי"
@@ -230,152 +235,182 @@ export default function LandlordDashboard() {
               />
             </div>
 
-            <FocusActions
-              title="פעולות מהירות"
-              items={[
-                {
-                  icon: Building2,
-                  label: "נכסים",
-                  active: homePanel === "properties",
-                  onClick: () => openPanel("properties"),
-                },
-                {
-                  icon: Vault,
-                  label: "מסמכים",
-                  active: homePanel === "docs" && !docsCanSign,
-                  onClick: () => setTab("documents"),
-                },
-                {
-                  icon: FileText,
-                  label: "דוח שנתי",
-                  active: homePanel === "report",
-                  onClick: () => openPanel("report"),
-                },
-                {
-                  icon: PenLine,
-                  label: "מסמכים לחתימה",
-                  active: homePanel === "docs" && docsCanSign,
-                  onClick: () => openDocs(true),
-                },
-                {
-                  icon: MessagesSquare,
-                  label: "צ׳אט",
-                  active: homePanel === "chat",
-                  onClick: () => openPanel("chat"),
-                },
-              ]}
-            />
+            <div className="dash-wide-main space-y-5">
+              <FocusActions
+                title="פעולות מהירות"
+                items={[
+                  {
+                    icon: Building2,
+                    label: "נכסים",
+                    active: homePanel === "properties",
+                    onClick: () => openPanel("properties"),
+                  },
+                  {
+                    icon: Vault,
+                    label: "מסמכים",
+                    active: homePanel === "docs" && !docsCanSign,
+                    onClick: () => setTab("documents"),
+                  },
+                  {
+                    icon: FileText,
+                    label: "דוח שנתי",
+                    active: homePanel === "report",
+                    onClick: () => openPanel("report"),
+                  },
+                  {
+                    icon: PenLine,
+                    label: "מסמכים לחתימה",
+                    active: homePanel === "docs" && docsCanSign,
+                    onClick: () => openDocs(true),
+                  },
+                  {
+                    icon: MessagesSquare,
+                    label: "צ׳אט",
+                    active: homePanel === "chat",
+                    onClick: () => openPanel("chat"),
+                  },
+                  {
+                    icon: Banknote,
+                    label: "משיכה מיידית",
+                    active: homePanel === "withdrawals",
+                    onClick: () => openPanel("withdrawals"),
+                  },
+                ]}
+              />
 
-            <section className="space-y-1 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
-              {homePanel === "properties" ? (
-                <>
-                  <SectionHeader title="הנכסים שלי" className="mb-3" />
-                  <PropertyStatusFilter
-                    value={statusFilter}
-                    onChange={setStatusFilter}
-                    counts={statusCounts}
-                    className="mb-3"
-                  />
-                  <div className="space-y-0.5">
-                    {visibleProperties.map((property) => {
-                      const lease = myLeases.find((l) => l.propertyId === property.id);
-                      const tenant = myTenants.find((t) => t.id === property.tenantId);
-                      const rent = propertyMonthlyIncome(property, lease);
-                      return (
-                        <PropertyRow
-                          key={property.id}
-                          property={property}
-                          rent={rent > 0 ? rent : undefined}
-                          tenantName={tenant?.fullName}
-                          detailsLabel="ראה עוד"
-                          onClick={() => setDetailProperty(property)}
-                        />
-                      );
-                    })}
-                    {visibleProperties.length === 0 && (
-                      <p className="py-8 text-center text-sm text-text-muted">אין נכסים בסטטוס זה</p>
+              <section className="space-y-1 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
+                {homePanel === "properties" ? (
+                  <>
+                    <SectionHeader title="הנכסים שלי" className="mb-3" />
+                    <PropertyStatusFilter
+                      value={statusFilter}
+                      onChange={setStatusFilter}
+                      counts={statusCounts}
+                      className="mb-3"
+                    />
+                    <div className="grid grid-cols-1 gap-0.5 lg:grid-cols-2">
+                      {visibleProperties.map((property) => {
+                        const lease = myLeases.find((l) => l.propertyId === property.id);
+                        const tenant = myTenants.find((t) => t.id === property.tenantId);
+                        const rent = propertyMonthlyIncome(property, lease);
+                        return (
+                          <PropertyRow
+                            key={property.id}
+                            property={property}
+                            rent={rent > 0 ? rent : undefined}
+                            tenantName={tenant?.fullName}
+                            detailsLabel="ראה עוד"
+                            onClick={() => setDetailProperty(property)}
+                          />
+                        );
+                      })}
+                      {visibleProperties.length === 0 && (
+                        <p className="col-span-full py-8 text-center text-sm text-text-muted">
+                          אין נכסים בסטטוס זה
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <SectionHeader title={panelTitles[homePanel]} onBack={() => onNav("dashboard")} />
+                    {homePanel === "docs" && (
+                      <DocumentsDialog
+                        inline
+                        searchable
+                        documents={myDocs}
+                        canSign={docsCanSign}
+                        signerName={session.fullName}
+                        properties={myProperties}
+                        landlords={myLandlordRecords}
+                        tenants={myTenants}
+                        awaitingSignatureOnly={docsCanSign}
+                        upload={{ ownerUserId: user.id, landlordId }}
+                      />
                     )}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <SectionHeader title={panelTitles[homePanel]} onBack={() => onNav("dashboard")} />
-                  {homePanel === "docs" && (
-                    <DocumentsDialog
-                      inline
-                      searchable
-                      documents={myDocs}
-                      canSign={docsCanSign}
-                      signerName={session.fullName}
-                      properties={myProperties}
-                      landlords={myLandlordRecords}
-                      tenants={myTenants}
-                      awaitingSignatureOnly={docsCanSign}
-                      upload={{ ownerUserId: user.id, landlordId }}
-                    />
-                  )}
-                  {homePanel === "report" && (
-                    <AnnualReportDialog inline landlordId={landlordId} canAddExpenses />
-                  )}
-                  {homePanel === "chat" && (
-                    <ChatPanel
-                      inline
-                      self={{ id: session.userId, name: session.fullName, role: "landlord" }}
-                      peers={[{ id: "u_manager", name: "מנהל הנכסים", subtitle: "ALTMAN Group" }]}
-                      title="צ׳אט עם מנהל"
-                    />
-                  )}
-                  {homePanel === "tickets" && (
-                    <TicketsDialog inline propertyIds={myPropertyIds} readOnly title="סטטוס תקלות" />
-                  )}
-                </>
-              )}
-            </section>
+                    {homePanel === "report" && (
+                      <AnnualReportDialog inline landlordId={landlordId} canAddExpenses />
+                    )}
+                    {homePanel === "chat" && (
+                      <ChatPanel
+                        inline
+                        self={{ id: session.userId, name: session.fullName, role: "landlord" }}
+                        peers={[{ id: "u_manager", name: "מנהל הנכסים", subtitle: "ALTMAN Group" }]}
+                        title="צ׳אט עם מנהל"
+                      />
+                    )}
+                    {homePanel === "tickets" && (
+                      <TicketsDialog inline propertyIds={myPropertyIds} readOnly title="סטטוס תקלות" />
+                    )}
+                    {homePanel === "withdrawals" && (
+                      <WithdrawalsDialog
+                        inline
+                        landlordId={landlordId}
+                        createdByUserId={user.id}
+                        highlightId={focusWithdrawalId}
+                        onSubmitted={() => setToast("הבקשה נשלחה למנהל")}
+                      />
+                    )}
+                  </>
+                )}
+              </section>
+            </div>
           </div>
-        )}
+        </div>
+      ) : (
+        <>
+          <DashboardTopBar
+            tone="brand"
+            onMenu={() => setMenuOpen(true)}
+            onProfile={() => setTab("profile")}
+          />
+          <div className="flex-1">
+            {tab === "documents" && (
+              <div className="dash-tab space-y-3 px-4 pb-8 pt-2">
+                <SectionHeader title="מסמכים" onBack={() => onNav("dashboard")} />
+                <DocumentsDialog
+                  inline
+                  searchable
+                  documents={myDocs}
+                  canSign
+                  signerName={session.fullName}
+                  properties={myProperties}
+                  landlords={myLandlordRecords}
+                  tenants={myTenants}
+                  upload={{ ownerUserId: user.id, landlordId }}
+                />
+              </div>
+            )}
 
-        {tab === "documents" && (
-          <div className="space-y-3 px-4 pb-8 pt-2">
-            <SectionHeader title="מסמכים" onBack={() => onNav("dashboard")} />
-            <DocumentsDialog
-              inline
-              searchable
-              documents={myDocs}
-              canSign
-              signerName={session.fullName}
-              properties={myProperties}
-              landlords={myLandlordRecords}
-              tenants={myTenants}
-              upload={{ ownerUserId: user.id, landlordId }}
-            />
+            {tab === "notifications" && (
+              <div className="dash-tab">
+                <NotificationsTab
+                  forUserId={user.id}
+                  forRole="landlord"
+                  onBack={() => onNav("dashboard")}
+                  onOpen={(n) => {
+                    setTab("dashboard");
+                    openNotification(n);
+                  }}
+                />
+              </div>
+            )}
+
+            {tab === "profile" && (
+              <div className="dash-tab">
+                <ProfileTab
+                  userId={user.id}
+                  fullName={session.fullName}
+                  role="landlord"
+                  detail={`${myProperties.length} נכסים · ${formatCurrency(expectedIncome)} / חודש`}
+                  onLogout={logout}
+                  onBack={() => onNav("dashboard")}
+                />
+              </div>
+            )}
           </div>
-        )}
-
-        {tab === "notifications" && (
-          <NotificationsTab
-            forUserId={user.id}
-            forRole="landlord"
-            onBack={() => onNav("dashboard")}
-            onOpen={(n) => {
-              setTab("dashboard");
-              openNotification(n);
-            }}
-          />
-        )}
-
-        {tab === "profile" && (
-          <ProfileTab
-            userId={user.id}
-            fullName={session.fullName}
-            role="landlord"
-            detail={`${myProperties.length} נכסים · ${formatCurrency(expectedIncome)} / חודש`}
-            onLogout={logout}
-            onBack={() => onNav("dashboard")}
-          />
-        )}
-      </div>
-
-      <BottomNavigation items={appBottomNavItems(unread)} active={tab} onSelect={onNav} />
+        </>
+      )}
 
       <MobileMenu
         open={menuOpen}
@@ -403,6 +438,7 @@ export default function LandlordDashboard() {
         canConfirmClearance
         collapsible
       />
-    </main>
+      <Toast message={toast} onDone={() => setToast(null)} />
+    </DashboardFrame>
   );
 }

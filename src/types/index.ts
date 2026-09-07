@@ -280,7 +280,32 @@ export type NotificationKind =
   | "insurance"
   | "reminder"
   | "critical"
-  | "chat";
+  | "chat"
+  | "withdrawal";
+
+/* ---------- Immediate rent withdrawal (משיכה מיידית) ---------- */
+
+export type WithdrawalStatus = "pending" | "approved" | "rejected";
+
+/** Landlord request to draw part of a property's upcoming rent before the due date. */
+export interface WithdrawalRequest {
+  id: string;
+  landlordId: string;
+  propertyId: string;
+  leaseId?: string;
+  amount: number;
+  /** Monthly rent in force when the request was opened. */
+  rentAmount: number;
+  /** Upcoming payment date this draw is against (YYYY-MM-DD). */
+  rentDueDate?: string;
+  note?: string;
+  status: WithdrawalStatus;
+  createdAt: string; // ISO
+  createdByUserId: string;
+  decidedAt?: string; // ISO
+  decidedByUserId?: string;
+  decisionNote?: string;
+}
 
 export interface AppNotification {
   id: string;

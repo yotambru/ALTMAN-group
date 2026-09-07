@@ -30,6 +30,7 @@ next-env.d.ts
 # Capacitor / native
 *.keystore
 *.jks
+android/keystore.properties
 android/.gradle/
 android/app/build/
 android/build/

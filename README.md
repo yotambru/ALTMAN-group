@@ -98,7 +98,8 @@ npm run cap:android     # open Android Studio
 
 | Item | Value |
 | ---- | ----- |
-| App ID | `il.co.altmangroup.app` |
+| iOS Bundle ID | `il.co.altmangroup.app` |
+| Android package | `il.co.altmangroup.android` |
 | App name | ALTMAN Group |
 | Privacy policy | https://altman-group.vercel.app/privacy |
 

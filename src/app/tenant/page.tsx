@@ -27,7 +27,7 @@ import { DashboardTopBar } from "@/components/dashboard/DashboardTopBar";
 import { HeroStatCard } from "@/components/dashboard/HeroStatCard";
 import { FocusActions } from "@/components/dashboard/FocusActions";
 import { AlertStrip } from "@/components/dashboard/AlertStrip";
-import { BottomNavigation } from "@/components/dashboard/BottomNavigation";
+import { DashboardFrame } from "@/components/dashboard/DashboardFrame";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { MobileMenu, type MobileMenuItem } from "@/components/dashboard/MobileMenu";
 import { NotificationsTab } from "@/components/dashboard/NotificationsTab";
@@ -278,7 +278,7 @@ export default function TenantDashboard() {
   if (!ready) return null;
 
   return (
-    <main className="app-shell flex min-h-[100dvh] flex-col bg-surface-muted">
+    <DashboardFrame items={appBottomNavItems(unread)} active={tab} onSelect={onNav}>
       <input
         ref={fileRef}
         type="file"
@@ -300,7 +300,8 @@ export default function TenantDashboard() {
       )}
 
       {tab === "dashboard" ? (
-        <div className="dusk-header">
+        <div className="dash-wide">
+        <div className="dusk-header dash-wide-chrome">
           <DashboardTopBar
             tone="dusk"
             greeting={`שלום, ${firstName}`}
@@ -313,7 +314,7 @@ export default function TenantDashboard() {
             onBell={() => setTab("notifications")}
             notificationCount={unread}
           />
-          <div className="px-4 pb-6 pt-1">
+          <div className="dash-wide-hero px-4 pb-6 pt-1">
             <HeroStatCard
               tone="glass"
               label="דמי שכירות חודשיים"
@@ -330,18 +331,9 @@ export default function TenantDashboard() {
             />
           </div>
         </div>
-      ) : (
-        <DashboardTopBar
-          tone="brand"
-          onMenu={() => setMenuOpen(true)}
-          onProfile={() => setTab("profile")}
-        />
-      )}
 
-      <div className="flex-1">
-        {tab === "dashboard" && (
-          <div className="dash-sheet space-y-5 px-4 pb-8 pt-5">
-            <div className="grid grid-cols-2 gap-3">
+          <div className="dash-sheet dash-wide-body space-y-5 px-4 pb-8 pt-5 lg:space-y-0">
+            <div className="dash-wide-metrics grid grid-cols-2 gap-3">
               <MetricCard
                 icon={Wallet}
                 label="תשלום הבא"
@@ -379,6 +371,7 @@ export default function TenantDashboard() {
               />
             </div>
 
+            <div className="dash-wide-main space-y-5">
             <FocusActions
               title="פעולות מהירות"
               items={[
@@ -594,11 +587,19 @@ export default function TenantDashboard() {
             )}
               </>
             )}
+            </div>
           </div>
-        )}
-
+        </div>
+      ) : (
+        <>
+          <DashboardTopBar
+            tone="brand"
+            onMenu={() => setMenuOpen(true)}
+            onProfile={() => setTab("profile")}
+          />
+          <div className="flex-1">
         {tab === "documents" && (
-          <div className="space-y-4 px-4 pb-8 pt-2">
+          <div className="dash-tab space-y-4 px-4 pb-8 pt-2">
             <SectionHeader title="מסמכים" onBack={() => onNav("dashboard")} />
             <DocumentsDialog
               inline
@@ -620,17 +621,20 @@ export default function TenantDashboard() {
         )}
 
         {tab === "notifications" && (
-          <NotificationsTab
-            forUserId={user.id}
-            forRole="tenant"
-            onBack={() => onNav("dashboard")}
-            onOpen={(n) => {
-              openNotification(n);
-            }}
-          />
+          <div className="dash-tab">
+            <NotificationsTab
+              forUserId={user.id}
+              forRole="tenant"
+              onBack={() => onNav("dashboard")}
+              onOpen={(n) => {
+                openNotification(n);
+              }}
+            />
+          </div>
         )}
 
         {tab === "profile" && (
+          <div className="dash-tab">
           <ProfileTab
             userId={user.id}
             fullName={session.fullName}
@@ -652,10 +656,11 @@ export default function TenantDashboard() {
               heading="פרטים להעברת חשבונות"
             />
           </ProfileTab>
+          </div>
         )}
-      </div>
-
-      <BottomNavigation items={appBottomNavItems(unread)} active={tab} onSelect={onNav} />
+          </div>
+        </>
+      )}
 
       <MobileMenu
         open={menuOpen}
@@ -701,6 +706,6 @@ export default function TenantDashboard() {
           </ul>
         )}
       </Modal>
-    </main>
+    </DashboardFrame>
   );
 }

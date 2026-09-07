@@ -9,6 +9,7 @@ export const metadata = {
 export default function PrivacyPage() {
   return (
     <main className="app-shell flex min-h-[100dvh] flex-col bg-surface px-5 pb-10 pt-[max(1.25rem,env(safe-area-inset-top))]">
+      <div className="mx-auto w-full max-w-3xl">
       <div className="flex justify-center py-6">
         <Logo size="md" withTagline={false} />
       </div>
@@ -105,6 +106,7 @@ export default function PrivacyPage() {
       >
         חזרה למסך הכניסה
       </Link>
+      </div>
     </main>
   );
 }

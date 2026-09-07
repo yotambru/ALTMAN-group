@@ -29,7 +29,9 @@ export function FocusActions({ items, title, className }: FocusActionsProps) {
       )}
       <div
         className="grid gap-2.5"
-        style={{ gridTemplateColumns: `repeat(${Math.min(items.length, 5)}, minmax(0, 1fr))` }}
+        style={{
+          gridTemplateColumns: `repeat(${items.length > 5 ? 3 : Math.min(items.length, 5)}, minmax(0, 1fr))`,
+        }}
       >
         {items.map((item) => {
           const Icon = item.icon;
@@ -41,7 +43,7 @@ export function FocusActions({ items, title, className }: FocusActionsProps) {
               onClick={item.onClick}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex flex-col items-center gap-1.5 rounded-2xl bg-surface px-1 py-3 text-center shadow-sm transition-all",
+                "flex flex-col items-center gap-1.5 rounded-2xl bg-surface px-1 py-3 text-center shadow-sm transition-all lg:gap-2 lg:px-2 lg:py-4",
                 isActive
                   ? "ring-2 ring-orange"
                   : "ring-1 ring-border hover:shadow",
@@ -53,7 +55,7 @@ export function FocusActions({ items, title, className }: FocusActionsProps) {
               />
               <span
                 className={cn(
-                  "text-[0.65rem] font-bold leading-tight",
+                  "text-[0.65rem] font-bold leading-tight lg:text-xs",
                   isActive ? "text-orange" : "text-navy",
                 )}
               >

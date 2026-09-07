@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  Banknote,
   Bell,
   CheckCheck,
   Droplets,
@@ -26,6 +27,7 @@ const kindIcon: Record<NotificationKind, typeof Bell> = {
   reminder: Bell,
   critical: AlertTriangle,
   chat: MessageSquareText,
+  withdrawal: Banknote,
 };
 
 interface NotificationsPanelProps {
