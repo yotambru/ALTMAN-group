@@ -17,6 +17,7 @@ export function CapacitorBootstrap() {
     if (!Capacitor.isNativePlatform()) return;
 
     document.documentElement.dataset.capacitor = "true";
+    document.documentElement.classList.add("plt-capacitor");
 
     let removeBack: { remove: () => void } | undefined;
     let removeNetwork: { remove: () => void } | undefined;

@@ -38,8 +38,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="he" dir="rtl" className={`${assistant.variable} h-full`}>
+    <html lang="he" dir="rtl" className={`${assistant.variable} h-full`} suppressHydrationWarning>
       <body className="min-h-full antialiased">
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{if(window.Capacitor){var r=document.documentElement;r.dataset.capacitor="true";r.classList.add("plt-capacitor");}}catch(e){}',
+          }}
+        />
         <DataProvider>
           <CapacitorBootstrap />
           <OfflineBanner />

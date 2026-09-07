@@ -100,6 +100,40 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/*
+ * Native iOS: the WKWebView document must be the scroller for rubber-band bounce.
+ * html.h-full from layout.tsx would lock height to the viewport and kill bounce.
+ */
+html.plt-capacitor,
+html[data-capacitor="true"],
+html.h-full.plt-capacitor,
+html.h-full[data-capacitor="true"] {
+  height: auto;
+  min-height: 100%;
+  background: var(--navy);
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.plt-capacitor body,
+html[data-capacitor="true"] body {
+  height: auto;
+  min-height: 100%;
+  background: var(--surface-muted);
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.plt-capacitor .overflow-y-auto,
+html[data-capacitor="true"] .overflow-y-auto,
+html.plt-capacitor .overflow-y-scroll,
+html[data-capacitor="true"] .overflow-y-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
 /* App shell — phone canvas on small screens, full-width web layout from lg */
 .app-shell {
   width: 100%;
@@ -120,13 +154,6 @@ body {
 html[data-capacitor="true"] .app-shell,
 html.plt-capacitor .app-shell {
   max-width: none;
-}
-
-html[data-capacitor="true"],
-html.plt-capacitor,
-html[data-capacitor="true"] body,
-html.plt-capacitor body {
-  background: var(--navy);
 }
 
 @media (min-width: 480px) and (max-width: 1023px) {
