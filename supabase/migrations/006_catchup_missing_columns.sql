@@ -14,3 +14,7 @@ alter table public.properties
 -- 005_document_folder.sql
 alter table public.documents
   add column if not exists folder text;
+
+-- 008_withdrawal_portfolio.sql
+alter table public.withdrawal_requests
+  alter column property_id drop not null;

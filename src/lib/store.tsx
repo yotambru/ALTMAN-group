@@ -20,11 +20,7 @@ import { generateId, formatCurrency } from "@/lib/utils";
 import { localTodayIso } from "@/lib/lease-periods";
 import { inferDocumentFolder } from "@/lib/document-folders";
 import { removeLandlord, removeOwnAccount, removeTenant } from "@/lib/delete-users";
-import {
-  availableWithdrawalAmount,
-  propertyAddressLabel,
-  upcomingRentCycle,
-} from "@/lib/withdrawals";
+import { landlordRentPool, propertyAddressLabel } from "@/lib/withdrawals";
 import type {
   ActivityLogEntry,
   AppDocument,
@@ -328,7 +324,6 @@ interface DataContextValue extends DataState {
   // withdrawals
   addWithdrawalRequest: (input: {
     landlordId: string;
-    propertyId: string;
     amount: number;
     note?: string;
     createdByUserId: string;
@@ -1643,23 +1638,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       let created: WithdrawalRequest | null = null;
       setState((p) => {
-        const property = p.properties.find((prop) => prop.id === input.propertyId);
-        if (!property || property.landlordId !== input.landlordId) return p;
-
-        const cycle = upcomingRentCycle(property, p.leases);
-        if (cycle.rent <= 0) return p;
-
-        const available = availableWithdrawalAmount(p.withdrawals, property.id, cycle.rent, cycle.dueDate);
-        if (amount > available + 0.009) return p;
+        const pool = landlordRentPool(p.withdrawals, p.properties, p.leases, input.landlordId);
+        if (pool.total <= 0) return p;
+        if (amount > pool.available + 0.009) return p;
 
         const request: WithdrawalRequest = {
           id: generateId("wd"),
           landlordId: input.landlordId,
-          propertyId: property.id,
-          leaseId: cycle.leaseId,
           amount,
-          rentAmount: cycle.rent,
-          rentDueDate: cycle.dueDate,
+          rentAmount: pool.total,
+          rentDueDate: pool.latestDueDate,
           note: input.note?.trim() || undefined,
           status: "pending",
           createdAt: new Date().toISOString(),
@@ -1668,7 +1656,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         created = request;
 
         const landlordName = p.landlords.find((l) => l.id === input.landlordId)?.fullName ?? "משכיר";
-        const address = propertyAddressLabel(property);
 
         return {
           ...p,
@@ -1678,7 +1665,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               id: generateId("n"),
               kind: "withdrawal",
               title: "בקשת משיכה מיידית",
-              body: `${landlordName} מבקש למשוך ${formatCurrency(amount)} מ${address}`,
+              body: `${landlordName} מבקש למשוך ${formatCurrency(amount)} מסך דמי השכירות`,
               createdAt: request.createdAt,
               read: false,
               forRole: "manager",
@@ -1688,7 +1675,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             ...p.notifications,
           ],
           activityLog: [
-            makeLog("בקשת משיכה מיידית", "withdrawal", request.id, `${address} · ${formatCurrency(amount)}`),
+            makeLog(
+              "בקשת משיכה מיידית",
+              "withdrawal",
+              request.id,
+              `סך דמי השכירות · ${formatCurrency(amount)}`,
+            ),
             ...p.activityLog,
           ],
         };
@@ -1705,14 +1697,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const request = p.withdrawals.find((w) => w.id === id);
         if (!request || request.status !== "pending") return p;
 
-        const property = p.properties.find((prop) => prop.id === request.propertyId);
-        const address = property ? propertyAddressLabel(property) : "הדירה";
+        const property = request.propertyId
+          ? p.properties.find((prop) => prop.id === request.propertyId)
+          : undefined;
+        const source = property ? propertyAddressLabel(property) : "סך דמי השכירות";
         const landlordUser = p.users.find((u) => u.landlordId === request.landlordId);
         const approved = status === "approved";
         const title = approved ? "המשיכה אושרה" : "המשיכה נדחתה";
         const body = approved
-          ? `אושרה משיכה של ${formatCurrency(request.amount)} מ${address}`
-          : `הבקשה למשיכת ${formatCurrency(request.amount)} מ${address} נדחתה`;
+          ? `אושרה משיכה של ${formatCurrency(request.amount)} מ${source}`
+          : `הבקשה למשיכת ${formatCurrency(request.amount)} מ${source} נדחתה`;
         const note = decisionNote?.trim();
 
         return {
@@ -1747,7 +1741,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               approved ? "אישור משיכה מיידית" : "דחיית משיכה מיידית",
               "withdrawal",
               id,
-              `${address} · ${formatCurrency(request.amount)}`,
+              `${source} · ${formatCurrency(request.amount)}`,
             ),
             ...p.activityLog,
           ],

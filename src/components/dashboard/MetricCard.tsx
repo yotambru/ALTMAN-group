@@ -27,17 +27,15 @@ export function MetricCard({
     <Comp
       onClick={onClick}
       className={cn(
-        "card flex w-full flex-col gap-2 p-4 text-start shadow-sm",
+        "card flex w-full flex-col items-center gap-2 p-4 text-center shadow-sm",
         onClick && "transition-shadow hover:shadow",
         className,
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[0.78rem] font-semibold leading-tight text-text-muted">
-          {label}
-        </span>
-        <Icon className="h-5 w-5 shrink-0 text-navy/80" strokeWidth={1.7} />
-      </div>
+      <Icon className="h-5 w-5 shrink-0 text-navy/80" strokeWidth={1.7} />
+      <span className="text-[0.78rem] font-semibold leading-tight text-text-muted">
+        {label}
+      </span>
       <span className="text-[1.7rem] font-extrabold leading-none tracking-tight text-navy">
         {value}
       </span>

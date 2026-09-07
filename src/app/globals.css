@@ -285,16 +285,16 @@ html.plt-capacitor .app-shell {
 .animate-sheet { animation: sheet-up 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
 .animate-menu { animation: menu-in 0.2s ease-out; }
 
-/* Wide web dashboard: sidebar chrome + multi-column home */
+/* Wide web dashboard: stacked full-width sections (hero, metrics, main) */
 @media (min-width: 1024px) {
   .dash-wide {
     display: grid;
-    grid-template-columns: minmax(1.5rem, 1fr) minmax(0, 38rem) minmax(0, 34rem) minmax(1.5rem, 1fr);
+    grid-template-columns: minmax(1.5rem, 1fr) minmax(0, 72rem) minmax(1.5rem, 1fr);
     grid-template-areas:
-      "topbar topbar topbar topbar"
-      ". hero metrics ."
-      ". main main .";
-    column-gap: 1.5rem;
+      "topbar topbar topbar"
+      ". hero ."
+      ". metrics ."
+      ". main .";
     row-gap: 1.5rem;
     padding-bottom: 2.5rem;
     width: 100%;
@@ -317,11 +317,6 @@ html.plt-capacitor .app-shell {
   .dash-wide-hero {
     grid-area: hero;
     padding: 0 !important;
-    min-height: 100%;
-  }
-
-  .dash-wide-hero > * {
-    height: 100%;
   }
 
   /* Glass hero sits on a light canvas here — use opaque navy, not frosted-over-white */
@@ -348,11 +343,7 @@ html.plt-capacitor .app-shell {
 
   .dash-wide-metrics {
     grid-area: metrics;
-    align-self: stretch;
-  }
-
-  .dash-wide-metrics > * {
-    height: 100%;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)) !important;
   }
 
   .dash-wide-main {
@@ -360,7 +351,7 @@ html.plt-capacitor .app-shell {
   }
 
   .dash-tab {
-    width: min(100%, 56rem);
+    width: min(100%, 72rem);
     margin-inline: auto;
     padding-inline: clamp(1.5rem, 4vw, 2.5rem);
   }

@@ -11,9 +11,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useData } from "@/lib/store";
 import { formatCurrency, formatDateDots, cn } from "@/lib/utils";
 import {
-  availableWithdrawalAmount,
+  landlordRentPool,
   propertyAddressLabel,
-  upcomingRentCycle,
   WITHDRAWAL_STATUS_LABELS,
 } from "@/lib/withdrawals";
 import type { WithdrawalRequest, WithdrawalStatus } from "@/types";
@@ -58,26 +57,19 @@ export function WithdrawalsDialog({
   const { withdrawals, properties, leases, landlords, addWithdrawalRequest, decideWithdrawal } = useData();
   const [filter, setFilter] = useState<WithdrawalStatus | "all">("all");
   const [query, setQuery] = useState("");
-  const [propertyId, setPropertyId] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [rejectId, setRejectId] = useState<string | null>(null);
   const canCreate = Boolean(landlordId && createdByUserId);
 
-  const eligibleProperties = useMemo(() => {
-    if (!landlordId) return [];
-    return properties.filter((p) => {
-      if (p.landlordId !== landlordId) return false;
-      return upcomingRentCycle(p, leases).rent > 0;
-    });
-  }, [properties, leases, landlordId]);
-
-  const selectedProperty = eligibleProperties.find((p) => p.id === propertyId) ?? eligibleProperties[0];
-  const cycle = selectedProperty ? upcomingRentCycle(selectedProperty, leases) : null;
-  const available = selectedProperty
-    ? availableWithdrawalAmount(withdrawals, selectedProperty.id, cycle?.rent ?? 0, cycle?.dueDate)
-    : 0;
+  const pool = useMemo(
+    () =>
+      landlordId
+        ? landlordRentPool(withdrawals, properties, leases, landlordId)
+        : { total: 0, available: 0, propertyCount: 0, dueDates: [] as string[] },
+    [withdrawals, properties, leases, landlordId],
+  );
 
   const effectiveFilter: WithdrawalStatus | "all" = highlightId ? "all" : filter;
 
@@ -94,6 +86,7 @@ export function WithdrawalsDialog({
           prop?.address,
           prop?.city,
           prop?.apartmentNumber,
+          w.propertyId ? undefined : "סך דמי השכירות",
           landlord?.fullName,
           statusMeta[w.status].label,
           w.note,
@@ -115,8 +108,12 @@ export function WithdrawalsDialog({
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!landlordId || !createdByUserId || !selectedProperty) {
-      setError("אין דירה עם שכ״ד קרוב למשיכה.");
+    if (!landlordId || !createdByUserId) {
+      setError("לא ניתן לשלוח בקשה.");
+      return;
+    }
+    if (pool.total <= 0) {
+      setError("אין שכ״ד קרוב למשיכה.");
       return;
     }
     const parsed = Number(amount.replace(/,/g, "").trim());
@@ -124,19 +121,18 @@ export function WithdrawalsDialog({
       setError("יש להזין סכום חיובי.");
       return;
     }
-    if (parsed > available + 0.009) {
-      setError(`ניתן למשוך עד ${formatCurrency(available)} מתוך השכ״ד הקרוב.`);
+    if (parsed > pool.available + 0.009) {
+      setError(`ניתן למשוך עד ${formatCurrency(pool.available)} מתוך סך דמי השכירות.`);
       return;
     }
     const created = addWithdrawalRequest({
       landlordId,
-      propertyId: selectedProperty.id,
       amount: parsed,
       note,
       createdByUserId,
     });
     if (!created) {
-      setError("לא ניתן לשלוח את הבקשה. בדקו את הסכום ואת הדירה.");
+      setError("לא ניתן לשלוח את הבקשה. בדקו את הסכום.");
       return;
     }
     setAmount("");
@@ -153,39 +149,18 @@ export function WithdrawalsDialog({
       {canCreate && (
         <form onSubmit={submit} className="mb-4 space-y-3 rounded-xl border border-border bg-surface-muted/60 p-3">
           <p className="text-sm text-text-muted">
-            בחרו דירה וסכום למשיכה מתוך דמי השכירות הקרובים. הבקשה תישלח למנהל לאישור.
+            בחרו סכום למשיכה מתוך סך דמי השכירות הקרובים של כל הנכסים. הבקשה תישלח למנהל לאישור.
           </p>
-          {eligibleProperties.length === 0 ? (
-            <p className="text-sm font-medium text-text-muted">אין כרגע דירה עם שכ״ד קרוב למשיכה.</p>
+          {pool.total <= 0 ? (
+            <p className="text-sm font-medium text-text-muted">אין כרגע שכ״ד קרוב למשיכה.</p>
           ) : (
             <>
-              <FormField label="דירה">
-                <select
-                  value={selectedProperty?.id ?? ""}
-                  onChange={(e) => {
-                    setPropertyId(e.target.value);
-                    setError("");
-                  }}
-                  className="w-full rounded-xl border bg-surface px-3.5 py-3 text-sm text-text focus:border-orange focus:outline-none"
-                >
-                  {eligibleProperties.map((p) => {
-                    const rent = upcomingRentCycle(p, leases).rent;
-                    return (
-                      <option key={p.id} value={p.id}>
-                        {propertyAddressLabel(p)} · {formatCurrency(rent)}
-                      </option>
-                    );
-                  })}
-                </select>
-              </FormField>
               <FormField
                 label="סכום למשיכה"
                 hint={
-                  cycle
-                    ? `ניתן למשוך עד ${formatCurrency(available)} מתוך שכ״ד של ${formatCurrency(cycle.rent)}${
-                        cycle.dueDate ? ` (תשלום ב-${formatDateDots(cycle.dueDate)})` : ""
-                      }`
-                    : undefined
+                  `ניתן למשוך עד ${formatCurrency(pool.available)} מתוך סך שכ״ד של ${formatCurrency(pool.total)}` +
+                  (pool.propertyCount > 0 ? ` (${pool.propertyCount} נכסים)` : "") +
+                  (pool.earliestDueDate ? ` · תשלום קרוב ב-${formatDateDots(pool.earliestDueDate)}` : "")
                 }
                 error={error || undefined}
                 inputProps={{
@@ -195,7 +170,7 @@ export function WithdrawalsDialog({
                     setAmount(e.target.value);
                     setError("");
                   },
-                  placeholder: available > 0 ? String(available) : "0",
+                  placeholder: pool.available > 0 ? String(pool.available) : "0",
                   required: true,
                 }}
               />
@@ -208,7 +183,7 @@ export function WithdrawalsDialog({
                   placeholder: "אופציונלי",
                 }}
               />
-              <Button type="submit" fullWidth disabled={available <= 0}>
+              <Button type="submit" fullWidth disabled={pool.available <= 0}>
                 שליחת בקשה
               </Button>
             </>
@@ -247,8 +222,8 @@ export function WithdrawalsDialog({
             request={w}
             highlighted={w.id === highlightId}
             propertyLabel={(() => {
-              const prop = properties.find((p) => p.id === w.propertyId);
-              return prop ? propertyAddressLabel(prop) : undefined;
+              const prop = w.propertyId ? properties.find((p) => p.id === w.propertyId) : undefined;
+              return prop ? propertyAddressLabel(prop) : "סך דמי השכירות";
             })()}
             landlordName={canDecide ? landlords.find((l) => l.id === w.landlordId)?.fullName : undefined}
             canDecide={canDecide}
@@ -340,10 +315,10 @@ function WithdrawalRow({
           </div>
           <p className="truncate text-xs text-text-muted">
             {landlordName ? `${landlordName} · ` : ""}
-            {propertyLabel ?? "דירה"}
+            {propertyLabel ?? "סך דמי השכירות"}
           </p>
           <p className="mt-1 text-[0.7rem] text-text-muted">
-            מתוך שכ״ד {formatCurrency(request.rentAmount)}
+            מתוך {request.propertyId ? "שכ״ד" : "סך שכ״ד"} {formatCurrency(request.rentAmount)}
             {request.rentDueDate ? ` · תשלום ${formatDateDots(request.rentDueDate)}` : ""}
             {` · ${formatDateDots(request.createdAt)}`}
           </p>

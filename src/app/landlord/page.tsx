@@ -288,7 +288,7 @@ export default function LandlordDashboard() {
                       counts={statusCounts}
                       className="mb-3"
                     />
-                    <div className="grid grid-cols-1 gap-0.5 lg:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-0.5">
                       {visibleProperties.map((property) => {
                         const lease = myLeases.find((l) => l.propertyId === property.id);
                         const tenant = myTenants.find((t) => t.id === property.tenantId);

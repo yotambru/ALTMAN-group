@@ -671,7 +671,7 @@ function withdrawalToRow(w: WithdrawalRequest): Row {
   return {
     id: w.id,
     landlord_id: w.landlordId,
-    property_id: w.propertyId,
+    property_id: w.propertyId || "",
     lease_id: w.leaseId ?? null,
     amount: w.amount,
     rent_amount: w.rentAmount,
@@ -690,7 +690,7 @@ function withdrawalFromRow(row: Row): WithdrawalRequest {
   return {
     id: str(row.id),
     landlordId: str(row.landlord_id),
-    propertyId: str(row.property_id),
+    propertyId: str(row.property_id) || undefined,
     leaseId: opt(row.lease_id as string | null),
     amount: num(row.amount),
     rentAmount: num(row.rent_amount),

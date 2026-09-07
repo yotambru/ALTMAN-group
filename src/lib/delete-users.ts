@@ -171,7 +171,7 @@ export function removeLandlord(
     onboardings: state.onboardings.filter((o) => !tenantIds.has(o.tenantId)),
     protocols: state.protocols.filter((p) => !propertyIds.has(p.propertyId)),
     withdrawals: state.withdrawals.filter(
-      (w) => w.landlordId !== landlordId && !propertyIds.has(w.propertyId),
+      (w) => w.landlordId !== landlordId && !(w.propertyId && propertyIds.has(w.propertyId)),
     ),
     tasks: social.tasks.filter((t) => !t.relatedPropertyId || !propertyIds.has(t.relatedPropertyId)),
     activityLog: [log, ...state.activityLog],

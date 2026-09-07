@@ -287,11 +287,12 @@ export type NotificationKind =
 
 export type WithdrawalStatus = "pending" | "approved" | "rejected";
 
-/** Landlord request to draw part of a property's upcoming rent before the due date. */
+/** Landlord request to draw from upcoming rent (portfolio-wide, or a legacy per-property draw). */
 export interface WithdrawalRequest {
   id: string;
   landlordId: string;
-  propertyId: string;
+  /** Set on older per-property requests; omitted for portfolio-wide draws. */
+  propertyId?: string;
   leaseId?: string;
   amount: number;
   /** Monthly rent in force when the request was opened. */
