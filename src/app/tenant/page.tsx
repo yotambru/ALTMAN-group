@@ -45,6 +45,7 @@ import { PropertyDetailDialog } from "@/features/properties/PropertyDetailDialog
 import { UtilityAccountDetails } from "@/features/utilities/UtilityAccountDetails";
 import { useSession } from "@/lib/useSession";
 import { useData, utilityLabelHe } from "@/lib/store";
+import { isNotificationForAudience } from "@/lib/notifications";
 import { storage } from "@/lib/storage";
 import { inferDocumentFolder } from "@/lib/document-folders";
 import {
@@ -110,7 +111,9 @@ export default function TenantDashboard() {
   const showRequiredActions = pending > 0 || awaitingApproval;
 
   const firstName = session.fullName.trim().split(/\s+/)[0] || session.fullName;
-  const unread = notifications.filter((n) => !n.read && (n.forUserId === user.id || n.forRole === "tenant")).length;
+  const unread = notifications.filter(
+    (n) => !n.read && isNotificationForAudience(n, user.id, "tenant"),
+  ).length;
   const myDocs = documents.filter((d) => {
     const belongsToTenant = d.ownerUserId === user.id || (d.propertyId && d.propertyId === property?.id);
     if (!belongsToTenant) return false;

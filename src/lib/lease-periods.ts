@@ -65,6 +65,16 @@ export function alignPeriodRents(prev: string[], count: number, fill = ""): stri
   return prev.slice(0, count);
 }
 
+/** Keep optional per-period slots (e.g. lease PDFs) aligned with period count. */
+export function alignPeriodSlots<T>(prev: (T | null)[], count: number): (T | null)[] {
+  const n = Math.max(count, 1);
+  if (prev.length === n) return [...prev];
+  if (prev.length < n) {
+    return [...prev, ...Array.from({ length: n - prev.length }, () => null)];
+  }
+  return prev.slice(0, n);
+}
+
 /**
  * Split a lease into yearly rent periods (anniversary of start → next anniversary / end).
  * Without an end date, returns one period per elapsed year through today (current period open).

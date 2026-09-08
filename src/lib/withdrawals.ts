@@ -2,18 +2,13 @@ import { nextPaymentDate } from "@/lib/payment-dates";
 import { propertyMonthlyIncome } from "@/lib/portfolio";
 import type { Lease, Property, WithdrawalRequest, WithdrawalStatus } from "@/types";
 
+export { propertyAddressLabel } from "@/lib/portfolio";
+
 export const WITHDRAWAL_STATUS_LABELS: Record<WithdrawalStatus, string> = {
   pending: "ממתין לאישור",
   approved: "אושרה",
   rejected: "נדחתה",
 };
-
-export function propertyAddressLabel(property: Pick<Property, "address" | "city" | "apartmentNumber">): string {
-  const apt = property.apartmentNumber?.trim();
-  const city = property.city?.trim();
-  const base = apt ? `${property.address} דירה ${apt}` : property.address;
-  return city ? `${base}, ${city}` : base;
-}
 
 /** Upcoming rent cycle this withdrawal would draw from. */
 export function upcomingRentCycle(

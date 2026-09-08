@@ -1,16 +1,27 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { CheckCircle2, FileText, IdCard, Paperclip, Upload, X } from "lucide-react";
+import { CheckCircle2, IdCard, Paperclip, Upload, X } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FormField } from "@/components/ui/FormField";
 import { LeaseScheduleFields } from "@/features/leases/LeaseScheduleFields";
 import { CheckClearanceFields } from "@/features/leases/CheckClearanceFields";
-import { emailInUse, isValidEmail } from "@/lib/auth";
+import {
+  LeaseContractFields,
+  leaseFilesToDocuments,
+  type LeasePickedFile,
+} from "@/features/leases/LeaseContractFields";
+import {
+  TenantPeopleFields,
+  emptyTenantPerson,
+  type TenantPersonForm,
+} from "@/features/landlord/TenantPeopleFields";
+import { emailInUse, isValidEmail, normalizeEmail } from "@/lib/auth";
 import {
   alignPeriodRents,
+  alignPeriodSlots,
   buildLeasePeriods,
   rentScheduleFromPeriods,
 } from "@/lib/lease-periods";
@@ -39,16 +50,15 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
   const { addTenant, landlords, tenants, users, actor } = useData();
   const [done, setDone] = useState(false);
   const [propertyId, setPropertyId] = useState(properties[0]?.id ?? "");
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [idNumber, setIdNumber] = useState("");
+  const [primary, setPrimary] = useState<TenantPersonForm>(emptyTenantPerson);
+  const [secondary, setSecondary] = useState<TenantPersonForm>(emptyTenantPerson);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [periodRents, setPeriodRents] = useState<string[]>([""]);
   const [checkRows, setCheckRows] = useState<CheckDraft[]>([]);
-  const [leaseFile, setLeaseFile] = useState<PickedFile | null>(null);
+  const [leaseFiles, setLeaseFiles] = useState<(LeasePickedFile | null)[]>([null]);
   const [idPhoto, setIdPhoto] = useState<PickedFile | null>(null);
+  const [idPhoto2, setIdPhoto2] = useState<PickedFile | null>(null);
   const [guarantorIdPhoto1, setGuarantorIdPhoto1] = useState<PickedFile | null>(null);
   const [guarantorIdPhoto2, setGuarantorIdPhoto2] = useState<PickedFile | null>(null);
   const [extraFile, setExtraFile] = useState<PickedFile | null>(null);
@@ -74,22 +84,22 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     setPeriodRents((prev) =>
       alignPeriodRents(prev, Math.max(nextPeriods.length, 1), listedRentHint),
     );
+    setLeaseFiles((prev) => alignPeriodSlots(prev, Math.max(nextPeriods.length, 1)));
     setError("");
   };
 
   const reset = () => {
     setDone(false);
     setPropertyId(properties[0]?.id ?? "");
-    setEmail("");
-    setName("");
-    setPhone("");
-    setIdNumber("");
+    setPrimary(emptyTenantPerson());
+    setSecondary(emptyTenantPerson());
     setStartDate("");
     setEndDate("");
     setPeriodRents([""]);
     setCheckRows([]);
-    setLeaseFile(null);
+    setLeaseFiles([null]);
     setIdPhoto(null);
+    setIdPhoto2(null);
     setGuarantorIdPhoto1(null);
     setGuarantorIdPhoto2(null);
     setExtraFile(null);
@@ -118,20 +128,35 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
       folder: DocumentFolder;
       fileDataUrl: string;
     }> = [];
-    if (leaseFile) {
-      documents.push({
-        name: intakeDocumentName("הסכם שכירות", leaseFile.name),
-        type: "contract",
-        folder: "lease",
-        fileDataUrl: leaseFile.dataUrl,
-      });
-    }
+    documents.push(...leaseFilesToDocuments(activePeriods, leaseFiles));
     if (idPhoto) {
       documents.push({
-        name: intakeDocumentName("תצלום תעודת זהות — שוכר", idPhoto.name),
+        name: intakeDocumentName(
+          secondary.email.trim() ||
+            secondary.name.trim() ||
+            secondary.phone.trim() ||
+            secondary.idNumber.trim()
+            ? "תצלום תעודת זהות — שוכר 1"
+            : "תצלום תעודת זהות — שוכר",
+          idPhoto.name,
+        ),
         type: "id",
         folder: "id_photos",
         fileDataUrl: idPhoto.dataUrl,
+      });
+    }
+    if (
+      (secondary.email.trim() ||
+        secondary.name.trim() ||
+        secondary.phone.trim() ||
+        secondary.idNumber.trim()) &&
+      idPhoto2
+    ) {
+      documents.push({
+        name: intakeDocumentName("תצלום תעודת זהות — שוכר 2", idPhoto2.name),
+        type: "id",
+        folder: "id_photos",
+        fileDataUrl: idPhoto2.dataUrl,
       });
     }
     if (guarantorIdPhoto1) {
@@ -161,10 +186,14 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
 
     addTenant({
       propertyId: selectedPropertyId,
-      email,
-      name: name.trim() || undefined,
-      phone: phone.trim() || undefined,
-      idNumber: idNumber.trim() || undefined,
+      email: primary.email,
+      name: primary.name.trim() || undefined,
+      phone: primary.phone.trim() || undefined,
+      idNumber: primary.idNumber.trim() || undefined,
+      secondaryName: secondary.name.trim() || undefined,
+      secondaryEmail: secondary.email.trim() || undefined,
+      secondaryPhone: secondary.phone.trim() || undefined,
+      secondaryIdNumber: secondary.idNumber.trim() || undefined,
       startDate,
       endDate: endDate || undefined,
       monthlyRent: schedule.monthlyRent,
@@ -186,13 +215,28 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
       setError("יש לבחור נכס.");
       return;
     }
-    if (!isValidEmail(email)) {
+    if (!isValidEmail(primary.email)) {
       setError("יש להזין מייל תקין כדי לפתוח חשבון שוכר.");
       return;
     }
-    if (emailInUse(email, [...users, ...landlords, ...tenants])) {
-      setError("המייל הזה כבר משויך למשתמש במערכת.");
+    if (emailInUse(primary.email, [...users, ...landlords, ...tenants])) {
+      setError("המייל של שוכר 1 כבר משויך למשתמש במערכת.");
       return;
+    }
+    const secondaryMail = secondary.email.trim();
+    if (secondaryMail) {
+      if (!isValidEmail(secondaryMail)) {
+        setError("מייל שוכר 2 אינו תקין.");
+        return;
+      }
+      if (normalizeEmail(secondaryMail) === normalizeEmail(primary.email)) {
+        setError("מייל שוכר 2 חייב להיות שונה ממייל שוכר 1.");
+        return;
+      }
+      if (emailInUse(secondaryMail, [...users, ...landlords, ...tenants])) {
+        setError("המייל של שוכר 2 כבר משויך למשתמש במערכת.");
+        return;
+      }
     }
     if (!startDate) {
       setError("יש להזין תאריך תחילת שכירות.");
@@ -295,45 +339,16 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
               ))}
             </select>
           </FormField>
-          <FormField
-            label="מייל השוכר"
-            hint="זה מזהה הכניסה — בלי סיסמה"
-            inputProps={{
-              value: email,
-              onChange: (e) => {
-                setEmail(e.target.value);
-                setError("");
-              },
-              type: "email",
-              inputMode: "email",
-              dir: "ltr",
-              required: true,
-              autoComplete: "email",
+          <TenantPeopleFields
+            primary={primary}
+            secondary={secondary}
+            onPrimaryChange={(next) => {
+              setPrimary(next);
+              setError("");
             }}
-          />
-          <FormField
-            label="שם השוכר"
-            hint="אופציונלי"
-            inputProps={{ value: name, onChange: (e) => setName(e.target.value) }}
-          />
-          <FormField
-            label="טלפון"
-            hint="אופציונלי"
-            inputProps={{
-              value: phone,
-              onChange: (e) => setPhone(e.target.value),
-              inputMode: "tel",
-              dir: "ltr",
-            }}
-          />
-          <FormField
-            label="מס׳ ת״ז"
-            hint="אופציונלי"
-            inputProps={{
-              value: idNumber,
-              onChange: (e) => setIdNumber(e.target.value),
-              inputMode: "numeric",
-              dir: "ltr",
+            onSecondaryChange={(next) => {
+              setSecondary(next);
+              setError("");
             }}
           />
 
@@ -366,17 +381,24 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
                 <span className="h-4 w-1 rounded-full bg-orange" />
                 <h4 className="text-sm font-bold text-navy">מסמכים</h4>
               </div>
-              <FilePickField
-                label="הסכם שכירות"
-                hint="PDF או תמונה"
-                accept="image/*,.pdf,application/pdf"
-                icon={<FileText className="h-5 w-5" />}
-                emptyLabel="העלאת הסכם שכירות"
-                file={leaseFile}
-                onPick={setLeaseFile}
+              <LeaseContractFields
+                startDate={startDate}
+                endDate={endDate}
+                files={leaseFiles}
+                onFilesChange={(next) => {
+                  setLeaseFiles(next);
+                  setError("");
+                }}
               />
               <FilePickField
-                label="תצלום תעודת זהות של השוכר"
+                label={
+                  secondary.email.trim() ||
+                  secondary.name.trim() ||
+                  secondary.phone.trim() ||
+                  secondary.idNumber.trim()
+                    ? "תצלום תעודת זהות — שוכר 1"
+                    : "תצלום תעודת זהות של השוכר"
+                }
                 hint="אופציונלי"
                 accept="image/*,.pdf,application/pdf"
                 icon={<IdCard className="h-5 w-5" />}
@@ -384,6 +406,20 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
                 file={idPhoto}
                 onPick={setIdPhoto}
               />
+              {(secondary.email.trim() ||
+                secondary.name.trim() ||
+                secondary.phone.trim() ||
+                secondary.idNumber.trim()) && (
+                <FilePickField
+                  label="תצלום תעודת זהות — שוכר 2"
+                  hint="אופציונלי"
+                  accept="image/*,.pdf,application/pdf"
+                  icon={<IdCard className="h-5 w-5" />}
+                  emptyLabel="העלאת תצלום ת״ז"
+                  file={idPhoto2}
+                  onPick={setIdPhoto2}
+                />
+              )}
               <FilePickField
                 label="תצלום תעודת זהות של ערב 1"
                 hint="אופציונלי"

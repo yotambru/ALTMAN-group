@@ -38,10 +38,12 @@ import { WithdrawalsDialog } from "@/features/withdrawals/WithdrawalsDialog";
 import { Toast } from "@/components/ui/Toast";
 import { useSession } from "@/lib/useSession";
 import { useData } from "@/lib/store";
+import { isNotificationForAudience } from "@/lib/notifications";
 import { getCriticalDates } from "@/lib/alerts";
 import {
   occupancyPercent,
   formatPercent,
+  propertyAddressLabel,
   propertyMonthlyIncome,
   summarizePortfolio,
   PORTFOLIO_YIELD_RATE,
@@ -102,7 +104,7 @@ export default function LandlordDashboard() {
     (d) => d.ownerUserId === user.id || (d.propertyId && myPropertyIds.includes(d.propertyId)),
   );
   const unread = notifications.filter(
-    (n) => !n.read && (n.forRole === "landlord" || n.forUserId === user.id),
+    (n) => !n.read && isNotificationForAudience(n, user.id, "landlord"),
   ).length;
 
   const openPanel = (panel: HomePanel, opts?: { canSign?: boolean; withdrawalId?: string | null }) => {
@@ -245,7 +247,7 @@ export default function LandlordDashboard() {
                 value={nextCheck ? formatDateDots(paymentClearanceDate(nextCheck)) : "—"}
                 sublabel={
                   nextCheck
-                    ? `${formatCurrency(nextCheck.amount)}${nextCheckProperty ? ` · ${nextCheckProperty.address}` : ""}`
+                    ? `${formatCurrency(nextCheck.amount)}${nextCheckProperty ? ` · ${propertyAddressLabel(nextCheckProperty)}` : ""}`
                     : "אין צ׳קים מתוכננים"
                 }
                 onClick={() => setDialog("checks")}

@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { ChangePasswordDialog } from "@/features/auth/ChangePasswordDialog";
 import { can, roleLabels } from "@/lib/permissions";
+import { propertyAddressLabel } from "@/lib/portfolio";
 import { useData } from "@/lib/store";
 import type { User as AppUser } from "@/types";
 
@@ -37,8 +38,8 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
 
   const loginForLandlord = (landlordId: string) =>
     users.find((u) => u.landlordId === landlordId && u.email);
-  const loginForTenant = (tenantId: string) =>
-    users.find((u) => u.tenantId === tenantId && u.email);
+  const loginsForTenant = (tenantId: string) =>
+    users.filter((u) => u.tenantId === tenantId && u.email);
 
   const openPassword = (user: AppUser | undefined, fallbackName: string) => {
     if (!user?.id) {
@@ -171,11 +172,16 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
                             <div key={p.id} className="rounded-lg bg-surface-muted p-2.5 text-sm">
                               <p className="flex items-center gap-1.5 font-semibold text-navy">
                                 <Building2 className="h-4 w-4 text-orange" />
-                                {p.address}, {p.city}
+                                {propertyAddressLabel(p)}
                               </p>
                               <p className="mt-0.5 flex items-center gap-1.5 text-xs text-text-muted">
                                 <User className="h-3.5 w-3.5" />
-                                שוכר: {tenant?.fullName ?? "—"}
+                                שוכר:{" "}
+                                {tenant
+                                  ? tenant.secondaryFullName
+                                    ? `${tenant.fullName} · ${tenant.secondaryFullName}`
+                                    : tenant.fullName
+                                  : "—"}
                               </p>
                             </div>
                           );
@@ -188,48 +194,107 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
             : tenants.map((t) => {
                 const property = properties.find((p) => p.id === t.propertyId);
                 const landlord = landlords.find((l) => l.id === property?.landlordId);
+                const tenantLogins = loginsForTenant(t.id);
+                const hasCouple =
+                  Boolean(t.secondaryFullName) ||
+                  Boolean(t.secondaryEmail) ||
+                  Boolean(t.secondaryPhone);
                 return (
-                  <div key={t.id} className="flex items-center gap-2 rounded-xl border border-border p-3">
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-navy text-base font-bold text-white">
-                      {t.fullName.charAt(0)}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-bold text-navy">{t.fullName}</p>
-                      <p className="truncate text-xs text-text-muted">
-                        {property ? `${property.address}, ${property.city}` : "—"}
-                        {landlord ? ` • משכיר: ${landlord.fullName}` : ""}
-                      </p>
-                      <div className="mt-1 flex items-center gap-3 text-[0.7rem] text-text-muted">
-                        <span className="flex items-center gap-1" dir="ltr">
-                          <Phone className="h-3 w-3" />
-                          {t.phone}
-                        </span>
-                        <span className="flex items-center gap-1 truncate" dir="ltr">
-                          <Mail className="h-3 w-3" />
-                          {t.email}
-                        </span>
+                  <div key={t.id} className="rounded-xl border border-border p-3">
+                    <div className="flex items-start gap-2">
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-navy text-base font-bold text-white">
+                        {t.fullName.charAt(0)}
+                      </span>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div>
+                          <p className="truncate font-bold text-navy">
+                            {hasCouple && t.secondaryFullName
+                              ? `${t.fullName} · ${t.secondaryFullName}`
+                              : t.fullName}
+                          </p>
+                          <p className="truncate text-xs text-text-muted">
+                            {property ? propertyAddressLabel(property) : "—"}
+                            {landlord ? ` • משכיר: ${landlord.fullName}` : ""}
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <p className="text-[0.65rem] font-semibold text-text-muted">שוכר 1</p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.7rem] text-text-muted">
+                            {t.phone && (
+                              <span className="flex items-center gap-1" dir="ltr">
+                                <Phone className="h-3 w-3" />
+                                {t.phone}
+                              </span>
+                            )}
+                            {t.email && (
+                              <span className="flex items-center gap-1 truncate" dir="ltr">
+                                <Mail className="h-3 w-3" />
+                                {t.email}
+                              </span>
+                            )}
+                          </div>
+                          {hasCouple && (
+                            <>
+                              <p className="pt-1 text-[0.65rem] font-semibold text-text-muted">שוכר 2</p>
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.7rem] text-text-muted">
+                                {t.secondaryPhone && (
+                                  <span className="flex items-center gap-1" dir="ltr">
+                                    <Phone className="h-3 w-3" />
+                                    {t.secondaryPhone}
+                                  </span>
+                                )}
+                                {t.secondaryEmail && (
+                                  <span className="flex items-center gap-1 truncate" dir="ltr">
+                                    <Mail className="h-3 w-3" />
+                                    {t.secondaryEmail}
+                                  </span>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-col gap-1">
+                        {canSetPassword &&
+                          (tenantLogins.length > 0 ? (
+                            tenantLogins.map((login) => (
+                              <button
+                                key={login.id}
+                                type="button"
+                                aria-label={`הגדרת סיסמה ל${login.fullName || login.email}`}
+                                title={login.email}
+                                onClick={() =>
+                                  openPassword(login, login.fullName || t.fullName)
+                                }
+                                className="grid h-10 w-10 place-items-center rounded-full text-navy/70 transition-colors hover:bg-surface-muted hover:text-navy"
+                              >
+                                <KeyRound className="h-4 w-4" />
+                              </button>
+                            ))
+                          ) : (
+                            <button
+                              type="button"
+                              aria-label={`הגדרת סיסמה ל${t.fullName}`}
+                              onClick={() => openPassword(undefined, t.fullName)}
+                              className="grid h-10 w-10 place-items-center rounded-full text-navy/70 transition-colors hover:bg-surface-muted hover:text-navy"
+                            >
+                              <KeyRound className="h-4 w-4" />
+                            </button>
+                          ))}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            aria-label={`מחיקת ${t.fullName}`}
+                            onClick={() =>
+                              setPending({ kind: "tenant", id: t.id, name: t.fullName })
+                            }
+                            className="grid h-10 w-10 place-items-center rounded-full text-danger/70 transition-colors hover:bg-danger/10 hover:text-danger"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
-                    {canSetPassword && (
-                      <button
-                        type="button"
-                        aria-label={`הגדרת סיסמה ל${t.fullName}`}
-                        onClick={() => openPassword(loginForTenant(t.id), t.fullName)}
-                        className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-navy/70 transition-colors hover:bg-surface-muted hover:text-navy"
-                      >
-                        <KeyRound className="h-4 w-4" />
-                      </button>
-                    )}
-                    {canDelete && (
-                      <button
-                        type="button"
-                        aria-label={`מחיקת ${t.fullName}`}
-                        onClick={() => setPending({ kind: "tenant", id: t.id, name: t.fullName })}
-                        className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-danger/70 transition-colors hover:bg-danger/10 hover:text-danger"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
                   </div>
                 );
               })}

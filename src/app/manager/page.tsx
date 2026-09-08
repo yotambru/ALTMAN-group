@@ -61,10 +61,12 @@ import { WithdrawalsDialog } from "@/features/withdrawals/WithdrawalsDialog";
 import { useSession } from "@/lib/useSession";
 import { useData } from "@/lib/store";
 import { can } from "@/lib/permissions";
+import { isNotificationForAudience } from "@/lib/notifications";
 import { getCriticalDates } from "@/lib/alerts";
 import {
   formatPercent,
   occupancyPercent,
+  propertyAddressLabel,
   propertyMonthlyIncome,
   summarizePortfolio,
   PORTFOLIO_YIELD_RATE,
@@ -122,7 +124,7 @@ export default function ManagerDashboard() {
   const criticalDates = getCriticalDates(leases, properties);
   const leaseRenewals = criticalDates.filter((d) => d.kind === "lease_end" && d.daysLeft <= 30).length;
   const unread = notifications.filter(
-    (n) => !n.read && (n.forRole === "manager" || n.forUserId === session.userId || (!n.forUserId && !n.forRole)),
+    (n) => !n.read && isNotificationForAudience(n, session.userId, "manager"),
   ).length;
 
   const activeLeases = leases.filter((l) => l.active);
@@ -560,7 +562,7 @@ export default function ManagerDashboard() {
                             avatarUrl={users.find((u) => u.landlordId === l.id)?.avatarUrl}
                             subtitle={
                               first
-                                ? `${first.address}, ${first.city}${owned.length > 1 ? ` · +${owned.length - 1}` : ""}`
+                                ? `${propertyAddressLabel(first)}${owned.length > 1 ? ` · +${owned.length - 1}` : ""}`
                                 : "אין נכסים"
                             }
                             onClick={() => {
@@ -592,6 +594,7 @@ export default function ManagerDashboard() {
                     <DocumentsDialog
                       inline
                       searchable
+                      landlordFirst
                       documents={documents}
                       landlords={landlords}
                       tenants={tenants}
@@ -642,6 +645,7 @@ export default function ManagerDashboard() {
             <DocumentsDialog
               inline
               searchable
+              landlordFirst
               documents={documents}
               landlords={landlords}
               tenants={tenants}

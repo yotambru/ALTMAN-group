@@ -21,6 +21,7 @@ import type {
   Payment,
   PaymentMethod,
   PaymentStatus,
+  PendingLeaseUpdate,
   Professional,
   Property,
   PropertyImageId,
@@ -90,6 +91,22 @@ function parseRentAdjustments(value: unknown): RentAdjustment[] | undefined {
     return date && monthlyRent > 0 ? [{ date, monthlyRent }] : [];
   });
   return items.length > 0 ? items : undefined;
+}
+
+function parsePendingLeaseUpdate(value: unknown): PendingLeaseUpdate | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const rec = value as Record<string, unknown>;
+  const leaseId = str(rec.leaseId ?? rec.lease_id);
+  const endDate = str(rec.endDate ?? rec.end_date);
+  const monthlyRent = num(rec.monthlyRent ?? rec.monthly_rent);
+  const effectiveDate = opt(str(rec.effectiveDate ?? rec.effective_date) || null);
+  if (!leaseId || !endDate || monthlyRent <= 0) return undefined;
+  return {
+    leaseId,
+    endDate,
+    monthlyRent,
+    ...(effectiveDate ? { effectiveDate } : {}),
+  };
 }
 
 type CollectionKey = keyof DataState;
@@ -257,6 +274,10 @@ function tenantToRow(t: Tenant): Row {
     lease_id: t.leaseId,
     id_number: t.idNumber ?? null,
     id_photo_uploaded: t.idPhotoUploaded ?? null,
+    secondary_full_name: t.secondaryFullName ?? null,
+    secondary_phone: t.secondaryPhone ?? null,
+    secondary_email: t.secondaryEmail ?? null,
+    secondary_id_number: t.secondaryIdNumber ?? null,
   };
 }
 
@@ -270,6 +291,10 @@ function tenantFromRow(row: Row): Tenant {
     leaseId: str(row.lease_id),
     idNumber: opt(row.id_number as string | null),
     idPhotoUploaded: opt(row.id_photo_uploaded as boolean | null),
+    secondaryFullName: opt(row.secondary_full_name as string | null),
+    secondaryPhone: opt(row.secondary_phone as string | null),
+    secondaryEmail: opt(row.secondary_email as string | null),
+    secondaryIdNumber: opt(row.secondary_id_number as string | null),
   };
 }
 
@@ -438,6 +463,7 @@ function documentToRow(d: AppDocument): Row {
     signed_at: d.signedAt ?? null,
     file_data_url: d.fileDataUrl ?? null,
     folder: inferDocumentFolder(d),
+    pending_lease_update: d.pendingLeaseUpdate ?? null,
   };
 }
 
@@ -462,6 +488,7 @@ function documentFromRow(row: Row): AppDocument {
     signedByName: opt(row.signed_by_name as string | null),
     signedAt: opt(row.signed_at as string | null),
     fileDataUrl: opt(row.file_data_url as string | null),
+    pendingLeaseUpdate: parsePendingLeaseUpdate(row.pending_lease_update),
   };
 }
 

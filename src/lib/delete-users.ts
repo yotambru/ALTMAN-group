@@ -67,6 +67,8 @@ export function removeTenant(
   const emails = new Set<string>();
   const tenantEmail = emailKey(tenant.email);
   if (tenantEmail) emails.add(tenantEmail);
+  const secondaryEmail = emailKey(tenant.secondaryEmail);
+  if (secondaryEmail) emails.add(secondaryEmail);
 
   const userIds = loginUserIds(state.users, { tenantIds, emails });
   const leaseIds = new Set(
@@ -146,6 +148,8 @@ export function removeLandlord(
     if (!tenantIds.has(t.id)) continue;
     const email = emailKey(t.email);
     if (email) emails.add(email);
+    const secondary = emailKey(t.secondaryEmail);
+    if (secondary) emails.add(secondary);
   }
 
   const userIds = loginUserIds(state.users, { landlordId, tenantIds, emails });
@@ -188,8 +192,13 @@ export function removeOwnAccount(
   if (!user) return null;
 
   if (user.tenantId) {
-    const next = removeTenant(state, user.tenantId, log);
-    if (next) return next;
+    const otherTenantLogins = state.users.filter(
+      (u) => u.id !== userId && u.tenantId === user.tenantId && u.role === "tenant",
+    );
+    if (otherTenantLogins.length === 0) {
+      const next = removeTenant(state, user.tenantId, log);
+      if (next) return next;
+    }
   }
   if (user.landlordId) {
     const next = removeLandlord(state, user.landlordId, log);

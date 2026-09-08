@@ -35,8 +35,9 @@ import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { UtilityAccountDetails } from "@/features/utilities/UtilityAccountDetails";
 import { useData } from "@/lib/store";
 import { can } from "@/lib/permissions";
+import { normalizeEmail } from "@/lib/auth";
 import { cn, fileToDataUrl, formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
-import { currentMonthlyRent, PROPERTY_STATUS_LABELS, propertyDisplayValue } from "@/lib/portfolio";
+import { currentMonthlyRent, PROPERTY_STATUS_LABELS, propertyAddressLabel, propertyDisplayValue } from "@/lib/portfolio";
 import { buildLeasePeriods, rentOnDate } from "@/lib/lease-periods";
 import { livePaymentStatus, paymentClearanceDate } from "@/lib/check-schedule";
 import type { CheckDepositMode, Payment, PaymentStatus, Property } from "@/types";
@@ -88,10 +89,10 @@ function PropertyHero({
         />
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-navy/80 via-navy/30 to-transparent px-3.5 pb-3.5 pt-16">
           <p className="text-base font-extrabold text-white">
-            {property.address}, {property.city}
+            {propertyAddressLabel(property)}
           </p>
           <p className="text-xs text-white/85">
-            דירה {property.apartmentNumber} • {floorLabel}
+            {floorLabel}
           </p>
         </div>
         <div className="absolute start-3 top-3">
@@ -376,40 +377,100 @@ export function PropertyDetailDialog({
 
         {/* 2. פרטי שוכר */}
         <section className="space-y-2">
-          <p className="text-sm font-bold text-navy">פרטי שוכר</p>
+          <p className="text-sm font-bold text-navy">
+            {tenant?.secondaryFullName || tenant?.secondaryEmail || tenant?.secondaryPhone
+              ? "פרטי שוכרים"
+              : "פרטי שוכר"}
+          </p>
           {tenant ? (
-            <div className="card space-y-3 p-3">
-              <div className="flex items-center gap-3">
-                <UserAvatar
-                  name={tenant.fullName}
-                  avatarUrl={users.find((u) => u.tenantId === tenant.id)?.avatarUrl}
-                  size="md"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-navy">{tenant.fullName}</p>
-                  {lease && (
-                    <p className="text-[0.7rem] text-text-muted">נכנס: {formatDateDots(lease.startDate)}</p>
+            <div className="space-y-3">
+              <div className="card space-y-3 p-3">
+                <div className="flex items-center gap-3">
+                  <UserAvatar
+                    name={tenant.fullName}
+                    avatarUrl={users.find(
+                      (u) =>
+                        u.tenantId === tenant.id &&
+                        tenant.email &&
+                        normalizeEmail(u.email ?? "") === normalizeEmail(tenant.email),
+                    )?.avatarUrl
+                      ?? users.find((u) => u.tenantId === tenant.id)?.avatarUrl}
+                    size="md"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[0.65rem] font-semibold text-text-muted">שוכר 1</p>
+                    <p className="truncate text-sm font-bold text-navy">{tenant.fullName || "—"}</p>
+                    {lease && (
+                      <p className="text-[0.7rem] text-text-muted">נכנס: {formatDateDots(lease.startDate)}</p>
+                    )}
+                  </div>
+                  {tenant.phone && (
+                    <a
+                      href={`tel:${tenant.phone}`}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-orange px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-orange-dark"
+                    >
+                      <Phone className="h-4 w-4" />
+                      צור קשר
+                    </a>
                   )}
                 </div>
-                {tenant.phone && (
-                  <a
-                    href={`tel:${tenant.phone}`}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-orange px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-orange-dark"
-                  >
-                    <Phone className="h-4 w-4" />
-                    צור קשר
-                  </a>
-                )}
+                <div className="space-y-1.5 border-t border-border pt-2.5">
+                  <TenantMeta icon={IdCard} label="מס׳ ת״ז" value={tenant.idNumber} ltr />
+                  <TenantMeta icon={Phone} label="טלפון" value={tenant.phone} ltr />
+                  <TenantMeta icon={Mail} label="מייל" value={tenant.email} ltr />
+                </div>
               </div>
-              <div className="space-y-1.5 border-t border-border pt-2.5">
-                <TenantMeta icon={IdCard} label="מס׳ ת״ז" value={tenant.idNumber} ltr />
-                <TenantMeta icon={Phone} label="טלפון" value={tenant.phone} ltr />
-                <TenantMeta icon={Mail} label="מייל" value={tenant.email} ltr />
-              </div>
+              {(tenant.secondaryFullName ||
+                tenant.secondaryEmail ||
+                tenant.secondaryPhone ||
+                tenant.secondaryIdNumber) && (
+                <div className="card space-y-3 p-3">
+                  <div className="flex items-center gap-3">
+                    <UserAvatar
+                      name={tenant.secondaryFullName || tenant.secondaryEmail || "שוכר 2"}
+                      avatarUrl={users.find(
+                        (u) =>
+                          u.tenantId === tenant.id &&
+                          Boolean(tenant.secondaryEmail) &&
+                          normalizeEmail(u.email ?? "") ===
+                            normalizeEmail(tenant.secondaryEmail ?? ""),
+                      )?.avatarUrl}
+                      size="md"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[0.65rem] font-semibold text-text-muted">שוכר 2</p>
+                      <p className="truncate text-sm font-bold text-navy">
+                        {tenant.secondaryFullName || "—"}
+                      </p>
+                    </div>
+                    {tenant.secondaryPhone && (
+                      <a
+                        href={`tel:${tenant.secondaryPhone}`}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-orange px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-orange-dark"
+                      >
+                        <Phone className="h-4 w-4" />
+                        צור קשר
+                      </a>
+                    )}
+                  </div>
+                  <div className="space-y-1.5 border-t border-border pt-2.5">
+                    <TenantMeta icon={IdCard} label="מס׳ ת״ז" value={tenant.secondaryIdNumber} ltr />
+                    <TenantMeta icon={Phone} label="טלפון" value={tenant.secondaryPhone} ltr />
+                    <TenantMeta icon={Mail} label="מייל" value={tenant.secondaryEmail} ltr />
+                  </div>
+                </div>
+              )}
               {canDelete && (
                 <button
                   type="button"
-                  onClick={() => setPendingTenant({ id: tenant.id, name: tenant.fullName })}
+                  onClick={() =>
+                    setPendingTenant({
+                      id: tenant.id,
+                      name: tenant.secondaryFullName
+                        ? `${tenant.fullName} ו${tenant.secondaryFullName}`
+                        : tenant.fullName,
+                    })
+                  }
                   className="flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-bold text-danger transition-colors hover:bg-danger/10"
                 >
                   <Trash2 className="h-4 w-4" />

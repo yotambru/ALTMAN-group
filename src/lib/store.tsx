@@ -22,6 +22,7 @@ import { localTodayIso } from "@/lib/lease-periods";
 import { paymentStatusForDate } from "@/lib/check-schedule";
 import { inferDocumentFolder } from "@/lib/document-folders";
 import { removeLandlord, removeOwnAccount, removeTenant } from "@/lib/delete-users";
+import { isNotificationForAudience } from "@/lib/notifications";
 import { landlordRentPool, propertyAddressLabel } from "@/lib/withdrawals";
 import type {
   ActivityLogEntry,
@@ -34,6 +35,7 @@ import type {
   Lease,
   MaintenanceTicket,
   Payment,
+  PendingLeaseUpdate,
   Professional,
   Property,
   ProtocolRecord,
@@ -113,6 +115,11 @@ export interface NewClientInput {
   tenantPhone?: string;
   tenantEmail?: string;
   tenantIdNumber?: string;
+  /** Second resident (spouse) on the same lease — optional login if email is set. */
+  secondaryTenantName?: string;
+  secondaryTenantPhone?: string;
+  secondaryTenantEmail?: string;
+  secondaryTenantIdNumber?: string;
   // lease — optional when no tenant
   monthlyRent?: number;
   startingMonthlyRent?: number;
@@ -146,6 +153,11 @@ export interface NewTenantInput {
   name?: string;
   phone?: string;
   idNumber?: string;
+  /** Second resident (spouse) — creates another login when email is provided. */
+  secondaryName?: string;
+  secondaryEmail?: string;
+  secondaryPhone?: string;
+  secondaryIdNumber?: string;
   monthlyRent?: number;
   startingMonthlyRent?: number;
   rentAdjustments?: RentAdjustment[];
@@ -180,6 +192,27 @@ function paymentsFromChecks(leaseId: string, checks: CheckScheduleEntry[] | unde
       method: "check" as const,
       checkNumber: check.checkNumber,
     }));
+}
+
+function tenantLoginUsers(users: User[], tenantId: string): User[] {
+  return users.filter((u) => u.tenantId === tenantId && u.role === "tenant");
+}
+
+function releaseNotificationsForTenants(
+  users: User[],
+  tenantId: string,
+  now: string,
+): AppNotification[] {
+  return tenantLoginUsers(users, tenantId).map((user) => ({
+    id: generateId("n"),
+    kind: "info" as const,
+    title: "החשבון שוחרר",
+    body: "ההנהלה אישרה את הפעולות הנדרשות — ניתן לפתוח תקלות ולהשתמש בשירותים.",
+    createdAt: now,
+    read: false,
+    forUserId: user.id,
+    relatedId: tenantId,
+  }));
 }
 
 function recomputeCompleted(ob: TenantOnboarding): TenantOnboarding {
@@ -313,6 +346,7 @@ interface DataContextValue extends DataState {
     ownerUserId?: string;
     fileDataUrl?: string;
     awaitingSignature?: boolean;
+    pendingLeaseUpdate?: PendingLeaseUpdate;
   }) => AppDocument;
   updateDocument: (id: string, patch: Partial<Pick<AppDocument, "name" | "folder">>) => void;
   signDocument: (id: string, signedByName: string) => void;
@@ -617,6 +651,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         gasMeter: input.gasMeter,
         waterMeter: input.waterMeter,
       };
+      const secondaryEmail = input.secondaryTenantEmail?.trim()
+        ? normalizeEmail(input.secondaryTenantEmail)
+        : "";
       const tenant: Tenant | null = withTenant && tenantId && leaseId
         ? {
             id: tenantId,
@@ -629,6 +666,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             idPhotoUploaded:
               Boolean(input.tenantIdNumber) ||
               (input.tenantDocuments ?? []).some((d) => d.folder === "id_photos"),
+            ...(input.secondaryTenantName?.trim() ||
+            input.secondaryTenantPhone?.trim() ||
+            secondaryEmail ||
+            input.secondaryTenantIdNumber?.trim()
+              ? {
+                  secondaryFullName: input.secondaryTenantName?.trim() || undefined,
+                  secondaryPhone: input.secondaryTenantPhone?.trim() || undefined,
+                  secondaryEmail: secondaryEmail || undefined,
+                  secondaryIdNumber: input.secondaryTenantIdNumber?.trim() || undefined,
+                }
+              : {}),
           }
         : null;
       const leaseRent = input.monthlyRent ?? input.listedRent ?? 0;
@@ -765,6 +813,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           tenantId,
         });
       }
+      if (tenant && tenantId && secondaryEmail) {
+        loginUsers.push({
+          id: generateId("u"),
+          fullName: accountDisplayName(
+            input.secondaryTenantName,
+            secondaryEmail,
+          ),
+          role: "tenant",
+          email: secondaryEmail,
+          phone: input.secondaryTenantPhone?.trim() || undefined,
+          tenantId,
+        });
+      }
 
       setState((p) => {
         const taken = new Set(
@@ -860,6 +921,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const monthlyRent = baseRent;
 
         const hasIdDoc = (input.documents ?? []).some((d) => d.folder === "id_photos");
+        const secondaryEmail = input.secondaryEmail?.trim()
+          ? normalizeEmail(input.secondaryEmail)
+          : "";
+        const hasSecondary =
+          Boolean(input.secondaryName?.trim()) ||
+          Boolean(input.secondaryPhone?.trim()) ||
+          Boolean(secondaryEmail) ||
+          Boolean(input.secondaryIdNumber?.trim());
 
         const tenant: Tenant = {
           id: tenantId,
@@ -870,6 +939,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           leaseId,
           idNumber: input.idNumber,
           idPhotoUploaded: Boolean(input.idNumber) || hasIdDoc,
+          ...(hasSecondary
+            ? {
+                secondaryFullName: input.secondaryName?.trim() || undefined,
+                secondaryPhone: input.secondaryPhone?.trim() || undefined,
+                secondaryEmail: secondaryEmail || undefined,
+                secondaryIdNumber: input.secondaryIdNumber?.trim() || undefined,
+              }
+            : {}),
         };
         const lease: Lease = {
           id: leaseId,
@@ -892,16 +969,33 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           insurance: { status: "pending" },
           completed: false,
         };
-        const loginUser: User = {
-          id: userId,
-          fullName,
-          role: "tenant",
-          email,
-          phone: input.phone?.trim() || undefined,
-          tenantId,
-        };
-        const emailTaken = nextState.users.some(
-          (u) => u.email && normalizeEmail(u.email) === email,
+        const loginUsers: User[] = [
+          {
+            id: userId,
+            fullName,
+            role: "tenant",
+            email,
+            phone: input.phone?.trim() || undefined,
+            tenantId,
+          },
+        ];
+        if (secondaryEmail) {
+          loginUsers.push({
+            id: generateId("u"),
+            fullName: accountDisplayName(input.secondaryName, secondaryEmail),
+            role: "tenant",
+            email: secondaryEmail,
+            phone: input.secondaryPhone?.trim() || undefined,
+            tenantId,
+          });
+        }
+        const takenEmails = new Set(
+          nextState.users
+            .map((u) => (u.email ? normalizeEmail(u.email) : ""))
+            .filter(Boolean),
+        );
+        const uniqueLogins = loginUsers.filter(
+          (u) => u.email && !takenEmails.has(normalizeEmail(u.email)),
         );
 
         const docs: AppDocument[] = (input.documents ?? []).map((d) => ({
@@ -921,7 +1015,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
         return {
           ...nextState,
-          users: emailTaken ? nextState.users : [loginUser, ...nextState.users],
+          users: uniqueLogins.length ? [...uniqueLogins, ...nextState.users] : nextState.users,
           tenants: [tenant, ...nextState.tenants],
           leases: [lease, ...nextState.leases],
           payments: checkPayments.length ? [...checkPayments, ...nextState.payments] : nextState.payments,
@@ -940,9 +1034,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           ),
           activityLog: [
             makeLog("הוספת שוכר", "tenant", tenantId, fullName),
-            ...(emailTaken
-              ? []
-              : [makeLog("פתיחת חשבון שוכר", "user", userId, email)]),
+            ...uniqueLogins.map((u) =>
+              makeLog("פתיחת חשבון שוכר", "user", u.id, u.email),
+            ),
             ...(checkPayments.length
               ? [makeLog("הוספת לוח פרעון צ׳קים", "lease", leaseId, `${checkPayments.length} צ׳קים`)]
               : []),
@@ -1306,6 +1400,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         createdAt: new Date().toISOString(),
         signed: false,
         status: d.awaitingSignature ? "awaiting_signature" : "draft",
+        pendingLeaseUpdate: d.pendingLeaseUpdate,
       };
       setState((p) => ({
         ...p,
@@ -1351,13 +1446,57 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const signDocument = useCallback<DataContextValue["signDocument"]>(
     (id, signedByName) => {
       const at = new Date().toISOString();
-      setState((p) => ({
-        ...p,
-        documents: p.documents.map((doc) =>
-          doc.id === id ? { ...doc, signed: true, status: "signed", signedByName, signedAt: at } : doc,
-        ),
-        activityLog: [makeLog("חתימה על מסמך", "document", id, signedByName), ...p.activityLog],
-      }));
+      setState((p) => {
+        const doc = p.documents.find((d) => d.id === id);
+        const pending = doc?.pendingLeaseUpdate;
+        let leases = p.leases;
+        if (pending) {
+          leases = p.leases.map((lease) => {
+            if (lease.id !== pending.leaseId) return lease;
+            const starting = lease.startingMonthlyRent ?? lease.monthlyRent;
+            const effective = (pending.effectiveDate || lease.endDate || localTodayIso()).slice(0, 10);
+            const previous = (lease.rentAdjustments ?? []).filter(
+              (a) => a.date.slice(0, 10) !== effective,
+            );
+            const rentChanged = pending.monthlyRent !== lease.monthlyRent;
+            return {
+              ...lease,
+              endDate: pending.endDate,
+              monthlyRent: pending.monthlyRent,
+              startingMonthlyRent: starting,
+              rentAdjustments: rentChanged
+                ? [...previous, { date: effective, monthlyRent: pending.monthlyRent }]
+                : lease.rentAdjustments,
+            };
+          });
+        }
+        return {
+          ...p,
+          leases,
+          documents: p.documents.map((d) =>
+            d.id === id
+              ? {
+                  ...d,
+                  signed: true,
+                  status: "signed" as const,
+                  signedByName,
+                  signedAt: at,
+                  pendingLeaseUpdate: undefined,
+                  folder: d.folder ?? inferDocumentFolder(d),
+                }
+              : d,
+          ),
+          activityLog: [
+            makeLog(
+              pending ? "חתימה על חידוש חוזה" : "חתימה על מסמך",
+              "document",
+              id,
+              signedByName,
+            ),
+            ...p.activityLog,
+          ],
+        };
+      });
     },
     [makeLog],
   );
@@ -1370,10 +1509,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const markNotificationRead = useCallback<DataContextValue["markNotificationRead"]>((id) => {
-    // Dismiss: once opened, the notification disappears from the inbox.
     setState((p) => ({
       ...p,
-      notifications: p.notifications.filter((n) => n.id !== id),
+      notifications: p.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
     }));
   }, []);
 
@@ -1381,11 +1519,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     (forUserId, forRole) => {
       setState((p) => ({
         ...p,
-        notifications: p.notifications.filter((n) => {
-          const mine =
-            (forUserId && n.forUserId === forUserId) || (forRole && n.forRole === forRole);
-          return !mine;
-        }),
+        notifications: p.notifications.map((n) =>
+          !n.read && isNotificationForAudience(n, forUserId, forRole)
+            ? { ...n, read: true }
+            : n,
+        ),
       }));
     },
     [],
@@ -1513,24 +1651,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           updated.utilities.every((u) => u.status === "submitted" || u.status === "approved") &&
           (updated.insurance.status === "submitted" || updated.insurance.status === "approved");
         const justReleased = Boolean(updated?.completed && !prev?.completed);
-        const tenantUser = p.users.find((u) => u.tenantId === tenantId);
         const now = new Date().toISOString();
 
         let notifications = p.notifications;
-        if (justReleased && tenantUser) {
-          notifications = [
-            {
-              id: generateId("n"),
-              kind: "info" as const,
-              title: "החשבון שוחרר",
-              body: "ההנהלה אישרה את הפעולות הנדרשות — ניתן לפתוח תקלות ולהשתמש בשירותים.",
-              createdAt: now,
-              read: false,
-              forUserId: tenantUser.id,
-              relatedId: tenantId,
-            },
-            ...notifications,
-          ];
+        if (justReleased) {
+          const released = releaseNotificationsForTenants(p.users, tenantId, now);
+          if (released.length) notifications = [...released, ...notifications];
         } else if (justReady) {
           notifications = [
             {
@@ -1582,24 +1708,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           updated.utilities.every((u) => u.status === "submitted" || u.status === "approved") &&
           (updated.insurance.status === "submitted" || updated.insurance.status === "approved");
         const justReleased = Boolean(updated?.completed && !prev?.completed);
-        const tenantUser = p.users.find((u) => u.tenantId === tenantId);
         const now = new Date().toISOString();
 
         let notifications = p.notifications;
-        if (justReleased && tenantUser) {
-          notifications = [
-            {
-              id: generateId("n"),
-              kind: "info" as const,
-              title: "החשבון שוחרר",
-              body: "ההנהלה אישרה את הפעולות הנדרשות — ניתן לפתוח תקלות ולהשתמש בשירותים.",
-              createdAt: now,
-              read: false,
-              forUserId: tenantUser.id,
-              relatedId: tenantId,
-            },
-            ...notifications,
-          ];
+        if (justReleased) {
+          const released = releaseNotificationsForTenants(p.users, tenantId, now);
+          if (released.length) notifications = [...released, ...notifications];
         } else if (justReady) {
           notifications = [
             {
@@ -1643,7 +1757,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           (prev.insurance.status === "submitted" || prev.insurance.status === "approved");
         if (!ready) return p;
 
-        const tenantUser = p.users.find((u) => u.tenantId === tenantId);
         const onboardings = p.onboardings.map((ob) => {
           if (ob.tenantId !== tenantId) return ob;
           return recomputeCompleted({
@@ -1652,23 +1765,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             insurance: { ...ob.insurance, status: "approved" as const, updatedAt: now },
           });
         });
+        const released = releaseNotificationsForTenants(p.users, tenantId, now);
 
         return {
           ...p,
           onboardings,
-          notifications: [
-            {
-              id: generateId("n"),
-              kind: "info" as const,
-              title: "החשבון שוחרר",
-              body: "ההנהלה אישרה את הפעולות הנדרשות — ניתן לפתוח תקלות ולהשתמש בשירותים.",
-              createdAt: now,
-              read: false,
-              forUserId: tenantUser?.id,
-              relatedId: tenantId,
-            },
-            ...p.notifications,
-          ],
+          notifications: [...released, ...p.notifications],
           activityLog: [
             makeLog("שחרור חשבון שוכר", "onboarding", tenantId, "אישור הנהלה לאחר השלמת פעולות נדרשות"),
             ...p.activityLog,

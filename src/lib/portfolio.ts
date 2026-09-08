@@ -34,6 +34,16 @@ export const PROPERTY_STATUS_TONES: Record<PropertyStatus, StatusTone> = {
   issue: "danger",
 };
 
+/** User-facing address with apartment number when present: `ספיר 21 דירה 5, כפר סבא`. */
+export function propertyAddressLabel(
+  property: Pick<Property, "address" | "city" | "apartmentNumber">,
+): string {
+  const apt = property.apartmentNumber?.trim();
+  const city = property.city?.trim();
+  const base = apt ? `${property.address} דירה ${apt}` : property.address;
+  return city ? `${base}, ${city}` : base;
+}
+
 /** Occupancy = share of properties that currently have a tenant. */
 export function occupancyPercent(properties: Property[]): number {
   if (properties.length === 0) return 0;

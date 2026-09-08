@@ -130,6 +130,11 @@ export interface Tenant {
   leaseId: string;
   idNumber?: string;
   idPhotoUploaded?: boolean;
+  /** Second resident on the same lease (typically spouse) — may also have a login. */
+  secondaryFullName?: string;
+  secondaryPhone?: string;
+  secondaryEmail?: string;
+  secondaryIdNumber?: string;
 }
 
 /** A recorded change to monthly rent (keeps the income graph honest). */
@@ -278,6 +283,20 @@ export interface AppDocument {
   signedAt?: string; // ISO
   /** Uploaded file contents (data URL) for the prototype. */
   fileDataUrl?: string;
+  /**
+   * When set on a renewal sent for signature, applied to the lease on sign
+   * (extend end date + update rent), then cleared.
+   */
+  pendingLeaseUpdate?: PendingLeaseUpdate;
+}
+
+/** Lease fields to apply after a renewal document is signed. */
+export interface PendingLeaseUpdate {
+  leaseId: string;
+  endDate: string;
+  monthlyRent: number;
+  /** When the new rent takes effect (YYYY-MM-DD). Defaults to previous end date. */
+  effectiveDate?: string;
 }
 
 export type NotificationKind =

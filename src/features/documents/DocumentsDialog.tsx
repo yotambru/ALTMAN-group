@@ -27,6 +27,7 @@ import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { DocumentPreviewDialog } from "@/features/documents/DocumentPreviewDialog";
 import { SignatureDialog } from "@/features/documents/SignatureDialog";
 import { useData } from "@/lib/store";
+import { propertyAddressLabel } from "@/lib/portfolio";
 import {
   DOCUMENT_FOLDER_CHILD,
   DOCUMENT_FOLDER_LABEL,
@@ -64,10 +65,15 @@ interface DocumentsDialogProps {
     tenantId?: string;
     defaultType?: DocumentType;
   };
-  /** Properties become top-level folders. */
+  /** Properties become top-level folders (or under a landlord when landlordFirst). */
   properties?: Property[];
   /** Enable free-text search + client filter on the apartments list. */
   searchable?: boolean;
+  /**
+   * Manager vault: start at landlords, then drill into that landlord's properties.
+   * Hides the "all properties / all clients" root.
+   */
+  landlordFirst?: boolean;
   /** Hide folders and their documents for role-specific views. */
   hiddenFolders?: DocumentFolder[];
   landlords?: Landlord[];
@@ -243,6 +249,7 @@ export function DocumentsDialog({
   upload,
   properties = [],
   searchable = false,
+  landlordFirst = false,
   hiddenFolders = [],
   landlords = [],
   tenants = [],
@@ -254,10 +261,17 @@ export function DocumentsDialog({
   const [uploadName, setUploadName] = useState("");
   const [query, setQuery] = useState("");
   const [landlordFilter, setLandlordFilter] = useState<string>("all");
+  const [selectedLandlordId, setSelectedLandlordId] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState<FolderId | null>(null);
   const [selectedTenantId, setSelectedTenantId] = useState<FolderId | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<DocumentFolder | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const landlordFirstMode = landlordFirst && landlords.length > 0;
+  const activeLandlordId = landlordFirstMode ? selectedLandlordId : null;
+  const activeLandlord = activeLandlordId
+    ? landlords.find((l) => l.id === activeLandlordId)
+    : undefined;
 
   const tenantLookup = useMemo(() => {
     const map = new Map<string, Tenant>();
@@ -280,31 +294,87 @@ export function DocumentsDialog({
 
   const knownIds = useMemo(() => new Set(properties.map((p) => p.id)), [properties]);
 
+  const landlordFolders = useMemo(() => {
+    if (!landlordFirstMode) return [];
+    const folders = landlords.map((l) => {
+      const owned = properties.filter((p) => p.landlordId === l.id);
+      const ownedIds = new Set(owned.map((p) => p.id));
+      const docs = vaultDocs.filter(
+        (d) =>
+          d.landlordId === l.id ||
+          (d.propertyId != null && ownedIds.has(d.propertyId)),
+      );
+      const hay = `${l.fullName} ${owned.map((p) => `${p.address} ${p.city} ${p.apartmentNumber}`).join(" ")} ${docs.map((d) => d.name).join(" ")}`.toLowerCase();
+      const propertyLabel =
+        owned.length === 0
+          ? "אין נכסים"
+          : owned.length === 1
+            ? "נכס אחד"
+            : `${owned.length} נכסים`;
+      return {
+        id: l.id,
+        title: l.fullName,
+        subtitle: `${propertyLabel} · ${docsCountLabel(docs.length)}`,
+        count: docs.length,
+        hay,
+      };
+    });
+    return awaitingSignatureOnly ? folders.filter((f) => f.count > 0) : folders;
+  }, [
+    landlordFirstMode,
+    landlords,
+    properties,
+    vaultDocs,
+    awaitingSignatureOnly,
+  ]);
+
+  const visibleLandlordFolders = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || activeLandlordId) return landlordFolders;
+    return landlordFolders.filter((f) => f.hay.includes(q) || f.title.toLowerCase().includes(q));
+  }, [landlordFolders, query, activeLandlordId]);
+
   const propertyFolders = useMemo(() => {
     const docsFor = (propertyId: FolderId) =>
       vaultDocs.filter((d) => {
-        if (propertyId === UNASSIGNED) return !d.propertyId || !knownIds.has(d.propertyId);
+        if (propertyId === UNASSIGNED) {
+          const unassigned = !d.propertyId || !knownIds.has(d.propertyId);
+          if (!unassigned) return false;
+          if (landlordFirstMode && activeLandlordId) {
+            return !d.landlordId || d.landlordId === activeLandlordId;
+          }
+          return true;
+        }
         return d.propertyId === propertyId;
       });
 
-    const folders = properties
-      .filter((p) => landlordFilter === "all" || p.landlordId === landlordFilter)
-      .map((p) => {
-        const docs = docsFor(p.id);
-        const landlordName = landlords.find((l) => l.id === p.landlordId)?.fullName ?? "";
-        const tenantName = tenantLookup.get(p.tenantId ?? "")?.fullName ?? "";
-        const hay = `${p.address} ${p.city} ${p.apartmentNumber} ${landlordName} ${tenantName} ${docs.map((d) => d.name).join(" ")}`.toLowerCase();
-        return {
-          id: p.id,
-          title: `${p.address}, ${p.city}`,
-          subtitle: `דירה ${p.apartmentNumber} · ${docsCountLabel(docs.length)}`,
-          count: docs.length,
-          hay,
-        };
-      });
+    const scoped = properties.filter((p) => {
+      if (landlordFirstMode) {
+        return Boolean(activeLandlordId) && p.landlordId === activeLandlordId;
+      }
+      return landlordFilter === "all" || p.landlordId === landlordFilter;
+    });
+
+    const folders = scoped.map((p) => {
+      const docs = docsFor(p.id);
+      const landlordName = landlords.find((l) => l.id === p.landlordId)?.fullName ?? "";
+      const tenantName = tenantLookup.get(p.tenantId ?? "")?.fullName ?? "";
+      const hay = `${p.address} ${p.city} ${p.apartmentNumber} ${landlordName} ${tenantName} ${docs.map((d) => d.name).join(" ")}`.toLowerCase();
+      return {
+        id: p.id,
+        title: propertyAddressLabel(p),
+        subtitle: docsCountLabel(docs.length),
+        count: docs.length,
+        hay,
+      };
+    });
 
     const general = docsFor(UNASSIGNED);
-    if (general.length > 0 || (upload && properties.length === 0)) {
+    const showGeneral =
+      general.length > 0 ||
+      (upload && properties.length === 0) ||
+      (landlordFirstMode && activeLandlordId && general.length > 0);
+    if (showGeneral && (!landlordFirstMode || activeLandlordId)) {
       folders.push({
         id: UNASSIGNED,
         title: "כללי",
@@ -324,9 +394,12 @@ export function DocumentsDialog({
     knownIds,
     upload,
     awaitingSignatureOnly,
+    landlordFirstMode,
+    activeLandlordId,
   ]);
 
-  const skipPropertyList = propertyFolders.length <= 1 && landlordFilter === "all";
+  const skipPropertyList =
+    !landlordFirstMode && propertyFolders.length <= 1 && landlordFilter === "all";
   const activePropertyId = skipPropertyList
     ? (propertyFolders[0]?.id ?? null)
     : selectedPropertyId;
@@ -479,6 +552,22 @@ export function DocumentsDialog({
 
   const resetQuery = () => setQuery("");
 
+  const openLandlord = (id: string) => {
+    resetQuery();
+    setSelectedFolder(null);
+    setSelectedTenantId(null);
+    setSelectedPropertyId(null);
+    setSelectedLandlordId(id);
+  };
+
+  const backToLandlords = () => {
+    resetQuery();
+    setSelectedFolder(null);
+    setSelectedTenantId(null);
+    setSelectedPropertyId(null);
+    setSelectedLandlordId(null);
+  };
+
   const openProperty = (id: FolderId) => {
     resetQuery();
     setSelectedFolder(null);
@@ -516,6 +605,9 @@ export function DocumentsDialog({
   };
 
   const crumbs: { id: string; label: string; onClick: () => void }[] = [];
+  if (landlordFirstMode && activeLandlordId) {
+    crumbs.push({ id: "landlords", label: "משכירים", onClick: backToLandlords });
+  }
   if (!skipPropertyList && activePropertyId) {
     crumbs.push({ id: "properties", label: "דירות", onClick: backToProperties });
   }
@@ -583,7 +675,11 @@ export function DocumentsDialog({
       ? "חיפוש תיקייה או מסמך…"
       : activePropertyId
         ? "חיפוש שוכר או מסמך…"
-        : "חיפוש דירה, לקוח או מסמך…";
+        : landlordFirstMode && !activeLandlordId
+          ? "חיפוש משכיר…"
+          : landlordFirstMode
+            ? "חיפוש דירה או מסמך…"
+            : "חיפוש דירה, לקוח או מסמך…";
 
   const HeaderIcon = selectedFolder
     ? folderIcon[selectedFolder]
@@ -591,13 +687,18 @@ export function DocumentsDialog({
       ? Users
       : Building2;
 
+  const atLandlordPropertyList =
+    landlordFirstMode && Boolean(activeLandlordId) && !activePropertyId && !selectedFolder;
+
   const headerTitle = selectedFolder
     ? DOCUMENT_FOLDER_LABEL[selectedFolder]
     : activeTenant
       ? activeTenant.fullName
       : activeProperty
-        ? `${activeProperty.address}, ${activeProperty.city}`
-        : "כללי";
+        ? propertyAddressLabel(activeProperty)
+        : atLandlordPropertyList
+          ? (activeLandlord?.fullName ?? "משכיר")
+          : "כללי";
 
   const headerSubtitle = selectedFolder
     ? docsCountLabel(
@@ -606,10 +707,20 @@ export function DocumentsDialog({
     : activeTenantId
       ? docsCountLabel(tenantDocs.length)
       : activeProperty
-        ? `דירה ${activeProperty.apartmentNumber} · ${docsCountLabel(propertyDocs.length)}`
-        : docsCountLabel(propertyDocs.length);
+        ? docsCountLabel(propertyDocs.length)
+        : atLandlordPropertyList
+          ? (() => {
+              const n = propertyFolders.filter((f) => f.id !== UNASSIGNED).length;
+              if (n === 0) return "אין נכסים";
+              if (n === 1) return "נכס אחד";
+              return `${n} נכסים`;
+            })()
+          : docsCountLabel(propertyDocs.length);
 
-  const header = (activePropertyId || activeTenantId || selectedFolder) && (
+  const header = (atLandlordPropertyList ||
+    activePropertyId ||
+    activeTenantId ||
+    selectedFolder) && (
     <div className="mb-3 space-y-2">
       <FolderBreadcrumb crumbs={crumbs} />
       <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-l from-orange-soft/70 to-surface-muted px-3.5 py-3">
@@ -618,6 +729,14 @@ export function DocumentsDialog({
             <UserAvatar
               name={activeTenant.fullName}
               avatarUrl={users.find((u) => u.tenantId === activeTenant.id)?.avatarUrl}
+              size="md"
+              tone="gradient"
+              className="h-11 w-11"
+            />
+          ) : atLandlordPropertyList && activeLandlord ? (
+            <UserAvatar
+              name={activeLandlord.fullName}
+              avatarUrl={users.find((u) => u.landlordId === activeLandlord.id)?.avatarUrl}
               size="md"
               tone="gradient"
               className="h-11 w-11"
@@ -637,7 +756,7 @@ export function DocumentsDialog({
   const filters = searchable && (
     <div className="mb-3 space-y-2">
       <SearchField value={query} onChange={setQuery} placeholder={searchPlaceholder} />
-      {!activePropertyId && landlords.length > 0 && (
+      {!landlordFirstMode && !activePropertyId && landlords.length > 0 && (
         <select
           value={landlordFilter}
           onChange={(e) => {
@@ -759,6 +878,29 @@ export function DocumentsDialog({
               subtitle={folder.subtitle}
               count={folder.count}
               onClick={() => openTenant(folder.id)}
+            />
+          ))
+        )
+      ) : landlordFirstMode && !activeLandlordId ? (
+        visibleLandlordFolders.length === 0 ? (
+          <p className="py-6 text-center text-sm text-text-muted">אין משכירים להצגה.</p>
+        ) : (
+          visibleLandlordFolders.map((folder) => (
+            <FolderRow
+              key={folder.id}
+              icon={
+                <UserAvatar
+                  name={folder.title}
+                  avatarUrl={users.find((u) => u.landlordId === folder.id)?.avatarUrl}
+                  size="md"
+                  tone="gradient"
+                  className="h-11 w-11 rounded-xl"
+                />
+              }
+              title={folder.title}
+              subtitle={folder.subtitle}
+              count={folder.count}
+              onClick={() => openLandlord(folder.id)}
             />
           ))
         )

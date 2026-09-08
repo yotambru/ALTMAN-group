@@ -13,6 +13,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
+import { isNotificationForAudience } from "@/lib/notifications";
 import { useData } from "@/lib/store";
 import { formatDateDots } from "@/lib/utils";
 import type { AppNotification, NotificationKind, Role } from "@/types";
@@ -44,11 +45,7 @@ export function NotificationsPanel({ open, onClose, forUserId, forRole, onOpen }
   const { notifications, markNotificationRead, markAllNotificationsRead } = useData();
 
   const mine = notifications.filter(
-    (n) =>
-      !n.read &&
-      ((forUserId && n.forUserId === forUserId) ||
-        (forRole && n.forRole === forRole) ||
-        (!n.forUserId && !n.forRole)),
+    (n) => !n.read && isNotificationForAudience(n, forUserId, forRole),
   );
 
   return (

@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PropertyImage } from "@/components/brand/PropertyImage";
 import { PropertyStatusFilter } from "@/components/dashboard/PropertyStatusFilter";
 import { formatCurrency } from "@/lib/utils";
-import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES, propertyDisplayValue } from "@/lib/portfolio";
+import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES, propertyAddressLabel, propertyDisplayValue } from "@/lib/portfolio";
 import type { Property, PropertyStatus } from "@/types";
 
 interface PropertyListDialogProps {
@@ -60,10 +60,10 @@ export function PropertyListDialog({
             />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold text-navy">
-                {property.address}, {property.city}
+                {propertyAddressLabel(property)}
               </p>
               <p className="truncate text-xs text-text-muted">
-                דירה {property.apartmentNumber} • {property.sizeSqm} מ״ר
+                {property.sizeSqm} מ״ר
               </p>
             </div>
             <div className="flex flex-col items-end gap-1">

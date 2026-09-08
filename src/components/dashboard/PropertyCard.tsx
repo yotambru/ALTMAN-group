@@ -11,7 +11,7 @@ import type { Property } from "@/types";
 import { PropertyImage } from "@/components/brand/PropertyImage";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { cn, formatCurrency } from "@/lib/utils";
-import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES, propertyDisplayValue } from "@/lib/portfolio";
+import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES, propertyAddressLabel, propertyDisplayValue } from "@/lib/portfolio";
 
 const statusLabels = PROPERTY_STATUS_LABELS;
 
@@ -63,13 +63,12 @@ export function PropertyCard({
             <h3 className="flex items-center gap-1.5 text-base font-bold text-navy">
               <Building2 className="h-4 w-4 text-orange" />
               <span className="truncate">
-                {property.address}, {property.city}
+                {propertyAddressLabel(property)}
               </span>
             </h3>
           </div>
           <p className="mt-1 text-xs text-text-muted">
-            דירה {property.apartmentNumber} • {property.sizeSqm} מ&quot;ר • קומה{" "}
-            {property.floor}
+            {property.sizeSqm} מ&quot;ר • קומה {property.floor}
           </p>
           <div className="mt-2">
             <StatusBadge tone={PROPERTY_STATUS_TONES[property.status]}>
@@ -171,9 +170,17 @@ export function PropertyRow({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <p className="truncate text-[0.98rem] font-extrabold tracking-tight text-navy">
-            {property.address}, {property.city}
-          </p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[0.98rem] font-extrabold tracking-tight text-navy">
+              {property.address}
+              {property.city?.trim() ? `, ${property.city.trim()}` : ""}
+            </p>
+            {property.apartmentNumber?.trim() ? (
+              <p className="mt-0.5 text-[0.78rem] font-bold text-orange">
+                דירה {property.apartmentNumber.trim()}
+              </p>
+            ) : null}
+          </div>
           <StatusBadge tone={tone} className="shrink-0 px-2 py-0.5 text-[0.65rem]">
             {statusLabels[property.status]}
           </StatusBadge>
@@ -208,7 +215,7 @@ export function PropertyRow({
           </div>
         ) : (
           <p className="mt-1 text-[0.78rem] text-text-muted">
-            דירה {property.apartmentNumber} · {property.sizeSqm} מ&quot;ר
+            {property.sizeSqm} מ&quot;ר
           </p>
         )}
       </div>
@@ -242,7 +249,7 @@ export function PropertyMiniCard({
     >
       <div className="flex items-center justify-between px-3 pt-3">
         <p className="truncate text-sm font-bold text-navy">
-          {property.address}
+          {propertyAddressLabel(property)}
         </p>
       </div>
       <div className="flex items-center gap-1 px-3 pb-2 pt-0.5">
