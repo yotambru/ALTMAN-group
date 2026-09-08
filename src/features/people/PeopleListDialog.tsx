@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { ChangePasswordDialog } from "@/features/auth/ChangePasswordDialog";
 import { can, roleLabels } from "@/lib/permissions";
-import { propertyAddressLabel } from "@/lib/portfolio";
+import { propertyAddressLabel, sortPropertiesByLocation } from "@/lib/portfolio";
 import { useData } from "@/lib/store";
 import type { User as AppUser } from "@/types";
 
@@ -166,7 +166,7 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
                     </div>
                     {isOpen && (
                       <div className="space-y-1.5 border-t border-border p-3">
-                        {owned.map((p) => {
+                        {sortPropertiesByLocation(owned).map((p) => {
                           const tenant = tenants.find((t) => t.id === p.tenantId);
                           return (
                             <div key={p.id} className="rounded-lg bg-surface-muted p-2.5 text-sm">

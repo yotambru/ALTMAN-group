@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PropertyImage } from "@/components/brand/PropertyImage";
 import { PropertyStatusFilter } from "@/components/dashboard/PropertyStatusFilter";
 import { formatCurrency } from "@/lib/utils";
-import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES, propertyAddressLabel, propertyDisplayValue } from "@/lib/portfolio";
+import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES, propertyAddressLabel, propertyDisplayValue, sortPropertiesByLocation } from "@/lib/portfolio";
 import type { Property, PropertyStatus } from "@/types";
 
 interface PropertyListDialogProps {
@@ -27,12 +27,13 @@ export function PropertyListDialog({
   onSelect,
 }: PropertyListDialogProps) {
   const [statusFilter, setStatusFilter] = useState<PropertyStatus | "all">("all");
+  const ordered = sortPropertiesByLocation(properties);
 
-  const counts: Partial<Record<PropertyStatus | "all", number>> = { all: properties.length };
-  for (const p of properties) counts[p.status] = (counts[p.status] ?? 0) + 1;
+  const counts: Partial<Record<PropertyStatus | "all", number>> = { all: ordered.length };
+  for (const p of ordered) counts[p.status] = (counts[p.status] ?? 0) + 1;
 
   const visible =
-    statusFilter === "all" ? properties : properties.filter((p) => p.status === statusFilter);
+    statusFilter === "all" ? ordered : ordered.filter((p) => p.status === statusFilter);
 
   return (
     <Modal

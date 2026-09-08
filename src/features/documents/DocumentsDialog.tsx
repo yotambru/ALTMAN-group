@@ -27,7 +27,7 @@ import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { DocumentPreviewDialog } from "@/features/documents/DocumentPreviewDialog";
 import { SignatureDialog } from "@/features/documents/SignatureDialog";
 import { useData } from "@/lib/store";
-import { propertyAddressLabel } from "@/lib/portfolio";
+import { propertyAddressLabel, sortPropertiesByLocation } from "@/lib/portfolio";
 import {
   DOCUMENT_FOLDER_CHILD,
   DOCUMENT_FOLDER_LABEL,
@@ -355,7 +355,7 @@ export function DocumentsDialog({
       return landlordFilter === "all" || p.landlordId === landlordFilter;
     });
 
-    const folders = scoped.map((p) => {
+    const folders = sortPropertiesByLocation(scoped).map((p) => {
       const docs = docsFor(p.id);
       const landlordName = landlords.find((l) => l.id === p.landlordId)?.fullName ?? "";
       const tenantName = tenantLookup.get(p.tenantId ?? "")?.fullName ?? "";

@@ -44,6 +44,24 @@ export function propertyAddressLabel(
   return city ? `${base}, ${city}` : base;
 }
 
+/** Same building together, then apartment number ascending (1, 2, 10…). */
+export function comparePropertiesByLocation(
+  a: Pick<Property, "city" | "address" | "apartmentNumber">,
+  b: Pick<Property, "city" | "address" | "apartmentNumber">,
+): number {
+  const city = (a.city || "").localeCompare(b.city || "", "he");
+  if (city !== 0) return city;
+  const address = (a.address || "").localeCompare(b.address || "", "he", { numeric: true });
+  if (address !== 0) return address;
+  return (a.apartmentNumber || "").localeCompare(b.apartmentNumber || "", "he", { numeric: true });
+}
+
+export function sortPropertiesByLocation<T extends Pick<Property, "city" | "address" | "apartmentNumber">>(
+  items: T[],
+): T[] {
+  return [...items].sort(comparePropertiesByLocation);
+}
+
 /** Occupancy = share of properties that currently have a tenant. */
 export function occupancyPercent(properties: Property[]): number {
   if (properties.length === 0) return 0;

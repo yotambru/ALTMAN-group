@@ -68,6 +68,7 @@ import {
   occupancyPercent,
   propertyAddressLabel,
   propertyMonthlyIncome,
+  sortPropertiesByLocation,
   summarizePortfolio,
   PORTFOLIO_YIELD_RATE,
 } from "@/lib/portfolio";
@@ -136,7 +137,10 @@ export default function ManagerDashboard() {
 
   const selectedClient = landlords.find((l) => l.id === selectedClientId) ?? null;
   const clientProperties = useMemo(
-    () => (selectedClientId ? properties.filter((p) => p.landlordId === selectedClientId) : []),
+    () =>
+      selectedClientId
+        ? sortPropertiesByLocation(properties.filter((p) => p.landlordId === selectedClientId))
+        : [],
     [properties, selectedClientId],
   );
   const searchedProperties = useMemo(() => {

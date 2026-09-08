@@ -45,6 +45,7 @@ import {
   formatPercent,
   propertyAddressLabel,
   propertyMonthlyIncome,
+  sortPropertiesByLocation,
   summarizePortfolio,
   PORTFOLIO_YIELD_RATE,
 } from "@/lib/portfolio";
@@ -72,7 +73,9 @@ export default function LandlordDashboard() {
   const [toast, setToast] = useState<string | null>(null);
   const firstName = session.fullName.trim().split(/\s+/)[0] || session.fullName;
 
-  const myProperties = properties.filter((p) => p.landlordId === landlordId);
+  const myProperties = sortPropertiesByLocation(
+    properties.filter((p) => p.landlordId === landlordId),
+  );
   const myPropertyIds = myProperties.map((p) => p.id);
   const myLeases = leases.filter(
     (l) => l.active && (l.landlordId === landlordId || myPropertyIds.includes(l.propertyId)),
