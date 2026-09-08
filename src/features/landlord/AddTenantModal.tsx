@@ -25,7 +25,7 @@ import {
   buildLeasePeriods,
   rentScheduleFromPeriods,
 } from "@/lib/lease-periods";
-import { draftsToCheckEntries, validateCheckDrafts, type CheckDraft } from "@/lib/check-schedule";
+import { resolveCheckSchedule, type CheckDraft } from "@/lib/check-schedule";
 import { can } from "@/lib/permissions";
 import { useData } from "@/lib/store";
 import { intakeDocumentName } from "@/lib/document-folders";
@@ -201,7 +201,15 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
       rentAdjustments: schedule.rentAdjustments.length
         ? schedule.rentAdjustments
         : undefined,
-      checks: draftsToCheckEntries(checkRows),
+      checks: resolveCheckSchedule({
+        rows: checkRows,
+        startDate,
+        endDate: endDate || undefined,
+        startingMonthlyRent: schedule.startingMonthlyRent,
+        rentAdjustments: schedule.rentAdjustments.length
+          ? schedule.rentAdjustments
+          : undefined,
+      }),
       replaceExistingTenant: isReplacement,
       documents: documents.length ? documents : undefined,
     });
@@ -260,11 +268,6 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
           ? "יש להזין דמי שכירות לכל תקופה בחוזה."
           : "יש להזין דמי שכירות חודשיים.",
       );
-      return;
-    }
-    const checkError = validateCheckDrafts(checkRows);
-    if (checkError) {
-      setError(checkError);
       return;
     }
 

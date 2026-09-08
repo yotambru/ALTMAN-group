@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import {
+  authInvitePending,
   createAdminClient,
   findAppUserByEmail,
   findAppUserById,
+  findAuthUserByEmail,
+  inviteAppUser,
   MIN_AUTH_PASSWORD_LENGTH,
   provisionAuthUser,
   sha256Hex,
@@ -15,6 +18,8 @@ const attempts = new Map<string, { count: number; resetAt: number }>();
 
 const GENERIC_ACTIVATE = "לא ניתן להפעיל את החשבון. בדקו את המייל או פנו למשרד.";
 const GENERIC_LOGIN = "שם משתמש או סיסמה שגויים.";
+const CHECK_INBOX =
+  "נשלח אליכם מייל הזמנה — לחצו על הקישור במייל כדי לאמת ולהגדיר סיסמה.";
 
 function clientKey(request: Request): string {
   return (
@@ -35,6 +40,19 @@ function rateLimited(key: string): boolean {
   return current.count > MAX_ATTEMPTS;
 }
 
+function appOrigin(request: Request): string {
+  const configured =
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+  const origin = request.headers.get("origin");
+  if (origin) return origin.replace(/\/$/, "");
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") || "https";
+  if (host) return `${proto}://${host}`.replace(/\/$/, "");
+  return "http://localhost:3000";
+}
+
 type Body = {
   action?: string;
   email?: string;
@@ -46,7 +64,10 @@ type Body = {
 export async function POST(request: Request) {
   const key = clientKey(request);
   if (rateLimited(key)) {
-    return NextResponse.json({ ok: false, error: "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות." }, { status: 429 });
+    return NextResponse.json(
+      { ok: false, error: "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות." },
+      { status: 429 },
+    );
   }
 
   let body: Body;
@@ -78,7 +99,10 @@ export async function POST(request: Request) {
         .eq("auth_user_id", authData.user.id)
         .maybeSingle();
       if (callerError || caller?.role !== "manager") {
-        return NextResponse.json({ ok: false, error: "אין הרשאה לשנות סיסמה למשתמש אחר." }, { status: 403 });
+        return NextResponse.json(
+          { ok: false, error: "אין הרשאה לשנות סיסמה למשתמש אחר." },
+          { status: 403 },
+        );
       }
       const nextPassword = body.newPassword ?? "";
       if (nextPassword.length < MIN_AUTH_PASSWORD_LENGTH) {
@@ -103,6 +127,42 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    if (action === "invite") {
+      const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+      if (!token) {
+        return NextResponse.json({ ok: false, error: "יש להתחבר מחדש." }, { status: 401 });
+      }
+      const { data: authData, error: authError } = await admin.auth.getUser(token);
+      if (authError || !authData.user) {
+        return NextResponse.json({ ok: false, error: "יש להתחבר מחדש." }, { status: 401 });
+      }
+      const { data: caller, error: callerError } = await admin
+        .from("app_users")
+        .select("id, role")
+        .eq("auth_user_id", authData.user.id)
+        .maybeSingle();
+      if (callerError || !caller || !isLoginRole(String(caller.role))) {
+        return NextResponse.json({ ok: false, error: "אין הרשאה לשלוח הזמנה." }, { status: 403 });
+      }
+      if (!email || !email.includes("@")) {
+        return NextResponse.json({ ok: false, error: "יש להזין כתובת מייל תקינה." }, { status: 400 });
+      }
+      const row = await findAppUserByEmail(admin, email);
+      if (!row || !isLoginRole(row.role)) {
+        return NextResponse.json({
+          ok: false,
+          retry: true,
+          error: "החשבון עדיין נשמר… נסו שוב.",
+        });
+      }
+      const redirectTo = `${appOrigin(request)}/auth/callback`;
+      const result = await inviteAppUser(admin, email, row.id, redirectTo);
+      return NextResponse.json({
+        ok: true,
+        alreadyActive: Boolean(result.alreadyActive),
+      });
+    }
+
     if (!email || !email.includes("@")) {
       return NextResponse.json({ ok: false, error: "יש להזין כתובת מייל תקינה." }, { status: 400 });
     }
@@ -113,6 +173,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
       }
       if (row.auth_user_id) {
+        const authUser = await findAuthUserByEmail(admin, email);
+        if (authUser && authInvitePending(authUser)) {
+          return NextResponse.json({ ok: false, error: CHECK_INBOX, invitePending: true });
+        }
         return NextResponse.json({ ok: false, error: "החשבון כבר הופעל. היכנסו עם הסיסמה." });
       }
       return NextResponse.json({ ok: true, pending: true });
@@ -126,7 +190,17 @@ export async function POST(request: Request) {
         );
       }
       const row = await findAppUserByEmail(admin, email);
-      if (!row || !isLoginRole(row.role) || row.auth_user_id || row.password_hash) {
+      if (!row || !isLoginRole(row.role)) {
+        return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
+      }
+      if (row.auth_user_id) {
+        const authUser = await findAuthUserByEmail(admin, email);
+        if (authUser && authInvitePending(authUser)) {
+          return NextResponse.json({ ok: false, error: CHECK_INBOX, invitePending: true });
+        }
+        return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
+      }
+      if (row.password_hash) {
         return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
       }
       await provisionAuthUser(admin, email, password, row.id);

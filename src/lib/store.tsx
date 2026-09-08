@@ -16,10 +16,10 @@ import {
   persistDiff,
   subscribeToData,
 } from "@/lib/supabase/sync";
-import { accountDisplayName, normalizeEmail } from "@/lib/auth";
+import { accountDisplayName, normalizeEmail, queueAccountInvites } from "@/lib/auth";
 import { generateId, formatCurrency } from "@/lib/utils";
 import { localTodayIso } from "@/lib/lease-periods";
-import { paymentStatusForDate } from "@/lib/check-schedule";
+import { paymentClearanceDate, paymentStatusForDate, resolveCheckSchedule } from "@/lib/check-schedule";
 import { inferDocumentFolder } from "@/lib/document-folders";
 import { removeLandlord, removeOwnAccount, removeTenant } from "@/lib/delete-users";
 import { isNotificationForAudience } from "@/lib/notifications";
@@ -326,6 +326,8 @@ interface DataContextValue extends DataState {
   // payments / expenses
   confirmPaymentClearance: (paymentId: string) => void;
   updatePayment: (id: string, patch: Partial<Payment>) => void;
+  /** Replace uncleared check rows for a lease (keeps confirmed / paid rows). */
+  replaceLeaseChecks: (leaseId: string, checks: CheckScheduleEntry[]) => void;
   addExpense: (e: Omit<Expense, "id">) => Expense;
 
   // tickets
@@ -680,6 +682,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           }
         : null;
       const leaseRent = input.monthlyRent ?? input.listedRent ?? 0;
+      const leaseStart = input.startDate || input.entryDate || nowIso.slice(0, 10);
+      const checkSchedule = withTenant
+        ? resolveCheckSchedule({
+            checks: input.checks,
+            startDate: leaseStart,
+            endDate: input.endDate,
+            startingMonthlyRent: input.startingMonthlyRent ?? leaseRent,
+            rentAdjustments: input.rentAdjustments,
+          })
+        : [];
       const lease: Lease | null = withTenant && tenantId && leaseId
         ? {
             id: leaseId,
@@ -691,13 +703,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             ...(input.rentAdjustments?.length
               ? { rentAdjustments: input.rentAdjustments }
               : {}),
-            startDate: input.startDate || input.entryDate || nowIso.slice(0, 10),
+            startDate: leaseStart,
             endDate: input.endDate || "",
-            nextPaymentDate:
-              input.checks?.[0]?.clearanceDate ||
-              input.startDate ||
-              input.entryDate ||
-              nowIso.slice(0, 10),
+            nextPaymentDate: checkSchedule[0]?.clearanceDate || leaseStart,
             active: true,
             managementStartDate: input.managementStartDate,
             managementEndDate: input.managementEndDate,
@@ -844,7 +852,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             u.email,
           ),
         );
-        const checkPayments = leaseId ? paymentsFromChecks(leaseId, input.checks) : [];
+        const checkPayments = leaseId ? paymentsFromChecks(leaseId, checkSchedule) : [];
         return {
           ...p,
           users: uniqueLogins.length ? [...uniqueLogins, ...p.users] : p.users,
@@ -881,6 +889,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           ],
         };
       });
+
+      const inviteEmails = loginUsers.map((u) => u.email).filter(Boolean) as string[];
+      queueAccountInvites(inviteEmails);
 
       return { propertyId, leaseId, tenantId, landlordId };
     },
@@ -919,6 +930,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           ? input.rentAdjustments
           : undefined;
         const monthlyRent = baseRent;
+        const checkSchedule = resolveCheckSchedule({
+          checks: input.checks,
+          startDate,
+          endDate: input.endDate,
+          startingMonthlyRent,
+          rentAdjustments,
+        });
 
         const hasIdDoc = (input.documents ?? []).some((d) => d.folder === "id_photos");
         const secondaryEmail = input.secondaryEmail?.trim()
@@ -958,7 +976,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           ...(rentAdjustments ? { rentAdjustments } : {}),
           startDate,
           endDate: input.endDate || "",
-          nextPaymentDate: input.checks?.[0]?.clearanceDate || startDate,
+          nextPaymentDate: checkSchedule[0]?.clearanceDate || startDate,
           active: true,
         };
         const onboarding: TenantOnboarding = {
@@ -1011,7 +1029,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           signed: false,
           status: "draft" as const,
         }));
-        const checkPayments = paymentsFromChecks(leaseId, input.checks);
+        const checkPayments = paymentsFromChecks(leaseId, checkSchedule);
 
         return {
           ...nextState,
@@ -1046,6 +1064,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         };
       });
 
+      queueAccountInvites([email, input.secondaryEmail]);
+
       return { tenantId, leaseId, userId };
     },
     [makeLog],
@@ -1074,6 +1094,39 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         payments: p.payments.map((pay) => (pay.id === id ? { ...pay, ...patch } : pay)),
         activityLog: [makeLog("עדכון תשלום", "payment", id), ...p.activityLog],
       }));
+    },
+    [makeLog],
+  );
+
+  const replaceLeaseChecks = useCallback<DataContextValue["replaceLeaseChecks"]>(
+    (leaseId, checks) => {
+      setState((p) => {
+        const generated = paymentsFromChecks(leaseId, checks);
+        const kept = p.payments.filter(
+          (pay) =>
+            pay.leaseId === leaseId &&
+            (pay.clearanceConfirmed || pay.status === "paid"),
+        );
+        const keptDates = new Set(kept.map((pay) => paymentClearanceDate(pay)));
+        const nextGenerated = generated.filter(
+          (pay) => !keptDates.has(pay.dueDate.slice(0, 10)),
+        );
+        const others = p.payments.filter((pay) => pay.leaseId !== leaseId);
+        const firstDate =
+          nextGenerated[0]?.dueDate ||
+          kept[0]?.dueDate ||
+          p.leases.find((lease) => lease.id === leaseId)?.nextPaymentDate;
+        return {
+          ...p,
+          payments: [...kept, ...nextGenerated, ...others],
+          leases: p.leases.map((lease) =>
+            lease.id === leaseId && firstDate
+              ? { ...lease, nextPaymentDate: firstDate }
+              : lease,
+          ),
+          activityLog: [makeLog("עדכון לוח פרעון צ׳קים", "lease", leaseId), ...p.activityLog],
+        };
+      });
     },
     [makeLog],
   );
@@ -1943,6 +1996,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     deleteOwnAccount,
     confirmPaymentClearance,
     updatePayment,
+    replaceLeaseChecks,
     addExpense,
     addTicket,
     setTicketStatus,

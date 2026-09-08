@@ -52,6 +52,7 @@ import {
 import { heroIncomeChartProps } from "@/lib/hero-income-chart";
 import { formatCurrency, formatDateDots } from "@/lib/utils";
 import { paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
+import { nextPaymentDate } from "@/lib/payment-dates";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
 type Dialog = "list" | "rentals" | "critical" | "checks" | null;
@@ -86,7 +87,7 @@ export default function LandlordDashboard() {
     myLeases,
   );
   const criticalDates = getCriticalDates(myLeases, myProperties);
-  const leaseRenewals = criticalDates.filter((d) => d.kind === "lease_end" && d.daysLeft <= 30).length;
+  const leaseRenewals = criticalDates.filter((d) => d.kind === "lease_end").length;
   const occupancy = occupancyPercent(myProperties);
   const rentedCount = myProperties.filter((p) => p.status === "rented").length;
   const openTicketCount = tickets.filter(
@@ -153,10 +154,20 @@ export default function LandlordDashboard() {
     myLeases.map((lease) => lease.id),
   );
   const nextCheck = upcomingChecks[0];
-  const nextCheckProperty = nextCheck
-    ? myProperties.find(
-        (property) => property.id === myLeases.find((lease) => lease.id === nextCheck.leaseId)?.propertyId,
-      )
+  const nextCheckFromLease = nextCheck
+    ? undefined
+    : myLeases
+        .map((lease) => ({ lease, date: nextPaymentDate(lease) }))
+        .filter((row): row is { lease: (typeof myLeases)[number]; date: string } => Boolean(row.date))
+        .sort((a, b) => a.date.localeCompare(b.date))[0];
+  const nextClearanceDate = nextCheck
+    ? paymentClearanceDate(nextCheck)
+    : nextCheckFromLease?.date;
+  const nextCheckLease = nextCheck
+    ? myLeases.find((lease) => lease.id === nextCheck.leaseId)
+    : nextCheckFromLease?.lease;
+  const nextCheckProperty = nextCheckLease
+    ? myProperties.find((property) => property.id === nextCheckLease.propertyId)
     : undefined;
 
   const menuItems: MobileMenuItem[] = [
@@ -241,16 +252,20 @@ export default function LandlordDashboard() {
                 icon={CalendarCheck}
                 label="חוזים לחידוש"
                 value={leaseRenewals}
-                sublabel="ב-30 הימים הקרובים"
+                sublabel="ב-90 הימים הקרובים"
                 onClick={() => setDialog("critical")}
               />
               <MetricCard
                 icon={Banknote}
                 label="פרעון הבא"
-                value={nextCheck ? formatDateDots(paymentClearanceDate(nextCheck)) : "—"}
+                value={nextClearanceDate ? formatDateDots(nextClearanceDate) : "—"}
                 sublabel={
-                  nextCheck
-                    ? `${formatCurrency(nextCheck.amount)}${nextCheckProperty ? ` · ${propertyAddressLabel(nextCheckProperty)}` : ""}`
+                  nextClearanceDate
+                    ? nextCheck
+                      ? `${formatCurrency(nextCheck.amount)}${nextCheckProperty ? ` · ${propertyAddressLabel(nextCheckProperty)}` : ""}`
+                      : nextCheckProperty
+                        ? propertyAddressLabel(nextCheckProperty)
+                        : "לפי תאריך תחילת החוזה"
                     : "אין צ׳קים מתוכננים"
                 }
                 onClick={() => setDialog("checks")}

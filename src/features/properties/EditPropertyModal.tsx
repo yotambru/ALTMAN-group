@@ -5,7 +5,14 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { PhotoGridField } from "@/components/ui/PhotoGridField";
+import { CheckClearanceFields } from "@/features/leases/CheckClearanceFields";
 import { LeaseScheduleFields } from "@/features/leases/LeaseScheduleFields";
+import {
+  paymentsToCheckDrafts,
+  resolveCheckSchedule,
+  validateCheckDrafts,
+  type CheckDraft,
+} from "@/lib/check-schedule";
 import {
   alignPeriodRents,
   buildLeasePeriods,
@@ -56,7 +63,8 @@ function rentsFromLease(
 
 /** Edit an existing property (and its active lease's rent schedule). */
 export function EditPropertyModal({ property, onClose }: EditPropertyModalProps) {
-  const { updateProperty, updateLease, setPropertyPhotos, leases } = useData();
+  const { updateProperty, updateLease, replaceLeaseChecks, setPropertyPhotos, leases, payments } =
+    useData();
   const lease = property ? leases.find((l) => l.propertyId === property.id && l.active) : undefined;
 
   const [value, setValue] = useState("");
@@ -71,6 +79,8 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
   const [leaseStartDate, setLeaseStartDate] = useState("");
   const [leaseEndDate, setLeaseEndDate] = useState("");
   const [periodRents, setPeriodRents] = useState<string[]>([""]);
+  const [checkRows, setCheckRows] = useState<CheckDraft[]>([]);
+  const [autoRebuildChecks, setAutoRebuildChecks] = useState(true);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [formError, setFormError] = useState("");
 
@@ -91,10 +101,17 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
       setLeaseStartDate(start);
       setLeaseEndDate(end);
       setPeriodRents(lease ? rentsFromLease(lease, start, end) : [""]);
+      const existingChecks = lease
+        ? paymentsToCheckDrafts(payments.filter((pay) => pay.leaseId === lease.id))
+        : [];
+      setCheckRows(existingChecks);
+      setAutoRebuildChecks(existingChecks.length === 0);
       setPhotoUrls(property.photoUrls ?? []);
       setFormError("");
     }
-  }, [property, lease]);
+    // Seed once per property/lease identity so live payment updates don't wipe in-progress edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [property?.id, lease?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!property) return null;
@@ -140,6 +157,11 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
         return;
       }
       schedule = rentScheduleFromPeriods(periods, rents);
+      const checkError = validateCheckDrafts(checkRows);
+      if (checkError) {
+        setFormError(checkError);
+        return;
+      }
     }
 
     updateProperty(property.id, {
@@ -156,13 +178,22 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
     });
     setPropertyPhotos(property.id, photoUrls);
     if (lease && schedule) {
+      const checks = resolveCheckSchedule({
+        rows: checkRows,
+        startDate: leaseStartDate || lease.startDate,
+        endDate: leaseEndDate,
+        startingMonthlyRent: schedule.startingMonthlyRent,
+        rentAdjustments: schedule.rentAdjustments,
+      });
       updateLease(lease.id, {
         startDate: leaseStartDate || lease.startDate,
         endDate: leaseEndDate,
         monthlyRent: schedule.monthlyRent,
         startingMonthlyRent: schedule.startingMonthlyRent,
         rentAdjustments: schedule.rentAdjustments,
+        nextPaymentDate: checks[0]?.clearanceDate || leaseStartDate || lease.nextPaymentDate,
       });
+      replaceLeaseChecks(lease.id, checks);
     }
     onClose();
   };
@@ -238,13 +269,26 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
           </FormField>
         </div>
         {lease && (
-          <LeaseScheduleFields
-            startDate={leaseStartDate}
-            endDate={leaseEndDate}
-            onDatesChange={applyLeaseDates}
-            periodRents={periodRents}
-            onPeriodRentsChange={setPeriodRents}
-          />
+          <>
+            <LeaseScheduleFields
+              startDate={leaseStartDate}
+              endDate={leaseEndDate}
+              onDatesChange={applyLeaseDates}
+              periodRents={periodRents}
+              onPeriodRentsChange={setPeriodRents}
+            />
+            <CheckClearanceFields
+              leaseStartDate={leaseStartDate}
+              leaseEndDate={leaseEndDate}
+              periodRents={periodRents}
+              rows={checkRows}
+              autoRebuild={autoRebuildChecks}
+              onRowsChange={(next) => {
+                setCheckRows(next);
+                setFormError("");
+              }}
+            />
+          </>
         )}
         {formError && <p className="text-sm font-medium text-danger">{formError}</p>}
         <PhotoGridField

@@ -123,7 +123,7 @@ export default function ManagerDashboard() {
   const self = { id: session.userId, name: session.fullName, role };
   const firstName = session.fullName.trim().split(/\s+/)[0] || session.fullName;
   const criticalDates = getCriticalDates(leases, properties);
-  const leaseRenewals = criticalDates.filter((d) => d.kind === "lease_end" && d.daysLeft <= 30).length;
+  const leaseRenewals = criticalDates.filter((d) => d.kind === "lease_end").length;
   const unread = notifications.filter(
     (n) => !n.read && isNotificationForAudience(n, session.userId, "manager"),
   ).length;
@@ -410,7 +410,7 @@ export default function ManagerDashboard() {
                 icon={CalendarCheck}
                 label="חוזים לחידוש"
                 value={leaseRenewals}
-                sublabel="ב-30 הימים הקרובים"
+                sublabel="ב-90 הימים הקרובים"
                 onClick={() => setDialog("critical")}
               />
               <MetricCard

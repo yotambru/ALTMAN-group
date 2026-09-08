@@ -12,6 +12,7 @@
     "lint": "eslint",
     "seed": "tsx scripts/seed-supabase.ts",
     "repair:orphans": "tsx scripts/repair-orphans.ts",
+    "repair:yoram-checks": "tsx scripts/backfill-yoram-check-dates.ts",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
     "cap:android": "npx cap open android",

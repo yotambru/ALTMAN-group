@@ -66,7 +66,7 @@ export function livePaymentStatus(payment: Payment, today: string = localTodayIs
 }
 
 /** Monthly check dates from the first clearance until lease end (or 12 months). */
-export function buildMonthlyClearanceDates(firstIso: string, endIso?: string, maxMonths = 36): string[] {
+export function buildMonthlyClearanceDates(firstIso: string, endIso?: string, maxMonths = 120): string[] {
   const first = firstIso.slice(0, 10);
   if (!parseYmd(first)) return [];
   const explicitEnd = endIso?.trim() ? parseYmd(endIso.slice(0, 10)) : null;
@@ -113,10 +113,66 @@ export function draftsToCheckEntries(rows: CheckDraft[]): CheckScheduleEntry[] {
     .filter((row) => row.clearanceDate && row.amount > 0);
 }
 
+export function paymentsToCheckDrafts(payments: Payment[]): CheckDraft[] {
+  return [...payments]
+    .sort((a, b) => paymentClearanceDate(a).localeCompare(paymentClearanceDate(b)))
+    .map((payment) => ({
+      clearanceDate: paymentClearanceDate(payment),
+      amount: payment.amount ? String(payment.amount) : "",
+      checkNumber: payment.checkNumber ?? "",
+    }));
+}
+
+/** Monthly checks on the first-clearance day (defaults to lease start day). */
+export function defaultChecksForLease(opts: {
+  startDate: string;
+  endDate?: string;
+  firstDate?: string;
+  startingMonthlyRent: number;
+  rentAdjustments?: RentAdjustment[];
+  firstCheckNumber?: string;
+}): CheckScheduleEntry[] {
+  const first = (opts.firstDate || opts.startDate || "").slice(0, 10);
+  return draftsToCheckEntries(
+    buildCheckDrafts({
+      firstDate: first,
+      endDate: opts.endDate || undefined,
+      startingMonthlyRent: opts.startingMonthlyRent,
+      rentAdjustments: opts.rentAdjustments,
+      firstCheckNumber: opts.firstCheckNumber,
+    }),
+  );
+}
+
+/**
+ * Prefer an explicit schedule; otherwise build monthly dates from the lease-start day
+ * (or a custom first clearance date on the draft rows).
+ */
+export function resolveCheckSchedule(opts: {
+  rows?: CheckDraft[];
+  checks?: CheckScheduleEntry[];
+  startDate: string;
+  endDate?: string;
+  startingMonthlyRent: number;
+  rentAdjustments?: RentAdjustment[];
+}): CheckScheduleEntry[] {
+  if (opts.checks?.length) return opts.checks;
+  const fromRows = draftsToCheckEntries(opts.rows ?? []);
+  if (fromRows.length) return fromRows;
+  return defaultChecksForLease({
+    startDate: opts.startDate,
+    endDate: opts.endDate,
+    firstDate: opts.rows?.[0]?.clearanceDate,
+    startingMonthlyRent: opts.startingMonthlyRent,
+    rentAdjustments: opts.rentAdjustments,
+    firstCheckNumber: opts.rows?.[0]?.checkNumber,
+  });
+}
+
 export function validateCheckDrafts(rows: CheckDraft[]): string | null {
-  if (!rows.length) return "יש להזין לפחות צ׳ק אחד עם תאריך פרעון וסכום.";
+  if (!rows.length) return null;
   if (rows.some((row) => !row.clearanceDate.trim() || !(Number(String(row.amount).replace(/[^0-9.]/g, "")) > 0))) {
-    return "יש להשלים תאריך פרעון וסכום לכל צ׳ק.";
+    return "יש להשלים תאריך פרעון וסכום לכל צ׳ק, או להשאיר את השדות ריקים לחישוב אוטומטי לפי תחילת החוזה.";
   }
   return null;
 }

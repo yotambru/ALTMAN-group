@@ -18,6 +18,8 @@ interface CheckClearanceFieldsProps {
   periodRents: string[];
   rows: CheckDraft[];
   onRowsChange: (rows: CheckDraft[]) => void;
+  /** When false, keep loaded rows until the user changes the first date / rebuilds. */
+  autoRebuild?: boolean;
 }
 
 const parseMoney = (value: string) => Number(value.replace(/[^0-9.]/g, "")) || 0;
@@ -39,6 +41,7 @@ export function CheckClearanceFields({
   periodRents,
   rows,
   onRowsChange,
+  autoRebuild = true,
 }: CheckClearanceFieldsProps) {
   const firstDate = rows[0]?.clearanceDate || leaseStartDate;
   const firstCheckNumber = rows[0]?.checkNumber ?? "";
@@ -78,7 +81,7 @@ export function CheckClearanceFields({
   };
 
   useEffect(() => {
-    if (lockedRef.current || !leaseStartDate) return;
+    if (!autoRebuild || lockedRef.current || !leaseStartDate) return;
     const schedule = scheduleFromLease();
     const generated = buildCheckDrafts({
       firstDate: rows[0]?.clearanceDate || leaseStartDate,
@@ -90,7 +93,7 @@ export function CheckClearanceFields({
     if (!draftsEqual(rows, generated)) onRowsChangeRef.current(generated);
     // Rebuild when lease dates / rents change; skip after the user edits individual rows.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leaseStartDate, leaseEndDate, periodRents.join("|")]);
+  }, [autoRebuild, leaseStartDate, leaseEndDate, periodRents.join("|")]);
 
   const updateRow = (index: number, patch: Partial<CheckDraft>) => {
     lockedRef.current = true;
@@ -104,7 +107,7 @@ export function CheckClearanceFields({
       <div>
         <p className="text-sm font-semibold text-navy">לוח פרעון צ׳קים</p>
         <p className="mt-0.5 text-[0.7rem] text-text-muted">
-          תאריך הפרעון הוא היום שבו נכנס הסכום לחשבון המשכיר לפי הדירה
+          אם לא מזינים תאריך אחר, הפרעון הוא באותו יום בחודש כמו תחילת החוזה — למשל כניסה ב־10, הפרעון בכל 10 לחודש
         </p>
       </div>
 

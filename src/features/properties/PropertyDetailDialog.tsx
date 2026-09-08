@@ -39,7 +39,7 @@ import { normalizeEmail } from "@/lib/auth";
 import { cn, fileToDataUrl, formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
 import { currentMonthlyRent, PROPERTY_STATUS_LABELS, propertyAddressLabel, propertyDisplayValue } from "@/lib/portfolio";
 import { buildLeasePeriods, rentOnDate } from "@/lib/lease-periods";
-import { livePaymentStatus, paymentClearanceDate } from "@/lib/check-schedule";
+import { livePaymentStatus, paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
 import type { CheckDepositMode, Payment, PaymentStatus, Property } from "@/types";
 
 const statusLabels = PROPERTY_STATUS_LABELS;
@@ -306,10 +306,9 @@ export function PropertyDetailDialog({
   const openTickets = tickets.filter((t) => t.propertyId === property.id && t.status !== "resolved");
   const depositMode: CheckDepositMode = landlord?.checkDepositMode ?? "client";
 
-  const leasePayments = (lease
-    ? payments.filter((p) => p.leaseId === lease.id)
-    : []
-  ).slice().sort((a, b) => (a.depositDate ?? a.dueDate).localeCompare(b.depositDate ?? b.dueDate));
+  const nextPayment = lease
+    ? upcomingCheckPayments(payments, [lease.id])[0]
+    : undefined;
 
   const floorLabel = property.floor === 0 ? "קומת קרקע" : `קומה ${property.floor}`;
   const currentRent = lease ? currentMonthlyRent(lease) : property.listedRent;
@@ -510,22 +509,19 @@ export function PropertyDetailDialog({
             <p className="text-sm font-bold text-navy">תשלומים וצ׳קים</p>
             <span className="text-[0.7rem] text-text-muted">{depositModeLabel[depositMode]}</span>
           </div>
-          {leasePayments.length === 0 ? (
+          {nextPayment ? (
+            <div className="card">
+              <PaymentRow
+                payment={nextPayment}
+                depositMode={depositMode}
+                canConfirm={canConfirmClearance}
+                onConfirm={() => confirmPaymentClearance(nextPayment.id)}
+              />
+            </div>
+          ) : (
             <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-text-muted">
               אין תאריכי פרעון לנכס זה
             </p>
-          ) : (
-            <div className="card divide-y divide-border">
-              {leasePayments.map((p) => (
-                <PaymentRow
-                  key={p.id}
-                  payment={p}
-                  depositMode={depositMode}
-                  canConfirm={canConfirmClearance}
-                  onConfirm={() => confirmPaymentClearance(p.id)}
-                />
-              ))}
-            </div>
           )}
         </section>
 

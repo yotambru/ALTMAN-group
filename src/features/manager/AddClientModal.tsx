@@ -28,7 +28,7 @@ import {
   buildLeasePeriods,
   rentScheduleFromPeriods,
 } from "@/lib/lease-periods";
-import { draftsToCheckEntries, validateCheckDrafts, type CheckDraft } from "@/lib/check-schedule";
+import { resolveCheckSchedule, type CheckDraft } from "@/lib/check-schedule";
 import type { AirDirection, DocumentFolder, DocumentType } from "@/types";
 
 interface AddClientModalProps {
@@ -305,11 +305,6 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
       rentAdjustments = schedule.rentAdjustments.length
         ? schedule.rentAdjustments
         : undefined;
-      const checkError = validateCheckDrafts(checkRows);
-      if (checkError) {
-        setFormError(checkError);
-        return;
-      }
       tenantDocuments.push(
         ...leaseFilesToDocuments(activePeriods, leaseFiles),
       );
@@ -429,7 +424,13 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
             rentAdjustments,
             startDate: leaseStartDate || undefined,
             endDate: leaseEndDate || undefined,
-            checks: draftsToCheckEntries(checkRows),
+            checks: resolveCheckSchedule({
+              rows: checkRows,
+              startDate: leaseStartDate,
+              endDate: leaseEndDate,
+              startingMonthlyRent: startingMonthlyRent ?? leaseRent,
+              rentAdjustments,
+            }),
             tenantDocuments: tenantDocuments.length ? tenantDocuments : undefined,
           }
         : {}),
@@ -442,8 +443,8 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     ? `הוספת נכס · ${existing?.fullName ?? "משכיר קיים"}`
     : "משכיר חדש";
   const description = attaching || mode === "existing"
-    ? "אפשר לצרף שוכר לפי מייל — בלי סיסמה. שאר השדות אופציונליים"
-    : "פתיחת חשבון לפי מייל בלבד, בלי סיסמה. אפשר לצרף גם שוכר";
+    ? "אפשר לצרף שוכר לפי מייל — יישלח מייל הזמנה. שאר השדות אופציונליים"
+    : "פתיחת חשבון לפי מייל — יישלח מייל הזמנה לאימות ולהגדרת סיסמה";
 
   return (
     <Modal
@@ -586,7 +587,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
             <span>
               <span className="block text-sm font-semibold text-navy">פתיחת יוזר שוכר</span>
               <span className="mt-0.5 block text-xs text-text-muted">
-                מייל בלי סיסמה — אפשר גם שוכר שני (זוג) עם כניסה נפרדת
+                מייל — יישלח מייל הזמנה. אפשר גם שוכר שני (זוג) עם כניסה נפרדת
               </span>
             </span>
           </label>
