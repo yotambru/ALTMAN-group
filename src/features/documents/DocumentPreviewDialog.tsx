@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ExternalLink, FileText, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Portal } from "@/components/ui/Portal";
+import { useSignedUrl } from "@/lib/supabase/files";
 import type { AppDocument } from "@/types";
 
 interface DocumentPreviewDialogProps {
@@ -16,7 +17,7 @@ interface DocumentPreviewDialogProps {
   emptyDescription?: string;
 }
 
-const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)(?:\?|#|$)/i;
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|heic|heif)(?:\?|#|$)/i;
 const PDF_EXT = /\.pdf(?:\?|#|$)/i;
 const PHOTO_TYPES = new Set(["id", "property_photo"]);
 const PHOTO_FOLDERS = new Set(["id_photos", "landlord_id", "guarantor_id", "meter_photos"]);
@@ -46,6 +47,7 @@ export function DocumentPreviewDialog({
   emptyDescription = "המסמך עדיין לא הועלה, או שלא ניתן להציג אותו כאן.",
 }: DocumentPreviewDialogProps) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const url = useSignedUrl(doc?.fileDataUrl);
 
   useEffect(() => {
     if (!open) return;
@@ -62,7 +64,6 @@ export function DocumentPreviewDialog({
   if (!open) return null;
 
   const heading = title ?? doc?.name ?? "מסמך";
-  const url = doc?.fileDataUrl;
   const imageFailed = Boolean(url && failedUrl === url);
   const showImage = Boolean(url && !imageFailed && isImageSource(url, doc));
   const showPdf = Boolean(url && !showImage && isPdfSource(url, doc));

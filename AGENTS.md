@@ -5,8 +5,9 @@
 ALTMAN Group is a mobile-first property-management platform for the Israeli real-estate
 market. It serves three roles — **manager (מנהל)**, **landlord (משכיר)**, and
 **tenant (שוכר)** — each with a dedicated dashboard. Domain data is shared via
-**Supabase** (Postgres + Storage + Realtime). Login is still demo credentials.
-Keep UI decoupled from the data layer (`src/lib/store.tsx` + `src/lib/supabase/*`).
+**Supabase** (Postgres + Storage + Realtime). Login uses **Supabase Auth**; row-level
+security scopes data by role. Keep UI decoupled from the data layer
+(`src/lib/store.tsx` + `src/lib/supabase/*`).
 
 ## RTL & Hebrew requirements (non-negotiable)
 
@@ -69,8 +70,9 @@ Roles are typed in `src/types` (`Role = "manager" | "landlord" | "tenant"`).
 1. Preserve RTL + Hebrew everywhere; never ship English UI copy or LTR layout.
 2. Use design tokens and existing components before creating new ones.
 3. Keep data/types/persistence decoupled from UI; screens consume `useData()` only.
-4. Do **not** add Firebase/payments/WhatsApp/real-auth unless explicitly asked.
-   Supabase is the shared data layer (see `src/lib/supabase/`).
+4. Do **not** add Firebase/payments/WhatsApp unless explicitly asked.
+   Authentication is Supabase Auth (see `src/lib/auth.ts` + RLS in
+   `supabase/migrations/010_auth_rls.sql`).
 5. Before finishing any change, ensure all of these pass:
    - `npm run lint`
    - `npx tsc --noEmit`

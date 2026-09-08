@@ -1,6 +1,7 @@
 import type { DataState } from "@/lib/data-state";
 import { inferDocumentFolder, isDocumentFolder } from "@/lib/document-folders";
 import { localTodayIso, rentOnDate } from "@/lib/lease-periods";
+import { isLoginRole } from "@/types";
 import type {
   ActivityLogEntry,
   AirDirection,
@@ -50,6 +51,16 @@ function opt<T>(value: T | null | undefined): T | undefined {
 
 function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
+}
+
+function parseRole(value: unknown, fallback: Role = "manager"): Role {
+  const raw = str(value);
+  return isLoginRole(raw) ? raw : fallback;
+}
+
+function parseRoleOpt(value: unknown): Role | undefined {
+  const raw = str(value);
+  return isLoginRole(raw) ? raw : undefined;
 }
 
 function num(value: unknown, fallback = 0): number {
@@ -103,7 +114,7 @@ function userToRow(u: User): Row {
     landlord_id: u.landlordId ?? null,
     tenant_id: u.tenantId ?? null,
     professional_id: u.professionalId ?? null,
-    password_hash: u.passwordHash ?? null,
+    ...(u.authUserId ? { auth_user_id: u.authUserId } : {}),
   };
 }
 
@@ -111,14 +122,14 @@ function userFromRow(row: Row): User {
   return {
     id: str(row.id),
     fullName: str(row.full_name),
-    role: str(row.role) as Role,
+    role: parseRole(row.role),
     email: opt(row.email as string | null),
     phone: opt(row.phone as string | null),
     avatarUrl: opt(row.avatar_url as string | null),
     landlordId: opt(row.landlord_id as string | null),
     tenantId: opt(row.tenant_id as string | null),
     professionalId: opt(row.professional_id as string | null),
-    passwordHash: opt(row.password_hash as string | null) || undefined,
+    authUserId: opt(row.auth_user_id as string | null),
   };
 }
 
@@ -478,7 +489,7 @@ function notificationFromRow(row: Row): AppNotification {
     createdAt: str(row.created_at),
     read: bool(row.read),
     forUserId: opt(row.for_user_id as string | null),
-    forRole: opt(row.for_role as Role | null),
+    forRole: parseRoleOpt(row.for_role),
     actionRequired: opt(row.action_required as boolean | null),
     relatedId: opt(row.related_id as string | null),
   };
@@ -571,7 +582,7 @@ function messageFromRow(row: Row): ChatMessage {
     id: str(row.id),
     threadId: str(row.thread_id),
     fromUserId: str(row.from_user_id),
-    fromRole: str(row.from_role) as Role,
+    fromRole: parseRole(row.from_role),
     text: str(row.text),
     createdAt: str(row.created_at),
   };
@@ -659,7 +670,7 @@ function logFromRow(row: Row): ActivityLogEntry {
     at: str(row.at),
     userId: str(row.user_id),
     userName: str(row.user_name),
-    role: str(row.role) as Role,
+    role: parseRole(row.role),
     action: str(row.action),
     entity: opt(row.entity as string | null),
     entityId: opt(row.entity_id as string | null),
@@ -671,7 +682,7 @@ function withdrawalToRow(w: WithdrawalRequest): Row {
   return {
     id: w.id,
     landlord_id: w.landlordId,
-    property_id: w.propertyId || "",
+    property_id: w.propertyId ?? null,
     lease_id: w.leaseId ?? null,
     amount: w.amount,
     rent_amount: w.rentAmount,

@@ -1,31 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/brand/Logo";
 import { LoginModal } from "@/features/auth/LoginModal";
-import { currentUsers } from "@/lib/mock-data";
+import { loadSessionUser } from "@/lib/auth";
 import { routeByRole } from "@/lib/permissions";
-import { storage } from "@/lib/storage";
-import type { Role } from "@/types";
 
 export default function LoginPage() {
   const router = useRouter();
   const [formOpen, setFormOpen] = useState(false);
 
-  const enterAs = (nextRole: Role) => {
-    const account = currentUsers[nextRole];
-    storage.setSession({
-      role: nextRole,
-      userId: account.id,
-      fullName: account.fullName,
-      landlordId: account.landlordId,
-      tenantId: account.tenantId,
-      professionalId: account.professionalId,
-      loginAt: new Date().toISOString(),
-    });
-    router.push(routeByRole[nextRole]);
-  };
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const profile = await loadSessionUser();
+      if (cancelled || !profile) return;
+      router.replace(routeByRole[profile.role]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   return (
     <main className="app-shell relative flex min-h-[100dvh] flex-col overflow-hidden bg-surface lg:h-[100dvh] lg:flex-row lg:overflow-hidden">
@@ -62,14 +58,6 @@ export default function LoginPage() {
             className="mt-8 flex h-14 w-full items-center justify-center rounded-full bg-orange text-base font-bold text-white shadow-[0_12px_28px_-10px_rgba(242,106,33,0.7)] transition-colors hover:bg-orange-dark"
           >
             התחברות
-          </button>
-
-          <button
-            type="button"
-            onClick={() => enterAs("manager")}
-            className="mt-5 text-[0.95rem] font-bold text-navy transition-opacity hover:opacity-70"
-          >
-            המשך ללא התחברות
           </button>
         </div>
       </section>

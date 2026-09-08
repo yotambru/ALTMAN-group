@@ -1,32 +1,10 @@
 import type { DataState } from "@/lib/data-state";
-import { seedState } from "@/lib/data-state";
+import { emptyState, seedState } from "@/lib/data-state";
 import { getSupabase } from "@/lib/supabase/client";
-import { hydrateFileFields, stillEmbedded } from "@/lib/supabase/files";
+import { hydrateFileFields, stillEmbedded, warmSignedUrls } from "@/lib/supabase/files";
 import { COLLECTIONS, type Row } from "@/lib/supabase/mappers";
+import { isLoginRole } from "@/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
-
-function emptyState(): DataState {
-  return {
-    users: [],
-    landlords: [],
-    properties: [],
-    tenants: [],
-    leases: [],
-    payments: [],
-    expenses: [],
-    tickets: [],
-    documents: [],
-    notifications: [],
-    professionals: [],
-    tasks: [],
-    chatThreads: [],
-    chatMessages: [],
-    onboardings: [],
-    protocols: [],
-    activityLog: [],
-    withdrawals: [],
-  };
-}
 
 function isMissingRelation(message: string): boolean {
   return /Could not find the table/i.test(message) || /relation .+ does not exist/i.test(message);
@@ -90,8 +68,25 @@ export async function fetchAll(): Promise<DataState | null> {
   );
 
   for (const { key, rows, col } of results) {
-    (next[key] as unknown[]) = rows.map((row) => col.fromRow(row));
+    const usable =
+      col.table === "app_users"
+        ? rows.filter((row) => isLoginRole(String(row.role ?? "")))
+        : rows;
+    (next[key] as unknown[]) = usable.map((row) => col.fromRow(row));
   }
+
+  const fileUrls: string[] = [];
+  for (const user of next.users) if (user.avatarUrl) fileUrls.push(user.avatarUrl);
+  for (const doc of next.documents) if (doc.fileDataUrl) fileUrls.push(doc.fileDataUrl);
+  for (const ticket of next.tickets) if (ticket.photoDataUrl) fileUrls.push(ticket.photoDataUrl);
+  for (const protocol of next.protocols) {
+    for (const url of protocol.photoDataUrls ?? []) fileUrls.push(url);
+  }
+  for (const property of next.properties) {
+    for (const url of property.photoUrls ?? []) fileUrls.push(url);
+  }
+  await warmSignedUrls(fileUrls);
+
   return next;
 }
 
@@ -119,7 +114,9 @@ export async function persistDiff(prev: DataState, next: DataState): Promise<str
     const { error } = await supabase.from(col.table).delete().in(col.idColumn, removedIds);
     if (!error) continue;
     if (isMissingRelation(error.message)) {
-      console.warn(`[supabase] missing table ${col.table} — skipping delete`);
+      console.warn(`[supabase] missing table ${col.table} — skipping`);
+      const message = `${col.table}: הטבלה חסרה בשרת`;
+      errors.push(message);
       continue;
     }
     console.warn(`[supabase] batch delete ${col.table}: ${error.message}`);
@@ -148,7 +145,9 @@ export async function persistDiff(prev: DataState, next: DataState): Promise<str
       const message = await upsertRow(supabase, col.table, col.toRow(prepared as never));
       if (message) {
         if (isMissingRelation(message)) {
-          console.warn(`[supabase] missing table ${col.table} — skipping upsert`);
+          const full = `${col.table}/${id}: הטבלה חסרה בשרת — הבקשה לא נשמרה`;
+          console.error(`[supabase] upsert ${full}`);
+          errors.push(full);
           continue;
         }
         const full = `${col.table}/${id}: ${message}`;
@@ -169,6 +168,13 @@ export function applyRealtimeChange(
 ): DataState {
   const col = COLLECTIONS.find((c) => c.table === table);
   if (!col) return state;
+  if (col.table === "app_users" && !isLoginRole(String(row.role ?? ""))) {
+    const dropId = String(row.id ?? "");
+    return {
+      ...state,
+      users: state.users.filter((u) => u.id !== dropId),
+    };
+  }
   const item = col.fromRow(row);
   const id = (col.getId as (i: unknown) => string)(item);
   const list = state[col.key] as unknown[];

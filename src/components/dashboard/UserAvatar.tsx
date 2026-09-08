@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSignedUrl } from "@/lib/supabase/files";
 import { cn } from "@/lib/utils";
 
 type AvatarSize = "sm" | "md" | "lg" | "xl";
@@ -29,6 +30,7 @@ export function UserAvatar({
   className,
   tone = "solid",
 }: UserAvatarProps) {
+  const signedUrl = useSignedUrl(avatarUrl);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const initial = name.trim().charAt(0) || "?";
   const base =
@@ -36,14 +38,14 @@ export function UserAvatar({
       ? "bg-gradient-to-br from-navy to-navy-light shadow-[0_8px_18px_-10px_rgba(20,40,90,0.55)]"
       : "bg-navy";
 
-  if (avatarUrl && failedUrl !== avatarUrl) {
+  if (signedUrl && failedUrl !== signedUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- data URLs / remote URLs in prototype
       <img
-        key={avatarUrl}
-        src={avatarUrl}
+        key={signedUrl}
+        src={signedUrl}
         alt={name}
-        onError={() => setFailedUrl(avatarUrl)}
+        onError={() => setFailedUrl(signedUrl)}
         className={cn(
           "shrink-0 rounded-full object-cover",
           sizeClass[size],

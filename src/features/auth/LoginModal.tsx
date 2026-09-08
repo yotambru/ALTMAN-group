@@ -4,18 +4,17 @@ import { useEffect, useState } from "react";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { RoleSelector } from "@/features/auth/RoleSelector";
 import {
-  authenticateUser,
-  beginFirstLogin,
-  demoCredentials,
-  hashPassword,
+  activateAccount,
+  checkFirstLoginEmail,
+  loadSessionUser,
+  resolveLoginEmail,
+  signInWithCredentials,
+  upgradeLegacyPassword,
   validateNewPassword,
 } from "@/lib/auth";
 import { routeByRole } from "@/lib/permissions";
-import { useData } from "@/lib/store";
 import { storage } from "@/lib/storage";
-import type { Role, User } from "@/types";
 import { useRouter } from "next/navigation";
 
 interface LoginModalProps {
@@ -25,31 +24,18 @@ interface LoginModalProps {
 
 type Step = "regular" | "first" | "set-password";
 
-function persistSession(account: User) {
-  storage.setSession({
-    role: account.role,
-    userId: account.id,
-    fullName: account.fullName,
-    landlordId: account.landlordId,
-    tenantId: account.tenantId,
-    professionalId: account.professionalId,
-    loginAt: new Date().toISOString(),
-  });
-}
-
 /** Login + first-time password setup (email-only invite). */
 export function LoginModal({ open, onClose }: LoginModalProps) {
   const router = useRouter();
-  const { users, ready, setUserPassword } = useData();
   const [step, setStep] = useState<Step>("regular");
-  const [role, setRole] = useState<Role>("manager");
-  const [identifier, setIdentifier] = useState(demoCredentials.manager);
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
-  const [pendingUser, setPendingUser] = useState<User | null>(null);
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [legacyPassword, setLegacyPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -69,7 +55,8 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
     setConfirmPassword("");
     setShowPassword(false);
     setError("");
-    setPendingUser(null);
+    setPendingEmail("");
+    setLegacyPassword("");
     setSubmitting(false);
   };
 
@@ -78,18 +65,13 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
     setTimeout(resetTransient, 200);
   };
 
-  const handleRoleChange = (next: Role) => {
-    setRole(next);
-    setError("");
-    if (!remember) setIdentifier(demoCredentials[next]);
-  };
-
   const goFirst = () => {
     setStep("first");
     setPassword("");
     setConfirmPassword("");
     setError("");
-    setPendingUser(null);
+    setPendingEmail("");
+    setLegacyPassword("");
     if (!remember) setIdentifier("");
   };
 
@@ -98,39 +80,64 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
     setPassword("");
     setConfirmPassword("");
     setError("");
-    setPendingUser(null);
-    if (!remember) setIdentifier(demoCredentials[role]);
+    setPendingEmail("");
+    setLegacyPassword("");
+    if (!remember) setIdentifier("");
   };
 
-  const enter = (account: User) => {
-    persistSession(account);
-    router.push(routeByRole[account.role]);
+  const enter = async () => {
+    const profile = await loadSessionUser();
+    if (!profile) {
+      setError("ההתחברות הצליחה אך לא נמצא פרופיל. פנו למשרד.");
+      return;
+    }
+    storage.setSession({
+      role: profile.role,
+      userId: profile.id,
+      fullName: profile.fullName,
+      landlordId: profile.landlordId,
+      tenantId: profile.tenantId,
+      professionalId: profile.professionalId,
+      loginAt: new Date().toISOString(),
+    });
+    router.push(routeByRole[profile.role]);
   };
 
   const handleRegularSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ready) return;
     setSubmitting(true);
-    const result = await authenticateUser(users, role, identifier, password);
-    setSubmitting(false);
+    setError("");
+    const result = await signInWithCredentials(identifier, password);
     if (!result.ok) {
+      setSubmitting(false);
+      if (result.needsNewPassword) {
+        setPendingEmail(resolveLoginEmail(identifier));
+        setLegacyPassword(password);
+        setPassword("");
+        setConfirmPassword("");
+        setStep("set-password");
+        setError(result.error);
+        return;
+      }
       setError(result.error);
       return;
     }
     if (remember) storage.setRememberedIdentifier(identifier.trim());
     else storage.clearRememberedIdentifier();
-    enter(result.user);
+    await enter();
+    setSubmitting(false);
   };
 
-  const handleFirstSubmit = (e: React.FormEvent) => {
+  const handleFirstSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ready) return;
-    const result = beginFirstLogin(users, identifier);
+    setSubmitting(true);
+    const result = await checkFirstLoginEmail(identifier);
+    setSubmitting(false);
     if (!result.ok) {
       setError(result.error);
       return;
     }
-    setPendingUser(result.user);
+    setPendingEmail(identifier.trim());
     setPassword("");
     setConfirmPassword("");
     setError("");
@@ -139,17 +146,25 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
 
   const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pendingUser) return;
     const invalid = validateNewPassword(password, confirmPassword);
     if (invalid) {
       setError(invalid);
       return;
     }
     setSubmitting(true);
-    const hash = await hashPassword(password);
-    setUserPassword(pendingUser.id, hash);
+    const email = pendingEmail || resolveLoginEmail(identifier);
+    const result = legacyPassword
+      ? await upgradeLegacyPassword(email, legacyPassword, password)
+      : await activateAccount(email, password);
+    if (!result.ok) {
+      setSubmitting(false);
+      setError(result.error);
+      return;
+    }
+    if (remember) storage.setRememberedIdentifier(email);
+    else storage.clearRememberedIdentifier();
+    await enter();
     setSubmitting(false);
-    enter({ ...pendingUser, passwordHash: hash });
   };
 
   const title =
@@ -163,14 +178,12 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
       ? "בחרו סיסמה לחשבון. מכאן והלאה תיכנסו איתה"
       : step === "first"
         ? "הזינו רק את המייל שקיבלתם מהמשרד"
-        : "בחרו את התפקיד והזדהו";
+        : "הזינו מייל וסיסמה";
 
   return (
     <Modal open={open} onClose={handleClose} title={title} description={description}>
       {step === "regular" && (
         <form onSubmit={handleRegularSubmit} className="space-y-5">
-          <RoleSelector value={role} onChange={handleRoleChange} />
-
           <IdentifierField
             value={identifier}
             onChange={(v) => {
@@ -203,13 +216,9 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
             זכור אותי
           </label>
 
-          <p className="text-center text-[0.7rem] leading-relaxed text-text-muted" dir="ltr">
-            demo: {demoCredentials[role]} / 1234
-          </p>
-
           {error && <ErrorText>{error}</ErrorText>}
 
-          <Button type="submit" fullWidth size="lg" disabled={!ready || submitting}>
+          <Button type="submit" fullWidth size="lg" disabled={submitting}>
             כניסה
           </Button>
 
@@ -238,7 +247,7 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
 
           {error && <ErrorText>{error}</ErrorText>}
 
-          <Button type="submit" fullWidth size="lg" disabled={!ready}>
+          <Button type="submit" fullWidth size="lg" disabled={submitting}>
             המשך
           </Button>
 
@@ -252,10 +261,10 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
         </form>
       )}
 
-      {step === "set-password" && pendingUser && (
+      {step === "set-password" && (
         <form onSubmit={handleSetPassword} className="space-y-5">
           <p className="rounded-xl bg-surface-muted px-3.5 py-3 text-sm text-text" dir="ltr">
-            {pendingUser.email}
+            {pendingEmail || identifier}
           </p>
 
           <PasswordField
@@ -307,8 +316,8 @@ function IdentifierField({
   type?: "text" | "email";
 }) {
   return (
-    <div className="relative">
-      <Mail className="pointer-events-none absolute inset-y-0 end-3.5 my-auto h-5 w-5 text-text-muted" />
+    <div className="relative" dir="ltr">
+      <Mail className="pointer-events-none absolute inset-y-0 start-3.5 my-auto h-5 w-5 text-text-muted" />
       <input
         type={type}
         value={value}
@@ -317,7 +326,7 @@ function IdentifierField({
         autoComplete="username"
         aria-label={label}
         dir="ltr"
-        className="w-full rounded-xl border bg-surface px-3.5 py-3 pe-10 text-sm text-text focus:border-orange focus:outline-none"
+        className="w-full rounded-xl border bg-surface py-3 ps-11 pe-3.5 text-sm text-text focus:border-orange focus:outline-none"
       />
     </div>
   );
@@ -341,13 +350,13 @@ function PasswordField({
   label?: string;
 }) {
   return (
-    <div className="relative">
-      <Lock className="pointer-events-none absolute inset-y-0 end-3.5 my-auto h-5 w-5 text-text-muted" />
+    <div className="relative" dir="ltr">
+      <Lock className="pointer-events-none absolute inset-y-0 start-3.5 my-auto h-5 w-5 text-text-muted" />
       <button
         type="button"
         onClick={onToggle}
         aria-label={show ? "הסתר סיסמה" : "הצג סיסמה"}
-        className="absolute inset-y-0 start-2 my-auto grid h-8 w-8 place-items-center rounded-full text-text-muted hover:bg-surface-muted"
+        className="absolute inset-y-0 end-2 my-auto grid h-8 w-8 place-items-center rounded-full text-text-muted hover:bg-surface-muted"
       >
         {show ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
       </button>
@@ -359,7 +368,7 @@ function PasswordField({
         autoComplete={autoComplete}
         aria-label={label}
         dir="ltr"
-        className="w-full rounded-xl border bg-surface px-3.5 py-3 pe-10 ps-10 text-sm text-text focus:border-orange focus:outline-none"
+        className="w-full rounded-xl border bg-surface py-3 ps-11 pe-11 text-sm text-text focus:border-orange focus:outline-none"
       />
     </div>
   );

@@ -1,12 +1,95 @@
+import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase/client";
 
 const BUCKET = "uploads";
+const SIGNED_TTL_SEC = 60 * 60 * 24 * 7;
+const BLOCKED_TYPES = /^(image\/svg|text\/html|application\/xhtml|text\/javascript|application\/javascript)/i;
+const BLOCKED_EXT = /^(svg|html|htm|js|mjs|xhtml)$/i;
+
+const signedCache = new Map<string, { url: string; exp: number }>();
 
 function extFromContentType(contentType: string): string {
   const raw = contentType.split("/")[1]?.split("+")[0] ?? "bin";
   if (raw === "jpeg") return "jpg";
-  if (raw === "svg") return "svg";
+  if (raw === "svg+xml" || raw === "svg") return "bin";
   return raw.replace(/[^a-z0-9]/gi, "") || "bin";
+}
+
+function isBlockedUpload(contentType: string, ext: string): boolean {
+  return BLOCKED_TYPES.test(contentType) || BLOCKED_EXT.test(ext);
+}
+
+export function storagePathFromUrl(url: string): string | null {
+  if (!url || url.startsWith("data:") || url.startsWith("blob:")) return null;
+  const cleaned = url.split("?")[0] ?? url;
+  const markers = [
+    `/storage/v1/object/public/${BUCKET}/`,
+    `/storage/v1/object/sign/${BUCKET}/`,
+    `/storage/v1/object/authenticated/${BUCKET}/`,
+  ];
+  for (const marker of markers) {
+    const index = cleaned.indexOf(marker);
+    if (index >= 0) return decodeURIComponent(cleaned.slice(index + marker.length));
+  }
+  if (!cleaned.includes("://") && !cleaned.startsWith("/")) return cleaned;
+  return null;
+}
+
+export function canonicalStorageUrl(url: string): string {
+  const path = storagePathFromUrl(url);
+  const supabase = getSupabase();
+  if (!path || !supabase) return url;
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) return url;
+  return `${base.replace(/\/$/, "")}/storage/v1/object/public/${BUCKET}/${path}`;
+}
+
+export async function signedUrlFor(url: string): Promise<string> {
+  if (!url || url.startsWith("data:") || url.startsWith("blob:")) return url;
+  const path = storagePathFromUrl(url);
+  if (!path) return url;
+  const now = Date.now();
+  const hit = signedCache.get(path);
+  if (hit && hit.exp > now + 60_000) return hit.url;
+  const supabase = getSupabase();
+  if (!supabase) return url;
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_TTL_SEC);
+  if (error || !data?.signedUrl) return url;
+  signedCache.set(path, { url: data.signedUrl, exp: now + SIGNED_TTL_SEC * 1000 });
+  return data.signedUrl;
+}
+
+export async function warmSignedUrls(urls: Array<string | undefined | null>): Promise<void> {
+  const unique = [...new Set(urls.filter((u): u is string => Boolean(u)))];
+  await Promise.all(unique.map((url) => signedUrlFor(url)));
+}
+
+export function cachedSignedUrl(url: string | undefined | null): string | undefined {
+  if (!url) return undefined;
+  const path = storagePathFromUrl(url);
+  if (!path) return url;
+  const hit = signedCache.get(path);
+  return hit && hit.exp > Date.now() ? hit.url : url;
+}
+
+export function useSignedUrl(url: string | undefined | null): string | undefined {
+  const [src, setSrc] = useState<string | undefined>(() => cachedSignedUrl(url) ?? url ?? undefined);
+  /* eslint-disable react-hooks/set-state-in-effect -- resolve private storage URLs */
+  useEffect(() => {
+    if (!url) {
+      setSrc(undefined);
+      return;
+    }
+    const cached = cachedSignedUrl(url);
+    if (cached && cached !== url) {
+      setSrc(cached);
+      return;
+    }
+    setSrc(cached ?? url);
+    void signedUrlFor(url).then(setSrc);
+  }, [url]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  return src;
 }
 
 function parseDataUrl(dataUrl: string): { blob: Blob; contentType: string; ext: string } | null {
@@ -16,6 +99,8 @@ function parseDataUrl(dataUrl: string): { blob: Blob; contentType: string; ext: 
   const meta = trimmed.slice(5, comma);
   if (!/;base64/i.test(meta)) return null;
   const contentType = meta.split(";")[0] || "application/octet-stream";
+  const ext = extFromContentType(contentType);
+  if (isBlockedUpload(contentType, ext)) return null;
   try {
     const binary = atob(trimmed.slice(comma + 1));
     const bytes = new Uint8Array(binary.length);
@@ -95,13 +180,17 @@ async function compressToJpeg(source: Blob, maxEdge: number, quality: number): P
 async function putObject(path: string, body: Blob, contentType: string): Promise<string | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
+  const ext = path.split(".").pop() ?? "";
+  if (isBlockedUpload(contentType, ext)) return null;
   const { error } = await supabase.storage.from(BUCKET).upload(path, body, {
     upsert: true,
     contentType,
-    cacheControl: "0",
+    cacheControl: "3600",
   });
   if (error) return null;
-  return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  const canonical = canonicalStorageUrl(path);
+  await signedUrlFor(canonical);
+  return canonical;
 }
 
 /** Upload a data URL to Storage and return the public URL. Leaves http(s) URLs as-is. */

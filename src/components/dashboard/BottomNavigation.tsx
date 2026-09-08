@@ -27,12 +27,15 @@ export function BottomNavigation({
 }: BottomNavigationProps) {
   return (
     <div className="lg:hidden">
-      <div className="h-[5.5rem] shrink-0" aria-hidden />
+      <div
+        className="h-[calc(6.75rem+env(safe-area-inset-bottom))] shrink-0"
+        aria-hidden
+      />
       <nav
         aria-label="ניווט ראשי"
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-[var(--z-nav)] mx-auto w-full max-w-[30rem] px-4 pb-[calc(env(safe-area-inset-bottom)+0.55rem)]"
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-[var(--z-nav)] mx-auto w-full max-w-[30rem] px-1.5 pb-0"
       >
-        <div className="liquid-glass-bar pointer-events-auto flex items-stretch justify-around gap-0.5 px-1.5 py-1.5 backdrop-blur-[28px] backdrop-saturate-150">
+        <div className="liquid-glass-bar pointer-events-auto flex items-stretch justify-around gap-1 px-2 pt-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] backdrop-blur-[48px] backdrop-saturate-150 backdrop-brightness-110">
           {items.map((tab) => {
             const isActive = active === tab.id;
             return (
@@ -42,14 +45,14 @@ export function BottomNavigation({
                 onClick={() => onSelect(tab.id)}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "relative z-10 flex flex-1 flex-col items-center gap-0.5 rounded-full py-2 text-[0.66rem] font-semibold transition-colors",
-                  isActive ? "liquid-glass-chip text-orange" : "text-navy/50 hover:text-navy/75",
+                  "relative z-10 flex flex-1 flex-col items-center gap-1 rounded-full py-2.5 text-[0.72rem] font-semibold transition-colors",
+                  isActive ? "liquid-glass-chip text-orange backdrop-blur-md" : "text-navy/50 hover:text-navy/75",
                 )}
               >
                 <span className="relative">
-                  <tab.icon className="h-6 w-6" strokeWidth={isActive ? 2.2 : 1.7} />
+                  <tab.icon className="h-7 w-7" strokeWidth={isActive ? 2.2 : 1.7} />
                   {tab.badge != null && tab.badge > 0 && (
-                    <span className="absolute -end-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-orange px-1 text-[0.625rem] font-bold text-white">
+                    <span className="absolute -end-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-orange px-1 text-[0.625rem] font-bold text-white">
                       {tab.badge}
                     </span>
                   )}

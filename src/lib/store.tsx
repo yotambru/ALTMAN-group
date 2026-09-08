@@ -8,7 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { seedState, type DataState } from "@/lib/data-state";
+import { emptyState, seedState, type DataState } from "@/lib/data-state";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   applyRealtimeChange,
   fetchAll,
@@ -251,7 +252,6 @@ interface DataContextValue extends DataState {
     leaseId: string;
     userId?: string;
   };
-  setUserPassword: (userId: string, passwordHash: string) => void;
 
   // properties / leases / people
   updateUser: (id: string, patch: Partial<User>) => void;
@@ -371,7 +371,9 @@ function withPropertyPhotos(properties: Property[], documents: AppDocument[]): P
 }
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<DataState>(seedState);
+  const [state, setState] = useState<DataState>(() =>
+    isSupabaseConfigured() ? emptyState() : seedState(),
+  );
   const [ready, setReady] = useState(false);
   const [actor, setActorState] = useState<Actor>(DEFAULT_ACTOR);
   const [persistError, setPersistError] = useState<string | null>(null);
@@ -380,13 +382,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const prevRef = useRef<DataState | null>(null);
   const persistChainRef = useRef(Promise.resolve());
   const persistInFlightRef = useRef(false);
+  const persistEnabledRef = useRef(false);
 
   useEffect(() => {
+    const supabase = getSupabase();
+    /* eslint-disable react-hooks/set-state-in-effect -- hydrate from Auth / local seed */
+    if (!supabase) {
+      const local = seedState();
+      prevRef.current = local;
+      persistEnabledRef.current = false;
+      setReady(true);
+      return;
+    }
+
     let cancelled = false;
-    void (async () => {
+    let generation = 0;
+    const applySession = async (hasSession: boolean) => {
+      const mine = ++generation;
+      if (cancelled) return;
+      persistEnabledRef.current = false;
+      if (!hasSession) {
+        const empty = emptyState();
+        setState(empty);
+        prevRef.current = empty;
+        setReady(true);
+        return;
+      }
+      setReady(false);
       try {
         const remote = await fetchAll();
-        if (cancelled) return;
+        if (cancelled || mine !== generation) return;
         if (remote) {
           const merged: DataState = {
             ...remote,
@@ -396,24 +421,42 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           };
           const healed = repairMissingLeases(merged);
           setState(healed);
-          // Keep prev as the raw remote snapshot so healed leases get persisted.
           prevRef.current = merged;
         } else {
-          prevRef.current = seedState();
+          const empty = emptyState();
+          setState(empty);
+          prevRef.current = empty;
         }
       } catch {
-        if (!cancelled) prevRef.current = seedState();
+        if (cancelled || mine !== generation) return;
+        const empty = emptyState();
+        setState(empty);
+        prevRef.current = empty;
       } finally {
-        if (!cancelled) setReady(true);
+        if (!cancelled && mine === generation && hasSession) {
+          persistEnabledRef.current = true;
+          setReady(true);
+        }
       }
-    })();
+    };
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") return;
+      void applySession(Boolean(session));
+    });
+
     return () => {
       cancelled = true;
+      subscription.unsubscribe();
     };
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   useEffect(() => {
     if (!ready) return;
+    if (!persistEnabledRef.current) return;
     if (!prevRef.current) return;
     const next = state;
     persistChainRef.current = persistChainRef.current
@@ -874,17 +917,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
 
       return { tenantId, leaseId, userId };
-    },
-    [makeLog],
-  );
-
-  const setUserPassword = useCallback<DataContextValue["setUserPassword"]>(
-    (userId, passwordHash) => {
-      setState((p) => ({
-        ...p,
-        users: p.users.map((it) => (it.id === userId ? { ...it, passwordHash } : it)),
-        activityLog: [makeLog("קביעת סיסמת כניסה", "user", userId), ...p.activityLog],
-      }));
     },
     [makeLog],
   );
@@ -1762,7 +1794,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     log,
     addClient,
     addTenant,
-    setUserPassword,
     updateUser,
     updateProperty,
     setPropertyPhotos,

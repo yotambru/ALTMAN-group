@@ -30,7 +30,6 @@ export const users: User[] = [
   { id: "u_assistant", fullName: "נועה לוי", role: "assistant", email: "noa@altmangroup.co.il", phone: "050-9000002" },
   { id: "u_landlord", fullName: "דניאל כהן", role: "landlord", email: "daniel@example.com", phone: "050-1234567", landlordId: "l_1" },
   { id: "u_tenant", fullName: "דני שמעוני", role: "tenant", email: "danny@example.com", phone: "058-5556677", tenantId: "t_5" },
-  { id: "u_professional", fullName: "יגאל הנדימן", role: "professional", email: "yigal@pro.co.il", phone: "052-7778899", professionalId: "pr_1" },
 ];
 
 /** Default demo account per role (used for the prototype login). */
@@ -39,7 +38,6 @@ export const currentUsers: Record<Role, User> = {
   assistant: users[1],
   landlord: users[2],
   tenant: users[3],
-  professional: users[4],
 };
 
 export const landlords: Landlord[] = [

@@ -6,7 +6,7 @@ for **manager**, **landlord**, and **tenant** — built with Next.js, TypeScript
 Tailwind CSS.
 
 > Domain data is stored in **Supabase** (Postgres + Storage + Realtime) so every
-> device sees the same portfolio. Login is still demo credentials (`manager` / `1234`).
+> device sees the same portfolio. Login is **Supabase Auth** with role-based RLS.
 
 ---
 
@@ -18,7 +18,7 @@ Tailwind CSS.
 - **lucide-react** for line icons
 - **Assistant** Hebrew font via `next/font/google`
 - **Supabase** for shared Postgres, file storage, and live updates
-- Demo login session in `localStorage` (`src/lib/storage.ts`)
+- **Supabase Auth** for login (JWT in the browser client; role comes from `app_users`)
 - **ESLint** (+ TypeScript) for validation
 
 ## Getting started
@@ -36,14 +36,17 @@ Without Supabase keys the UI still runs on in-memory seed data (refresh resets i
 1. Create a free project at [supabase.com](https://supabase.com) — region **Frankfurt (eu-central-1)**.
 2. Copy Project URL + `anon` key into `.env.local` (see `.env.example`).
    Add the `service_role` key too (seed script only — never ship it to the browser).
-3. In the SQL editor, run [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql), then later migrations if the project already existed (`002_user_password.sql`, `003_lease_rent_history.sql`, `004_property_photos.sql`).
-4. Seed the demo portfolio:
+3. In the SQL editor, run the migrations in order (`001_init.sql` … `010_auth_rls.sql`).
+   In Auth settings, turn **off** “Allow new users to sign up” (accounts are
+   created by the office / seed script).
+4. Seed the demo portfolio **and** Auth users:
 
 ```bash
 npm run seed
 ```
 
-5. For production, add the same `NEXT_PUBLIC_SUPABASE_*` variables in Vercel.
+5. For production, add `NEXT_PUBLIC_SUPABASE_*` **and** `SUPABASE_SERVICE_ROLE_KEY`
+   in Vercel (the service role is server-only: seed + `/api/auth/account`).
 
 Other commands:
 
@@ -69,17 +72,20 @@ npm run seed         # push mock-data.ts into Supabase
 | `/tenant`      | Tenant dashboard (דשבורד שוכר)      | `tenant`   |
 | `/professional`| Professional dashboard              | `professional` |
 
-**Mock login:** pick a role, then sign in with that role's username and password `1234`:
+**Login:** seeded demo accounts (after `npm run seed`) use email or the short
+username, and the seed password (`SEED_DEMO_PASSWORD`, default `Altman1234`):
 
-| Role | Username | Password |
-| ---- | -------- | -------- |
-| מנהל | `manager` | `1234` |
-| עוזר מנהל | `assistant` | `1234` |
-| משכיר | `landlord` | `1234` |
-| שוכר | `tenant` | `1234` |
-| בעל מקצוע | `professional` | `1234` |
+| Role | Username | Email | Password |
+| ---- | -------- | ----- | -------- |
+| מנהל | `manager` | `avi@altmangroup.co.il` | seed password |
+| עוזר מנהל | `assistant` | `noa@altmangroup.co.il` | seed password |
+| משכיר | `landlord` | `daniel@example.com` | seed password |
+| שוכר | `tenant` | `danny@example.com` | seed password |
 
-Dashboard URLs require a valid session; unauthenticated visits redirect to `/`.
+New landlord/tenant accounts opened by the office use **כניסה פעם ראשונה** with
+their email, then set a password (minimum 8 characters).
+
+Dashboard URLs require a valid Auth session; unauthenticated visits redirect to `/`.
 
 ## Native apps (Capacitor)
 
@@ -142,7 +148,7 @@ src/
 
 ## Implemented prototype behavior
 
-- Role selection with a clear selected state, mock login, remember-me (localStorage).
+- Role-based login (Supabase Auth) with remember-me for the identifier only.
 - Navigation between all dashboards; slide-in mobile menu with logout.
 - Tenant bottom navigation switching Dashboard / Notifications / Profile.
 - Maintenance-ticket modal that persists submitted tickets to Supabase.
@@ -153,18 +159,16 @@ src/
 
 ## Current limitations
 
-- Mock authentication only — no real auth, sessions, or authorization.
-- RLS is open to the anon key (same trust model as the public demo login).
-- Existing per-browser `localStorage` data is not migrated.
 - Offline edits are not queued; the native apps need a network connection.
-- Property imagery uses local SVG placeholders, not real photos.
+- Property imagery uses local SVG placeholders when no photo was uploaded.
 - No tests yet.
+- Storage objects are private (signed URLs) but any authenticated user can
+  currently read the `uploads` bucket; path-scoped storage policies are next.
 
 ## Recommended next phase
 
-1. Real authentication & role-based RLS (replace demo `useSession` / `auth.ts`).
-2. Tighten Storage to private buckets + signed URLs.
-3. Real e-signature integration for the document vault.
-4. Push notifications.
-5. Payments / rent collection.
+1. Path-scoped Storage policies (ID photos / leases only for the owning party).
+2. Real e-signature integration for the document vault.
+3. Push notifications.
+4. Payments / rent collection.
 ```

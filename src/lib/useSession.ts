@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { storage, type Session } from "@/lib/storage";
-import { currentUsers } from "@/lib/mock-data";
+import { loadSessionUser, signOutSession } from "@/lib/auth";
 import { routeByRole } from "@/lib/permissions";
 import { useData } from "@/lib/store";
-import type { Role, User } from "@/types";
+import { isLoginRole, type Role, type User } from "@/types";
 
 function sessionFromUser(user: User): Session {
   return {
@@ -20,8 +20,15 @@ function sessionFromUser(user: User): Session {
   };
 }
 
+const EMPTY_SESSION: Session = {
+  role: "tenant",
+  userId: "",
+  fullName: "",
+  loginAt: "",
+};
+
 /**
- * Reads the session for a dashboard and syncs the store's acting user.
+ * Reads the authenticated session for a dashboard and syncs the store's acting user.
  * `allowed` is the role (or roles) permitted on the route. Unauthenticated
  * visitors are sent back to login; a session for another role is redirected
  * to that role's dashboard.
@@ -35,37 +42,56 @@ export function useSession(allowed: Role | Role[]): {
   const router = useRouter();
   const { users, setActor, ready: dataReady } = useData();
   const allowedRoles = Array.isArray(allowed) ? allowed : [allowed];
-  const primary = allowedRoles[0];
 
-  const fallback: Session = sessionFromUser(currentUsers[primary]);
-  const [session, setSession] = useState<Session>(fallback);
+  const [session, setSession] = useState<Session>(EMPTY_SESSION);
   const [ready, setReady] = useState(false);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!dataReady) return;
-    const stored = storage.getSession();
-    if (!stored) {
-      router.replace("/");
-      return;
-    }
-    if (!allowedRoles.includes(stored.role)) {
-      router.replace(routeByRole[stored.role]);
-      return;
-    }
-    setSession(stored);
-    setActor({ id: stored.userId, name: stored.fullName, role: stored.role });
-    setReady(true);
+    let cancelled = false;
+    void (async () => {
+      const profile = await loadSessionUser();
+      if (cancelled) return;
+      if (!profile) {
+        storage.clearSession();
+        router.replace("/");
+        return;
+      }
+      if (!isLoginRole(profile.role)) {
+        storage.clearSession();
+        void signOutSession();
+        router.replace("/");
+        return;
+      }
+      if (!allowedRoles.includes(profile.role)) {
+        router.replace(routeByRole[profile.role]);
+        return;
+      }
+      const next = sessionFromUser(profile);
+      storage.setSession(next);
+      setSession(next);
+      setActor({ id: profile.id, name: profile.fullName, role: profile.role });
+      if (dataReady) setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataReady]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
-  const user =
-    users.find((u) => u.id === session.userId) ?? currentUsers[session.role];
+  const user = users.find((u) => u.id === session.userId) ?? {
+    id: session.userId,
+    fullName: session.fullName,
+    role: session.role,
+    landlordId: session.landlordId,
+    tenantId: session.tenantId,
+    professionalId: session.professionalId,
+  };
 
   const logout = () => {
     storage.clearSession();
-    router.push("/");
+    void signOutSession().finally(() => {
+      router.push("/");
+    });
   };
 
   return { session, user, ready, logout };

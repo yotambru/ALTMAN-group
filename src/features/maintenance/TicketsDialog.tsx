@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, FileText, Receipt, Upload, UserCheck, Wrench } from "lucide-react";
 import { SearchField } from "@/components/dashboard/ClientRow";
+import { useSignedUrl } from "@/lib/supabase/files";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -197,6 +198,8 @@ function TicketRow({
   const [uploading, setUploading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const invoiceInputRef = useRef<HTMLInputElement>(null);
+  const photoUrl = useSignedUrl(ticket.photoDataUrl);
+  const invoiceUrl = useSignedUrl(invoice?.fileDataUrl);
 
   useEffect(() => {
     if (!highlighted) return;
@@ -266,9 +269,9 @@ function TicketRow({
       {expanded && (
         <div className="mt-3 space-y-3 border-t border-border pt-3">
           {ticket.description && <p className="text-sm text-text">{ticket.description}</p>}
-          {ticket.photoDataUrl && (
+          {photoUrl && (
             /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={ticket.photoDataUrl} alt="תמונת תקלה" className="max-h-40 rounded-xl object-cover" />
+            <img src={photoUrl} alt="תמונת תקלה" className="max-h-40 rounded-xl object-cover" />
           )}
           {ticket.scheduledAt && (
             <p className="flex items-center gap-1.5 text-xs text-text-muted">
@@ -289,9 +292,9 @@ function TicketRow({
                     <p className="truncate text-sm font-semibold text-navy">{invoice.name}</p>
                     <p className="text-[0.7rem] text-text-muted">{formatDateDots(invoice.createdAt)}</p>
                   </div>
-                  {invoice.fileDataUrl && (
+                  {invoiceUrl && (
                     <a
-                      href={invoice.fileDataUrl}
+                      href={invoiceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-bold text-orange hover:bg-orange-soft"

@@ -4,7 +4,13 @@
  * The client-side data store (`src/lib/store.tsx`) syncs them to Supabase.
  */
 
-export type Role = "manager" | "assistant" | "landlord" | "tenant" | "professional";
+export const LOGIN_ROLES = ["manager", "assistant", "landlord", "tenant"] as const;
+
+export type Role = (typeof LOGIN_ROLES)[number];
+
+export function isLoginRole(value: string): value is Role {
+  return (LOGIN_ROLES as readonly string[]).includes(value);
+}
 
 export interface User {
   id: string;
@@ -17,12 +23,8 @@ export interface User {
   landlordId?: string;
   tenantId?: string;
   professionalId?: string;
-  /**
-   * SHA-256 hex of the login password.
-   * Missing / empty means the account was opened by email only and still
-   * needs a first-time password setup.
-   */
-  passwordHash?: string;
+  /** Linked Supabase Auth user (set after the account is activated). */
+  authUserId?: string;
 }
 
 /**

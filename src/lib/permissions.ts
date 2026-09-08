@@ -82,14 +82,11 @@ const TENANT: Capability[] = [
   "tickets.viewOwn",
 ];
 
-const PROFESSIONAL: Capability[] = ["tickets.viewOwn"];
-
 const MATRIX: Record<Role, Capability[]> = {
   manager: MANAGER,
   assistant: ASSISTANT,
   landlord: LANDLORD,
   tenant: TENANT,
-  professional: PROFESSIONAL,
 };
 
 export function can(role: Role, capability: Capability): boolean {
@@ -101,7 +98,6 @@ export const roleLabels: Record<Role, string> = {
   assistant: "עוזר מנהל",
   landlord: "משכיר",
   tenant: "שוכר",
-  professional: "בעל מקצוע",
 };
 
 export const routeByRole: Record<Role, string> = {
@@ -109,5 +105,4 @@ export const routeByRole: Record<Role, string> = {
   assistant: "/manager",
   landlord: "/landlord",
   tenant: "/tenant",
-  professional: "/professional",
 };

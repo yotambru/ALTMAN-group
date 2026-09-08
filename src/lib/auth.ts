@@ -1,17 +1,17 @@
 import { currentUsers } from "@/lib/mock-data";
-import type { Role, User } from "@/types";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { isLoginRole, type Role, type User } from "@/types";
 
-/** Simple prototype credentials — one username per role, shared password. */
-export const DEMO_PASSWORD = "1234";
+export const MIN_PASSWORD_LENGTH = 8;
 
-export const MIN_PASSWORD_LENGTH = 4;
+const INVALID_CREDENTIALS = "שם משתמש או סיסמה שגויים.";
 
-export const demoCredentials: Record<Role, string> = {
-  manager: "manager",
-  assistant: "assistant",
-  landlord: "landlord",
-  tenant: "tenant",
-  professional: "professional",
+/** Username shortcuts → seeded account emails (password is never stored here). */
+const LOGIN_ALIASES: Record<string, string> = {
+  manager: "avi@altmangroup.co.il",
+  assistant: "noa@altmangroup.co.il",
+  landlord: "daniel@example.com",
+  tenant: "danny@example.com",
 };
 
 export function normalizeEmail(value: string): string {
@@ -41,99 +41,14 @@ export function findUserByEmail(users: User[], email: string): User | undefined 
   return users.find((u) => u.email && normalizeEmail(u.email) === needle);
 }
 
-export function needsPasswordSetup(user: User): boolean {
-  return !user.passwordHash;
+export function resolveLoginEmail(identifier: string): string {
+  const raw = identifier.trim().toLowerCase();
+  if (!raw) return "";
+  if (LOGIN_ALIASES[raw]) return LOGIN_ALIASES[raw];
+  return raw;
 }
 
-export async function hashPassword(password: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password));
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-export function authenticateDemo(
-  role: Role,
-  identifier: string,
-  password: string,
-): { ok: true; user: User } | { ok: false; error: string } {
-  const username = identifier.trim().toLowerCase();
-  const expected = demoCredentials[role];
-  const demoUser = currentUsers[role];
-  const demoEmail = demoUser.email ? normalizeEmail(demoUser.email) : "";
-
-  if (!username || !password) {
-    return { ok: false, error: "יש להזין שם משתמש וסיסמה." };
-  }
-
-  const matchesIdentifier = username === expected || (demoEmail !== "" && username === demoEmail);
-  if (!matchesIdentifier || password !== DEMO_PASSWORD) {
-    return {
-      ok: false,
-      error: "שם משתמש או סיסמה שגויים לתפקיד שנבחר.",
-    };
-  }
-
-  return { ok: true, user: demoUser };
-}
-
-export async function authenticateUser(
-  users: User[],
-  role: Role,
-  identifier: string,
-  password: string,
-): Promise<{ ok: true; user: User } | { ok: false; error: string }> {
-  const demo = authenticateDemo(role, identifier, password);
-  if (demo.ok) {
-    const live =
-      users.find((u) => u.id === demo.user.id) ??
-      findUserByEmail(users, identifier);
-    if (live) return { ok: true, user: live };
-    // Staff demo accounts stay usable; deleted landlord/tenant logins must not.
-    if (role === "manager" || role === "assistant") {
-      return { ok: true, user: demo.user };
-    }
-    return { ok: false, error: "שם משתמש או סיסמה שגויים לתפקיד שנבחר." };
-  }
-
-  if (!identifier.trim() || !password) {
-    return { ok: false, error: "יש להזין מייל וסיסמה." };
-  }
-
-  const user = findUserByEmail(users, identifier);
-  if (!user || user.role !== role) {
-    return { ok: false, error: "שם משתמש או סיסמה שגויים לתפקיד שנבחר." };
-  }
-  if (needsPasswordSetup(user)) {
-    return { ok: false, error: "יש להפעיל את החשבון דרך «כניסה פעם ראשונה»." };
-  }
-
-  const hash = await hashPassword(password);
-  if (hash !== user.passwordHash) {
-    return { ok: false, error: "שם משתמש או סיסמה שגויים לתפקיד שנבחר." };
-  }
-  return { ok: true, user };
-}
-
-export function beginFirstLogin(
-  users: User[],
-  email: string,
-): { ok: true; user: User } | { ok: false; error: string } {
-  if (!isValidEmail(email)) {
-    return { ok: false, error: "יש להזין כתובת מייל תקינה." };
-  }
-  const user = findUserByEmail(users, email);
-  if (!user) {
-    return { ok: false, error: "לא נמצא חשבון הממתין להפעלה עבור המייל הזה." };
-  }
-  if (!needsPasswordSetup(user)) {
-    return { ok: false, error: "החשבון כבר הופעל. היכנסו עם הסיסמה." };
-  }
-  return { ok: true, user };
-}
-
-export function validateNewPassword(
-  password: string,
-  confirm: string,
-): string | null {
+export function validateNewPassword(password: string, confirm: string): string | null {
   if (password.length < MIN_PASSWORD_LENGTH) {
     return `הסיסמה חייבת להכיל לפחות ${MIN_PASSWORD_LENGTH} תווים.`;
   }
@@ -142,3 +57,150 @@ export function validateNewPassword(
   }
   return null;
 }
+
+async function accountApi(
+  action: "pending" | "activate" | "legacy" | "upgrade",
+  email: string,
+  password?: string,
+  newPassword?: string,
+): Promise<{ ok: boolean; error?: string; needsNewPassword?: boolean }> {
+  const response = await fetch("/api/auth/account", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, email, password, newPassword }),
+  });
+  try {
+    return (await response.json()) as { ok: boolean; error?: string; needsNewPassword?: boolean };
+  } catch {
+    return { ok: false, error: "השרת לא זמין. נסו שוב." };
+  }
+}
+
+export async function signInWithCredentials(
+  identifier: string,
+  password: string,
+): Promise<{ ok: true; email: string } | { ok: false; error: string; needsNewPassword?: boolean }> {
+  if (!identifier.trim() || !password) {
+    return { ok: false, error: "יש להזין מייל וסיסמה." };
+  }
+
+  const email = resolveLoginEmail(identifier);
+  if (!email.includes("@")) {
+    return { ok: false, error: INVALID_CREDENTIALS };
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) {
+    if (process.env.NODE_ENV === "development") {
+      return localDevSignIn(email, password);
+    }
+    return { ok: false, error: "אין חיבור לשרת. נסו שוב מאוחר יותר." };
+  }
+
+  const first = await supabase.auth.signInWithPassword({ email, password });
+  if (!first.error) return { ok: true, email };
+
+  const migrated = await accountApi("legacy", email, password);
+  if (migrated.needsNewPassword) {
+    return { ok: false, error: migrated.error ?? INVALID_CREDENTIALS, needsNewPassword: true };
+  }
+  if (migrated.ok) {
+    const retry = await supabase.auth.signInWithPassword({ email, password });
+    if (!retry.error) return { ok: true, email };
+  }
+
+  return { ok: false, error: INVALID_CREDENTIALS };
+}
+
+export async function checkFirstLoginEmail(
+  email: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!isValidEmail(email)) {
+    return { ok: false, error: "יש להזין כתובת מייל תקינה." };
+  }
+  const result = await accountApi("pending", normalizeEmail(email));
+  if (!result.ok) return { ok: false, error: result.error ?? "לא ניתן להפעיל את החשבון." };
+  return { ok: true };
+}
+
+export async function upgradeLegacyPassword(
+  email: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const result = await accountApi("upgrade", normalizeEmail(email), currentPassword, newPassword);
+  if (!result.ok) return { ok: false, error: result.error ?? "עדכון הסיסמה נכשל." };
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, error: "אין חיבור לשרת." };
+  const { error } = await supabase.auth.signInWithPassword({
+    email: normalizeEmail(email),
+    password: newPassword,
+  });
+  if (error) return { ok: false, error: INVALID_CREDENTIALS };
+  return { ok: true };
+}
+
+export async function activateAccount(
+  email: string,
+  password: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const result = await accountApi("activate", normalizeEmail(email), password);
+  if (!result.ok) return { ok: false, error: result.error ?? "הפעלת החשבון נכשלה." };
+
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, error: "אין חיבור לשרת." };
+  const { error } = await supabase.auth.signInWithPassword({
+    email: normalizeEmail(email),
+    password,
+  });
+  if (error) return { ok: false, error: INVALID_CREDENTIALS };
+  return { ok: true };
+}
+
+export async function signOutSession(): Promise<void> {
+  const supabase = getSupabase();
+  if (supabase) await supabase.auth.signOut();
+}
+
+export async function loadSessionUser(): Promise<User | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const authUser = authData.user;
+  if (authError || !authUser) return null;
+
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("id, full_name, role, email, phone, avatar_url, landlord_id, tenant_id, professional_id")
+    .eq("auth_user_id", authUser.id)
+    .maybeSingle();
+  if (error || !data) return null;
+  const role = String(data.role ?? "");
+  if (!isLoginRole(role)) return null;
+  return {
+    id: String(data.id),
+    fullName: String(data.full_name ?? ""),
+    role,
+    email: data.email ? String(data.email) : undefined,
+    phone: data.phone ? String(data.phone) : undefined,
+    avatarUrl: data.avatar_url ? String(data.avatar_url) : undefined,
+    landlordId: data.landlord_id ? String(data.landlord_id) : undefined,
+    tenantId: data.tenant_id ? String(data.tenant_id) : undefined,
+    professionalId: data.professional_id ? String(data.professional_id) : undefined,
+  };
+}
+
+function localDevSignIn(
+  email: string,
+  password: string,
+): { ok: true; email: string } | { ok: false; error: string } {
+  if (!isSupabaseConfigured() && password.length >= MIN_PASSWORD_LENGTH) {
+    const match = (Object.values(currentUsers) as User[]).find(
+      (user) => user.email && normalizeEmail(user.email) === email,
+    );
+    if (match) return { ok: true, email };
+  }
+  return { ok: false, error: INVALID_CREDENTIALS };
+}
+
+export type { Role };

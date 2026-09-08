@@ -1,4 +1,7 @@
+"use client";
+
 import type { PropertyImageId } from "@/types";
+import { useSignedUrl } from "@/lib/supabase/files";
 import { cn } from "@/lib/utils";
 
 interface PropertyImageProps {
@@ -35,7 +38,8 @@ export function PropertyImage({
   rounded = "rounded-xl",
   muted = false,
 }: PropertyImageProps) {
-  const photo = src?.trim();
+  const signed = useSignedUrl(src);
+  const photo = signed?.trim();
   return (
     <div className={cn("relative overflow-hidden bg-[#f3f0ea]", rounded, className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}

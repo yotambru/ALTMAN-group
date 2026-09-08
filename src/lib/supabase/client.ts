@@ -17,8 +17,14 @@ export function getSupabase(): SupabaseClient | null {
     browserClient = null;
     return null;
   }
+  const inBrowser = typeof window !== "undefined";
   browserClient = createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: inBrowser,
+      autoRefreshToken: inBrowser,
+      detectSessionInUrl: false,
+      storage: inBrowser ? window.localStorage : undefined,
+    },
   });
   return browserClient;
 }
@@ -33,5 +39,35 @@ export function createServiceClient(): SupabaseClient {
   }
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    // Scripts may run on Node 20, which has no native WebSocket. Seed/auth admin
+    // only use PostgREST + Auth — they never subscribe to Realtime.
+    realtime:
+      typeof WebSocket === "undefined"
+        ? { transport: ClosedWebSocket }
+        : {},
   });
+}
+
+/** Minimal WebSocket stub so supabase-js can construct a client without `ws`. */
+class ClosedWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+  readonly CONNECTING = 0;
+  readonly OPEN = 1;
+  readonly CLOSING = 2;
+  readonly CLOSED = 3;
+  readyState = 3;
+  url = "";
+  protocol = "";
+  binaryType = "blob";
+  onopen = null;
+  onmessage = null;
+  onclose = null;
+  onerror = null;
+  close(): void {}
+  send(): void {}
+  addEventListener(): void {}
+  removeEventListener(): void {}
 }

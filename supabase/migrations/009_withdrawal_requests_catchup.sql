@@ -1,5 +1,5 @@
--- Immediate rent-withdrawal requests (משיכה מיידית).
--- Landlord asks to draw part of a property's upcoming rent; manager approves or rejects.
+-- Catchup: live project never received 007/008, so withdrawals vanish after reload.
+-- Idempotent: safe to run on a project that already has the table.
 
 create table if not exists public.withdrawal_requests (
   id text primary key,
@@ -37,3 +37,6 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+alter table public.withdrawal_requests
+  alter column property_id drop not null;

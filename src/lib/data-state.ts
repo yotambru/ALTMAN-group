@@ -59,6 +59,29 @@ export interface DataState {
   withdrawals: WithdrawalRequest[];
 }
 
+export function emptyState(): DataState {
+  return {
+    users: [],
+    landlords: [],
+    properties: [],
+    tenants: [],
+    leases: [],
+    payments: [],
+    expenses: [],
+    tickets: [],
+    documents: [],
+    notifications: [],
+    professionals: [],
+    tasks: [],
+    chatThreads: [],
+    chatMessages: [],
+    onboardings: [],
+    protocols: [],
+    activityLog: [],
+    withdrawals: [],
+  };
+}
+
 export function seedState(): DataState {
   return {
     users: seedUsers,

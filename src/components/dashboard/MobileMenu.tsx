@@ -17,6 +17,7 @@ import {
 import { Logo } from "@/components/brand/Logo";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { storage } from "@/lib/storage";
+import { signOutSession } from "@/lib/auth";
 import { roleLabels } from "@/lib/permissions";
 import type { Role } from "@/types";
 import { Portal } from "@/components/ui/Portal";
@@ -71,7 +72,9 @@ export function MobileMenu({
 
   const handleLogout = () => {
     storage.clearSession();
-    router.push("/");
+    void signOutSession().finally(() => {
+      router.push("/");
+    });
   };
 
   return (

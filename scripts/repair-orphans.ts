@@ -37,8 +37,8 @@ const ALL_UTILITIES = ["arnona", "water", "electricity", "gas", "vaad"] as const
 
 function restBase(): { url: string; key: string } {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error("Missing Supabase URL or key in .env.local");
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY in .env.local");
   return { url: url.replace(/\/$/, ""), key };
 }
 
