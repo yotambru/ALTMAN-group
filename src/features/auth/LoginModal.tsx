@@ -181,7 +181,13 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
         : "הזינו מייל וסיסמה";
 
   return (
-    <Modal open={open} onClose={handleClose} title={title} description={description}>
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title={title}
+      description={description}
+      placement="center"
+    >
       {step === "regular" && (
         <form onSubmit={handleRegularSubmit} className="space-y-5">
           <IdentifierField

@@ -6,6 +6,7 @@ import { PropertyImage } from "@/components/brand/PropertyImage";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useData } from "@/lib/store";
 import { nextPaymentDate } from "@/lib/payment-dates";
+import { paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
 import { currentMonthlyRent } from "@/lib/portfolio";
 import { formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
 
@@ -18,19 +19,20 @@ interface RentalsDialogProps {
 
 /** All active leases with property, tenant, rent and next payment. */
 export function RentalsDialog({ open, onClose, landlordId }: RentalsDialogProps) {
-  const { leases, properties, tenants } = useData();
+  const { leases, properties, tenants, payments } = useData();
   const rows = leases
     .filter((l) => l.active && (!landlordId || l.landlordId === landlordId))
     .map((lease) => ({
       lease,
       property: properties.find((p) => p.id === lease.propertyId),
       tenant: tenants.find((t) => t.id === lease.tenantId),
+      nextCheck: upcomingCheckPayments(payments, [lease.id])[0],
     }));
 
   return (
     <Modal open={open} onClose={onClose} title="ניהול שכירויות" description={`${rows.length} שכירויות פעילות`}>
       <div className="no-scrollbar max-h-[62vh] space-y-2 overflow-y-auto">
-        {rows.map(({ lease, property, tenant }) => (
+        {rows.map(({ lease, property, tenant, nextCheck }) => (
           <div key={lease.id} className="rounded-xl border border-border p-3">
             <div className="flex items-center gap-3">
               {property && (
@@ -47,7 +49,9 @@ export function RentalsDialog({ open, onClose, landlordId }: RentalsDialogProps)
             <div className="mt-2 flex items-center justify-between text-xs text-text-muted">
               <span className="flex items-center gap-1.5">
                 <CalendarClock className="h-4 w-4" />
-                תשלום הבא: {formatDateDots(nextPaymentDate(lease) ?? "")}
+                {nextCheck
+                  ? `פרעון הבא: ${formatDateDots(paymentClearanceDate(nextCheck))} · ${formatCurrency(nextCheck.amount)}`
+                  : `תשלום הבא: ${formatDateDots(nextPaymentDate(lease) ?? "")}`}
               </span>
               <StatusBadge tone="navy">
                 עד {isValidIsoDate(lease.endDate) ? formatDateDots(lease.endDate) : "ללא סיום"}

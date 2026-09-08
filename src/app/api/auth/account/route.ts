@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   createAdminClient,
   findAppUserByEmail,
+  findAppUserById,
   MIN_AUTH_PASSWORD_LENGTH,
   provisionAuthUser,
   sha256Hex,
@@ -39,6 +40,7 @@ type Body = {
   email?: string;
   password?: string;
   newPassword?: string;
+  userId?: string;
 };
 
 export async function POST(request: Request) {
@@ -58,12 +60,52 @@ export async function POST(request: Request) {
   const password = body.password ?? "";
   const action = body.action ?? "";
 
-  if (!email || !email.includes("@")) {
-    return NextResponse.json({ ok: false, error: "יש להזין כתובת מייל תקינה." }, { status: 400 });
-  }
-
   try {
     const admin = createAdminClient();
+
+    if (action === "set-password") {
+      const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+      if (!token) {
+        return NextResponse.json({ ok: false, error: "יש להתחבר מחדש." }, { status: 401 });
+      }
+      const { data: authData, error: authError } = await admin.auth.getUser(token);
+      if (authError || !authData.user) {
+        return NextResponse.json({ ok: false, error: "יש להתחבר מחדש." }, { status: 401 });
+      }
+      const { data: caller, error: callerError } = await admin
+        .from("app_users")
+        .select("id, role")
+        .eq("auth_user_id", authData.user.id)
+        .maybeSingle();
+      if (callerError || caller?.role !== "manager") {
+        return NextResponse.json({ ok: false, error: "אין הרשאה לשנות סיסמה למשתמש אחר." }, { status: 403 });
+      }
+      const nextPassword = body.newPassword ?? "";
+      if (nextPassword.length < MIN_AUTH_PASSWORD_LENGTH) {
+        return NextResponse.json(
+          { ok: false, error: `הסיסמה חייבת להכיל לפחות ${MIN_AUTH_PASSWORD_LENGTH} תווים.` },
+          { status: 400 },
+        );
+      }
+      const targetId = (body.userId ?? "").trim();
+      const target = targetId ? await findAppUserById(admin, targetId) : null;
+      if (!target || !isLoginRole(target.role)) {
+        return NextResponse.json({ ok: false, error: "המשתמש לא נמצא." }, { status: 404 });
+      }
+      const targetEmail = (target.email ?? "").trim().toLowerCase();
+      if (!targetEmail.includes("@")) {
+        return NextResponse.json(
+          { ok: false, error: "לחשבון אין כתובת מייל — אי אפשר להגדיר סיסמה." },
+          { status: 400 },
+        );
+      }
+      await provisionAuthUser(admin, targetEmail, nextPassword, target.id);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (!email || !email.includes("@")) {
+      return NextResponse.json({ ok: false, error: "יש להזין כתובת מייל תקינה." }, { status: 400 });
+    }
 
     if (action === "pending") {
       const row = await findAppUserByEmail(admin, email);

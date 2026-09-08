@@ -38,6 +38,7 @@ import { can } from "@/lib/permissions";
 import { cn, fileToDataUrl, formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
 import { currentMonthlyRent, PROPERTY_STATUS_LABELS, propertyDisplayValue } from "@/lib/portfolio";
 import { buildLeasePeriods, rentOnDate } from "@/lib/lease-periods";
+import { livePaymentStatus, paymentClearanceDate } from "@/lib/check-schedule";
 import type { CheckDepositMode, Payment, PaymentStatus, Property } from "@/types";
 
 const statusLabels = PROPERTY_STATUS_LABELS;
@@ -307,7 +308,7 @@ export function PropertyDetailDialog({
   const leasePayments = (lease
     ? payments.filter((p) => p.leaseId === lease.id)
     : []
-  ).slice().sort((a, b) => b.dueDate.localeCompare(a.dueDate));
+  ).slice().sort((a, b) => (a.depositDate ?? a.dueDate).localeCompare(b.depositDate ?? b.dueDate));
 
   const floorLabel = property.floor === 0 ? "קומת קרקע" : `קומה ${property.floor}`;
   const currentRent = lease ? currentMonthlyRent(lease) : property.listedRent;
@@ -450,7 +451,7 @@ export function PropertyDetailDialog({
           </div>
           {leasePayments.length === 0 ? (
             <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-text-muted">
-              אין רשומות תשלום לנכס זה
+              אין תאריכי פרעון לנכס זה
             </p>
           ) : (
             <div className="card divide-y divide-border">
@@ -592,15 +593,16 @@ function PaymentRow({
   canConfirm: boolean;
   onConfirm: () => void;
 }) {
-  const meta = paymentStatusLabel[payment.status];
+  const meta = paymentStatusLabel[livePaymentStatus(payment)];
   const showConfirm =
     canConfirm &&
     (depositMode === "client_confirm" || depositMode === "company") &&
     payment.method === "check" &&
     !payment.clearanceConfirmed &&
-    payment.status !== "upcoming";
+    livePaymentStatus(payment) !== "upcoming";
 
-  const monthLabel = new Date(payment.dueDate).toLocaleDateString("he-IL", {
+  const clearance = paymentClearanceDate(payment);
+  const monthLabel = new Date(`${clearance || payment.dueDate}T12:00:00`).toLocaleDateString("he-IL", {
     month: "long",
     year: "numeric",
   });
@@ -609,15 +611,14 @@ function PaymentRow({
     <div className="flex flex-col gap-2 px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-navy">{monthLabel}</p>
+          <p className="text-sm font-semibold text-navy">פרעון {formatDateDots(clearance)}</p>
           <p className="text-[0.7rem] text-text-muted">
-            {formatDateDots(payment.dueDate)}
             {payment.method === "check" && payment.checkNumber
-              ? ` · צ׳ק ${payment.checkNumber}`
+              ? `צ׳ק ${payment.checkNumber}`
               : payment.method === "transfer"
-                ? " · העברה"
-                : ""}
-            {payment.depositDate ? ` · הפקדה ${formatDateDots(payment.depositDate)}` : ""}
+                ? "העברה"
+                : monthLabel}
+            {payment.method === "check" && payment.checkNumber && monthLabel ? ` · ${monthLabel}` : ""}
           </p>
         </div>
         <span className="flex shrink-0 items-center gap-2">

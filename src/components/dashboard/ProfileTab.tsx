@@ -2,11 +2,13 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { Camera, LogOut, Trash2, UserX } from "lucide-react";
+import { Camera, KeyRound, LogOut, Trash2, UserX } from "lucide-react";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
+import { ChangePasswordDialog } from "@/features/auth/ChangePasswordDialog";
 import { roleLabels } from "@/lib/permissions";
 import { useData } from "@/lib/store";
 import { uploadImageFile } from "@/lib/supabase/files";
@@ -39,6 +41,8 @@ export function ProfileTab({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const avatarUrl = users.find((u) => u.id === userId)?.avatarUrl;
 
   const pickPhoto = async (file: File | undefined) => {
@@ -128,6 +132,10 @@ export function ProfileTab({
         </div>
       </div>
       {children}
+      <Button variant="outline" fullWidth onClick={() => setPasswordOpen(true)} disabled={busy}>
+        <KeyRound className="h-5 w-5" />
+        שינוי סיסמה
+      </Button>
       <Button variant="outline" fullWidth onClick={onLogout} disabled={busy}>
         <LogOut className="h-5 w-5" />
         התנתקות
@@ -153,6 +161,12 @@ export function ProfileTab({
           מדיניות פרטיות
         </Link>
       </p>
+      <ChangePasswordDialog
+        open={passwordOpen}
+        onClose={() => setPasswordOpen(false)}
+        onSuccess={() => setToast("הסיסמה עודכנה")}
+      />
+      <Toast message={toast} onDone={() => setToast(null)} />
       <ConfirmDialog
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}

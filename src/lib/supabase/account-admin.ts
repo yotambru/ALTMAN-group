@@ -36,6 +36,19 @@ export async function findAuthUserByEmail(
   return null;
 }
 
+export async function findAppUserById(
+  admin: SupabaseClient,
+  id: string,
+): Promise<AppUserRow | null> {
+  const { data, error } = await admin
+    .from("app_users")
+    .select("id, email, auth_user_id, password_hash, role")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as AppUserRow | null) ?? null;
+}
+
 export async function findAppUserByEmail(
   admin: SupabaseClient,
   email: string,

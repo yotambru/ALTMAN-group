@@ -30,6 +30,7 @@ import { DocumentsDialog } from "@/features/documents/DocumentsDialog";
 import { PropertyDetailDialog } from "@/features/properties/PropertyDetailDialog";
 import { PropertyListDialog } from "@/features/properties/PropertyListDialog";
 import { RentalsDialog } from "@/features/leases/RentalsDialog";
+import { ChecksDialog } from "@/features/leases/ChecksDialog";
 import { AnnualReportDialog } from "@/features/reports/AnnualReportDialog";
 import { TicketsDialog } from "@/features/maintenance/TicketsDialog";
 import { CriticalDatesDialog } from "@/features/alerts/CriticalDatesDialog";
@@ -46,15 +47,16 @@ import {
   PORTFOLIO_YIELD_RATE,
 } from "@/lib/portfolio";
 import { heroIncomeChartProps } from "@/lib/hero-income-chart";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDateDots } from "@/lib/utils";
+import { paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
-type Dialog = "list" | "rentals" | "critical" | null;
+type Dialog = "list" | "rentals" | "critical" | "checks" | null;
 type HomePanel = "properties" | "docs" | "report" | "chat" | "tickets" | "withdrawals";
 
 export default function LandlordDashboard() {
   const { session, user, ready, logout } = useSession("landlord");
-  const { properties, leases, documents, notifications, tenants, landlords, tickets } = useData();
+  const { properties, leases, documents, notifications, tenants, landlords, tickets, payments } = useData();
   const landlordId = session.landlordId ?? user.landlordId ?? "l_1";
 
   const [tab, setTab] = useState<AppTab>("dashboard");
@@ -141,10 +143,21 @@ export default function LandlordDashboard() {
 
   const myTenants = tenants.filter((t) => myPropertyIds.includes(t.propertyId));
   const myLandlordRecords = landlords.filter((l) => l.id === landlordId);
+  const upcomingChecks = upcomingCheckPayments(
+    payments,
+    myLeases.map((lease) => lease.id),
+  );
+  const nextCheck = upcomingChecks[0];
+  const nextCheckProperty = nextCheck
+    ? myProperties.find(
+        (property) => property.id === myLeases.find((lease) => lease.id === nextCheck.leaseId)?.propertyId,
+      )
+    : undefined;
 
   const menuItems: MobileMenuItem[] = [
     { icon: Building2, label: "תצוגת נכסים", onClick: () => openPanel("properties") },
     { icon: FileText, label: "שכירויות", onClick: () => setDialog("rentals") },
+    { icon: Banknote, label: "פרעון צ׳קים", onClick: () => setDialog("checks") },
     { icon: Vault, label: "כספת מסמכים", onClick: () => setTab("documents") },
     { icon: FileText, label: "דוח שנתי", onClick: () => openPanel("report") },
     { icon: PenLine, label: "מסמכים לחתימה", onClick: () => openDocs(true) },
@@ -227,6 +240,17 @@ export default function LandlordDashboard() {
                 onClick={() => setDialog("critical")}
               />
               <MetricCard
+                icon={Banknote}
+                label="פרעון הבא"
+                value={nextCheck ? formatDateDots(paymentClearanceDate(nextCheck)) : "—"}
+                sublabel={
+                  nextCheck
+                    ? `${formatCurrency(nextCheck.amount)}${nextCheckProperty ? ` · ${nextCheckProperty.address}` : ""}`
+                    : "אין צ׳קים מתוכננים"
+                }
+                onClick={() => setDialog("checks")}
+              />
+              <MetricCard
                 icon={Wrench}
                 label="קריאות פתוחות"
                 value={openTicketCount}
@@ -281,6 +305,50 @@ export default function LandlordDashboard() {
               <section className="space-y-1 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
                 {homePanel === "properties" ? (
                   <>
+                    <SectionHeader
+                      title="פרעון צ׳קים"
+                      className="mb-3"
+                      action={
+                        upcomingChecks.length > 3 ? (
+                          <button
+                            type="button"
+                            onClick={() => setDialog("checks")}
+                            className="text-sm font-bold text-orange"
+                          >
+                            הכל
+                          </button>
+                        ) : undefined
+                      }
+                    />
+                    <div className="mb-4 space-y-1.5">
+                      {upcomingChecks.slice(0, 3).map((payment) => {
+                        const lease = myLeases.find((item) => item.id === payment.leaseId);
+                        const property = myProperties.find((item) => item.id === lease?.propertyId);
+                        return (
+                          <button
+                            key={payment.id}
+                            type="button"
+                            onClick={() => setDialog("checks")}
+                            className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-start hover:bg-surface-muted"
+                          >
+                            <span className="w-[5.5rem] shrink-0 text-sm font-bold text-navy">
+                              {formatDateDots(paymentClearanceDate(payment))}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-xs text-text-muted">
+                              {property
+                                ? `${property.address}${property.apartmentNumber ? ` דירה ${property.apartmentNumber}` : ""}`
+                                : "נכס"}
+                            </span>
+                            <span className="shrink-0 text-sm font-extrabold text-orange">
+                              {formatCurrency(payment.amount)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {upcomingChecks.length === 0 && (
+                        <p className="px-2 py-2 text-xs text-text-muted">אין תאריכי פרעון מתוכננים</p>
+                      )}
+                    </div>
                     <SectionHeader title="הנכסים שלי" className="mb-3" />
                     <PropertyStatusFilter
                       value={statusFilter}
@@ -431,6 +499,7 @@ export default function LandlordDashboard() {
         }}
       />
       <RentalsDialog open={dialog === "rentals"} onClose={() => setDialog(null)} landlordId={landlordId} />
+      <ChecksDialog open={dialog === "checks"} onClose={() => setDialog(null)} landlordId={landlordId} />
       <CriticalDatesDialog open={dialog === "critical"} onClose={() => setDialog(null)} landlordId={landlordId} />
       <PropertyDetailDialog
         property={detailProperty}

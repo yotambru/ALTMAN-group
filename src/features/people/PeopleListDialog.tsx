@@ -1,14 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, ChevronDown, Mail, Phone, Trash2, User } from "lucide-react";
+import { Building2, ChevronDown, KeyRound, Mail, Phone, Trash2, User } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
-import { can } from "@/lib/permissions";
+import { ChangePasswordDialog } from "@/features/auth/ChangePasswordDialog";
+import { can, roleLabels } from "@/lib/permissions";
 import { useData } from "@/lib/store";
+import type { User as AppUser } from "@/types";
 
-type PeopleMode = "landlords" | "tenants";
+type PeopleMode = "landlords" | "tenants" | "accounts";
 
 interface PeopleListDialogProps {
   open: boolean;
@@ -23,14 +25,38 @@ type PendingDelete =
 /** Directory of landlords (with their properties + tenants) or tenants
  *  (with their property + landlord). */
 export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps) {
-  const { landlords, tenants, properties, actor, deleteLandlord, deleteTenant } = useData();
+  const { landlords, tenants, properties, users, actor, deleteLandlord, deleteTenant } = useData();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingDelete | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<{ userId: string; name: string } | null>(null);
   const isLandlords = mode === "landlords";
+  const isAccounts = mode === "accounts";
   const canDelete = can(actor.role, "clients.delete");
+  const canSetPassword = can(actor.role, "users.password");
 
-  const rows = isLandlords ? landlords.length : tenants.length;
+  const loginForLandlord = (landlordId: string) =>
+    users.find((u) => u.landlordId === landlordId && u.email);
+  const loginForTenant = (tenantId: string) =>
+    users.find((u) => u.tenantId === tenantId && u.email);
+
+  const openPassword = (user: AppUser | undefined, fallbackName: string) => {
+    if (!user?.id) {
+      setToast("אין חשבון כניסה עם מייל");
+      return;
+    }
+    if (!user.email) {
+      setToast("לחשבון אין כתובת מייל");
+      return;
+    }
+    setPasswordTarget({ userId: user.id, name: user.fullName || fallbackName });
+  };
+
+  const rows = isAccounts ? users.length : isLandlords ? landlords.length : tenants.length;
+  const title = isAccounts ? "חשבונות כניסה" : isLandlords ? "תצוגת משכירים" : "תצוגת שוכרים";
+  const description = isAccounts
+    ? `${rows} חשבונות`
+    : `${rows} ${isLandlords ? "משכירים" : "שוכרים"}`;
 
   const confirmDelete = () => {
     if (!pending) return;
@@ -49,11 +75,45 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
       <Modal
         open={open}
         onClose={onClose}
-        title={isLandlords ? "תצוגת משכירים" : "תצוגת שוכרים"}
-        description={`${rows} ${isLandlords ? "משכירים" : "שוכרים"}`}
+        title={title}
+        description={description}
       >
         <div className="no-scrollbar max-h-[62vh] space-y-2 overflow-y-auto">
-          {isLandlords
+          {isAccounts
+            ? [...users]
+                .sort((a, b) => {
+                  const order = { manager: 0, assistant: 1, landlord: 2, tenant: 3 };
+                  const roleDiff = order[a.role] - order[b.role];
+                  if (roleDiff !== 0) return roleDiff;
+                  return a.fullName.localeCompare(b.fullName, "he");
+                })
+                .map((u) => (
+                  <div key={u.id} className="flex items-center gap-2 rounded-xl border border-border p-3">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-navy text-base font-bold text-white">
+                      {(u.fullName || u.email || "?").charAt(0)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-bold text-navy">{u.fullName || "ללא שם"}</p>
+                      <p className="truncate text-xs text-text-muted">{roleLabels[u.role]}</p>
+                      {u.email && (
+                        <p className="mt-1 truncate text-[0.7rem] text-text-muted" dir="ltr">
+                          {u.email}
+                        </p>
+                      )}
+                    </div>
+                    {canSetPassword && (
+                      <button
+                        type="button"
+                        aria-label={`הגדרת סיסמה ל${u.fullName || u.email || "משתמש"}`}
+                        onClick={() => openPassword(u, u.fullName || u.email || "משתמש")}
+                        className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-navy/70 transition-colors hover:bg-surface-muted hover:text-navy"
+                      >
+                        <KeyRound className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))
+            : isLandlords
             ? landlords.map((l) => {
                 const owned = properties.filter((p) => p.landlordId === l.id);
                 const isOpen = expanded === l.id;
@@ -82,6 +142,16 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
                           className={"h-5 w-5 shrink-0 text-text-muted transition-transform " + (isOpen ? "rotate-180" : "")}
                         />
                       </button>
+                      {canSetPassword && (
+                        <button
+                          type="button"
+                          aria-label={`הגדרת סיסמה ל${l.fullName}`}
+                          onClick={() => openPassword(loginForLandlord(l.id), l.fullName)}
+                          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-navy/70 transition-colors hover:bg-surface-muted hover:text-navy"
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </button>
+                      )}
                       {canDelete && (
                         <button
                           type="button"
@@ -140,6 +210,16 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
                         </span>
                       </div>
                     </div>
+                    {canSetPassword && (
+                      <button
+                        type="button"
+                        aria-label={`הגדרת סיסמה ל${t.fullName}`}
+                        onClick={() => openPassword(loginForTenant(t.id), t.fullName)}
+                        className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-navy/70 transition-colors hover:bg-surface-muted hover:text-navy"
+                      >
+                        <KeyRound className="h-4 w-4" />
+                      </button>
+                    )}
                     {canDelete && (
                       <button
                         type="button"
@@ -168,6 +248,12 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
               : ""
         }
         confirmLabel="מחיקה"
+      />
+      <ChangePasswordDialog
+        open={passwordTarget != null}
+        onClose={() => setPasswordTarget(null)}
+        target={passwordTarget}
+        onSuccess={() => setToast("הסיסמה עודכנה")}
       />
       <Toast message={toast} onDone={() => setToast(null)} />
     </>

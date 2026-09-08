@@ -19,6 +19,7 @@ import {
 import { accountDisplayName, normalizeEmail } from "@/lib/auth";
 import { generateId, formatCurrency } from "@/lib/utils";
 import { localTodayIso } from "@/lib/lease-periods";
+import { paymentStatusForDate } from "@/lib/check-schedule";
 import { inferDocumentFolder } from "@/lib/document-folders";
 import { removeLandlord, removeOwnAccount, removeTenant } from "@/lib/delete-users";
 import { landlordRentPool, propertyAddressLabel } from "@/lib/withdrawals";
@@ -47,6 +48,7 @@ import type {
   UtilityKind,
   OnboardingItemStatus,
   CheckDepositMode,
+  CheckScheduleEntry,
   WithdrawalRequest,
   WithdrawalStatus,
 } from "@/types";
@@ -134,6 +136,8 @@ export interface NewClientInput {
     folder?: DocumentFolder;
     fileDataUrl: string;
   }>;
+  /** Post-dated rent checks (תאריכי פרעון) for the landlord. */
+  checks?: CheckScheduleEntry[];
 }
 
 export interface NewTenantInput {
@@ -156,9 +160,27 @@ export interface NewTenantInput {
     folder?: DocumentFolder;
     fileDataUrl: string;
   }>;
+  /** Post-dated rent checks (תאריכי פרעון) for the landlord. */
+  checks?: CheckScheduleEntry[];
 }
 
 const ALL_UTILITIES: UtilityKind[] = ["arnona", "water", "electricity", "gas", "vaad"];
+
+function paymentsFromChecks(leaseId: string, checks: CheckScheduleEntry[] | undefined): Payment[] {
+  const today = localTodayIso();
+  return (checks ?? [])
+    .filter((check) => check.clearanceDate && check.amount > 0)
+    .map((check) => ({
+      id: generateId("pay"),
+      leaseId,
+      amount: check.amount,
+      dueDate: check.clearanceDate,
+      depositDate: check.clearanceDate,
+      status: paymentStatusForDate(check.clearanceDate, false, today),
+      method: "check" as const,
+      checkNumber: check.checkNumber,
+    }));
+}
 
 function recomputeCompleted(ob: TenantOnboarding): TenantOnboarding {
   return {
@@ -623,7 +645,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               : {}),
             startDate: input.startDate || input.entryDate || nowIso.slice(0, 10),
             endDate: input.endDate || "",
-            nextPaymentDate: input.startDate || input.entryDate || nowIso.slice(0, 10),
+            nextPaymentDate:
+              input.checks?.[0]?.clearanceDate ||
+              input.startDate ||
+              input.entryDate ||
+              nowIso.slice(0, 10),
             active: true,
             managementStartDate: input.managementStartDate,
             managementEndDate: input.managementEndDate,
@@ -757,6 +783,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             u.email,
           ),
         );
+        const checkPayments = leaseId ? paymentsFromChecks(leaseId, input.checks) : [];
         return {
           ...p,
           users: uniqueLogins.length ? [...uniqueLogins, ...p.users] : p.users,
@@ -774,6 +801,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           properties: [property, ...p.properties],
           tenants: tenant ? [tenant, ...p.tenants] : p.tenants,
           leases: lease ? [lease, ...p.leases] : p.leases,
+          payments: checkPayments.length ? [...checkPayments, ...p.payments] : p.payments,
           onboardings: onboarding ? [onboarding, ...p.onboardings] : p.onboardings,
           documents: docs.length ? [...docs, ...p.documents] : p.documents,
           activityLog: [
@@ -783,6 +811,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               propertyId,
               `${property.address}, ${property.city}`,
             ),
+            ...(checkPayments.length
+              ? [makeLog("הוספת לוח פרעון צ׳קים", "lease", leaseId, `${checkPayments.length} צ׳קים`)]
+              : []),
             ...accountLogs,
             ...docs.map((d) => makeLog("העלאת מסמך", "document", d.id, d.name)),
             ...p.activityLog,
@@ -850,7 +881,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           ...(rentAdjustments ? { rentAdjustments } : {}),
           startDate,
           endDate: input.endDate || "",
-          nextPaymentDate: startDate,
+          nextPaymentDate: input.checks?.[0]?.clearanceDate || startDate,
           active: true,
         };
         const onboarding: TenantOnboarding = {
@@ -886,12 +917,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           signed: false,
           status: "draft" as const,
         }));
+        const checkPayments = paymentsFromChecks(leaseId, input.checks);
 
         return {
           ...nextState,
           users: emailTaken ? nextState.users : [loginUser, ...nextState.users],
           tenants: [tenant, ...nextState.tenants],
           leases: [lease, ...nextState.leases],
+          payments: checkPayments.length ? [...checkPayments, ...nextState.payments] : nextState.payments,
           onboardings: [onboarding, ...nextState.onboardings],
           documents: docs.length ? [...docs, ...nextState.documents] : nextState.documents,
           properties: p.properties.map((it) =>
@@ -910,6 +943,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             ...(emailTaken
               ? []
               : [makeLog("פתיחת חשבון שוכר", "user", userId, email)]),
+            ...(checkPayments.length
+              ? [makeLog("הוספת לוח פרעון צ׳קים", "lease", leaseId, `${checkPayments.length} צ׳קים`)]
+              : []),
             ...docs.map((d) => makeLog("העלאת מסמך", "document", d.id, d.name)),
             ...nextState.activityLog,
           ],

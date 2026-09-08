@@ -13,6 +13,7 @@ import {
   Home,
   KeyRound,
   ListChecks,
+  Lock,
   MessagesSquare,
   Repeat,
   Send,
@@ -78,6 +79,7 @@ type Dialog =
   | "send"
   | "landlords"
   | "tenants"
+  | "accounts"
   | "utilities"
   | "professionals"
   | "tasks"
@@ -284,6 +286,7 @@ export default function ManagerDashboard() {
     { icon: KeyRound, label: "שוכר חדש", onClick: () => setDialog("addTenant") },
     { icon: UsersRound, label: "תצוגת לקוחות", onClick: openClients },
     { icon: Users, label: "תצוגת שוכרים", onClick: () => setDialog("tenants") },
+    { icon: Lock, label: "הגדרת סיסמאות", onClick: () => setDialog("accounts") },
     { icon: Building2, label: "כל הנכסים", onClick: () => setDialog("properties") },
     { icon: FileBarChart, label: "דוח שנתי", onClick: () => openPanel("report") },
     { icon: Wrench, label: "ניהול קריאות", onClick: () => openPanel("tickets") },
@@ -303,6 +306,7 @@ export default function ManagerDashboard() {
       "שוכר חדש": can(role, "clients.create"),
       "תצוגת לקוחות": can(role, "clients.view") || can(role, "people.view"),
       "תצוגת שוכרים": can(role, "people.view"),
+      "הגדרת סיסמאות": can(role, "users.password"),
       "כל הנכסים": true,
       "דוח שנתי": can(role, "reports.view"),
       "ניהול קריאות": can(role, "tickets.manage"),
@@ -710,6 +714,7 @@ export default function ManagerDashboard() {
       <SendForSignatureDialog open={dialog === "send"} onClose={() => setDialog(null)} />
       <PeopleListDialog open={dialog === "landlords"} onClose={() => setDialog(null)} mode="landlords" />
       <PeopleListDialog open={dialog === "tenants"} onClose={() => setDialog(null)} mode="tenants" />
+      <PeopleListDialog open={dialog === "accounts"} onClose={() => setDialog(null)} mode="accounts" />
       <UtilitiesTrackerDialog open={dialog === "utilities"} onClose={() => setDialog(null)} />
       <ProfessionalsDialog open={dialog === "professionals"} onClose={() => setDialog(null)} canManage={can(role, "professionals.manage")} />
       <TasksDialog open={dialog === "tasks"} onClose={() => setDialog(null)} self={self} />

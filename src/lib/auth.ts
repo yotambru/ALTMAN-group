@@ -59,15 +59,18 @@ export function validateNewPassword(password: string, confirm: string): string |
 }
 
 async function accountApi(
-  action: "pending" | "activate" | "legacy" | "upgrade",
-  email: string,
-  password?: string,
-  newPassword?: string,
+  action: "pending" | "activate" | "legacy" | "upgrade" | "set-password",
+  payload: { email?: string; password?: string; newPassword?: string; userId?: string },
 ): Promise<{ ok: boolean; error?: string; needsNewPassword?: boolean }> {
+  const supabase = getSupabase();
+  const token = supabase ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
   const response = await fetch("/api/auth/account", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, email, password, newPassword }),
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ action, ...payload }),
   });
   try {
     return (await response.json()) as { ok: boolean; error?: string; needsNewPassword?: boolean };
@@ -100,7 +103,7 @@ export async function signInWithCredentials(
   const first = await supabase.auth.signInWithPassword({ email, password });
   if (!first.error) return { ok: true, email };
 
-  const migrated = await accountApi("legacy", email, password);
+  const migrated = await accountApi("legacy", { email, password });
   if (migrated.needsNewPassword) {
     return { ok: false, error: migrated.error ?? INVALID_CREDENTIALS, needsNewPassword: true };
   }
@@ -118,7 +121,7 @@ export async function checkFirstLoginEmail(
   if (!isValidEmail(email)) {
     return { ok: false, error: "יש להזין כתובת מייל תקינה." };
   }
-  const result = await accountApi("pending", normalizeEmail(email));
+  const result = await accountApi("pending", { email: normalizeEmail(email) });
   if (!result.ok) return { ok: false, error: result.error ?? "לא ניתן להפעיל את החשבון." };
   return { ok: true };
 }
@@ -128,7 +131,11 @@ export async function upgradeLegacyPassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const result = await accountApi("upgrade", normalizeEmail(email), currentPassword, newPassword);
+  const result = await accountApi("upgrade", {
+    email: normalizeEmail(email),
+    password: currentPassword,
+    newPassword,
+  });
   if (!result.ok) return { ok: false, error: result.error ?? "עדכון הסיסמה נכשל." };
   const supabase = getSupabase();
   if (!supabase) return { ok: false, error: "אין חיבור לשרת." };
@@ -144,7 +151,7 @@ export async function activateAccount(
   email: string,
   password: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const result = await accountApi("activate", normalizeEmail(email), password);
+  const result = await accountApi("activate", { email: normalizeEmail(email), password });
   if (!result.ok) return { ok: false, error: result.error ?? "הפעלת החשבון נכשלה." };
 
   const supabase = getSupabase();
@@ -154,6 +161,35 @@ export async function activateAccount(
     password,
   });
   if (error) return { ok: false, error: INVALID_CREDENTIALS };
+  return { ok: true };
+}
+
+export async function changeOwnPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const invalid = validateNewPassword(newPassword, newPassword);
+  if (invalid) return { ok: false, error: invalid };
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, error: "אין חיבור לשרת." };
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const email = authData.user?.email;
+  if (authError || !email) return { ok: false, error: "יש להתחבר מחדש." };
+  const check = await supabase.auth.signInWithPassword({ email, password: currentPassword });
+  if (check.error) return { ok: false, error: "הסיסמה הנוכחית שגויה." };
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) return { ok: false, error: "עדכון הסיסמה נכשל. נסו שוב." };
+  return { ok: true };
+}
+
+export async function setPasswordAsManager(
+  userId: string,
+  newPassword: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const invalid = validateNewPassword(newPassword, newPassword);
+  if (invalid) return { ok: false, error: invalid };
+  const result = await accountApi("set-password", { userId, newPassword });
+  if (!result.ok) return { ok: false, error: result.error ?? "עדכון הסיסמה נכשל." };
   return { ok: true };
 }
 

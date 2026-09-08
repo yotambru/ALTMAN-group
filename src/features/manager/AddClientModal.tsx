@@ -11,11 +11,13 @@ import { intakeDocumentName } from "@/lib/document-folders";
 import { fileToDataUrl } from "@/lib/utils";
 import { PhotoGridField } from "@/components/ui/PhotoGridField";
 import { LeaseScheduleFields } from "@/features/leases/LeaseScheduleFields";
+import { CheckClearanceFields } from "@/features/leases/CheckClearanceFields";
 import {
   alignPeriodRents,
   buildLeasePeriods,
   rentScheduleFromPeriods,
 } from "@/lib/lease-periods";
+import { draftsToCheckEntries, validateCheckDrafts, type CheckDraft } from "@/lib/check-schedule";
 import type { AirDirection, DocumentFolder, DocumentType } from "@/types";
 
 interface AddClientModalProps {
@@ -69,6 +71,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
   const [leaseStartDate, setLeaseStartDate] = useState("");
   const [leaseEndDate, setLeaseEndDate] = useState("");
   const [periodRents, setPeriodRents] = useState<string[]>([""]);
+  const [checkRows, setCheckRows] = useState<CheckDraft[]>([]);
   const [leaseFile, setLeaseFile] = useState<PickedFile | null>(null);
   const [tenantIdPhoto, setTenantIdPhoto] = useState<PickedFile | null>(null);
   const [guarantorIdPhoto1, setGuarantorIdPhoto1] = useState<PickedFile | null>(null);
@@ -129,6 +132,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     setLeaseStartDate("");
     setLeaseEndDate("");
     setPeriodRents([""]);
+    setCheckRows([]);
     setLeaseFile(null);
     setTenantIdPhoto(null);
     setGuarantorIdPhoto1(null);
@@ -265,6 +269,11 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
       rentAdjustments = schedule.rentAdjustments.length
         ? schedule.rentAdjustments
         : undefined;
+      const checkError = validateCheckDrafts(checkRows);
+      if (checkError) {
+        setFormError(checkError);
+        return;
+      }
       if (leaseFile) {
         tenantDocuments.push({
           name: intakeDocumentName("הסכם שכירות", leaseFile.name),
@@ -370,6 +379,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
             rentAdjustments,
             startDate: leaseStartDate || undefined,
             endDate: leaseEndDate || undefined,
+            checks: draftsToCheckEntries(checkRows),
             tenantDocuments: tenantDocuments.length ? tenantDocuments : undefined,
           }
         : {}),
@@ -577,7 +587,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
                   dir: "ltr",
                 }}
               />
-              <div className="col-span-2">
+              <div className="col-span-2 space-y-4">
                 <LeaseScheduleFields
                   startDate={leaseStartDate}
                   endDate={leaseEndDate}
@@ -602,6 +612,16 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
                     setFormError("");
                   }}
                   listedRentHint={monthlyRent.trim()}
+                />
+                <CheckClearanceFields
+                  leaseStartDate={leaseStartDate}
+                  leaseEndDate={leaseEndDate}
+                  periodRents={periodRents}
+                  rows={checkRows}
+                  onRowsChange={(next) => {
+                    setCheckRows(next);
+                    setFormError("");
+                  }}
                 />
               </div>
               <div className="col-span-2 space-y-3">

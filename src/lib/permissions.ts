@@ -26,7 +26,8 @@ export type Capability =
   | "activityLog.view"
   | "payments.confirm"
   | "payments.manage"
-  | "chat.manager"; // can chat as the management side
+  | "chat.manager"
+  | "users.password";
 
 const MANAGER: Capability[] = [
   "clients.view",
@@ -48,6 +49,7 @@ const MANAGER: Capability[] = [
   "payments.confirm",
   "payments.manage",
   "chat.manager",
+  "users.password",
 ];
 
 // Assistant helps the manager but cannot manage the professional roster,

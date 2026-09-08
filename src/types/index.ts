@@ -184,6 +184,13 @@ export interface Payment {
   clearanceConfirmedAt?: string; // ISO
 }
 
+/** One post-dated rent check entered when opening a tenant. */
+export interface CheckScheduleEntry {
+  clearanceDate: string; // ISO YYYY-MM-DD — תאריך פרעון
+  amount: number;
+  checkNumber?: string;
+}
+
 /** Landlord expense (for annual net-income reports). */
 export interface Expense {
   id: string;

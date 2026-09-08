@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FormField } from "@/components/ui/FormField";
 import { LeaseScheduleFields } from "@/features/leases/LeaseScheduleFields";
+import { CheckClearanceFields } from "@/features/leases/CheckClearanceFields";
 import { emailInUse, isValidEmail } from "@/lib/auth";
 import {
   alignPeriodRents,
   buildLeasePeriods,
   rentScheduleFromPeriods,
 } from "@/lib/lease-periods";
+import { draftsToCheckEntries, validateCheckDrafts, type CheckDraft } from "@/lib/check-schedule";
 import { can } from "@/lib/permissions";
 import { useData } from "@/lib/store";
 import { intakeDocumentName } from "@/lib/document-folders";
@@ -44,6 +46,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [periodRents, setPeriodRents] = useState<string[]>([""]);
+  const [checkRows, setCheckRows] = useState<CheckDraft[]>([]);
   const [leaseFile, setLeaseFile] = useState<PickedFile | null>(null);
   const [idPhoto, setIdPhoto] = useState<PickedFile | null>(null);
   const [guarantorIdPhoto1, setGuarantorIdPhoto1] = useState<PickedFile | null>(null);
@@ -84,6 +87,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     setStartDate("");
     setEndDate("");
     setPeriodRents([""]);
+    setCheckRows([]);
     setLeaseFile(null);
     setIdPhoto(null);
     setGuarantorIdPhoto1(null);
@@ -168,6 +172,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
       rentAdjustments: schedule.rentAdjustments.length
         ? schedule.rentAdjustments
         : undefined,
+      checks: draftsToCheckEntries(checkRows),
       replaceExistingTenant: isReplacement,
       documents: documents.length ? documents : undefined,
     });
@@ -211,6 +216,11 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
           ? "יש להזין דמי שכירות לכל תקופה בחוזה."
           : "יש להזין דמי שכירות חודשיים.",
       );
+      return;
+    }
+    const checkError = validateCheckDrafts(checkRows);
+    if (checkError) {
+      setError(checkError);
       return;
     }
 
@@ -337,6 +347,17 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
               setError("");
             }}
             listedRentHint={listedRentHint}
+          />
+
+          <CheckClearanceFields
+            leaseStartDate={startDate}
+            leaseEndDate={endDate}
+            periodRents={periodRents}
+            rows={checkRows}
+            onRowsChange={(next) => {
+              setCheckRows(next);
+              setError("");
+            }}
           />
 
           {isManager && (

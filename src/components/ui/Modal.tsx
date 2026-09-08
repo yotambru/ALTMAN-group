@@ -13,9 +13,14 @@ interface ModalProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
+  /**
+   * `sheet` (default): bottom sheet on small screens, centered from `sm` up.
+   * `center`: always centered — better for login when the mobile keyboard opens.
+   */
+  placement?: "sheet" | "center";
 }
 
-/** Accessible bottom-sheet style modal, centered within the mobile canvas. */
+/** Accessible modal: bottom-sheet by default, or centered when requested. */
 export function Modal({
   open,
   onClose,
@@ -24,6 +29,7 @@ export function Modal({
   children,
   footer,
   className,
+  placement = "sheet",
 }: ModalProps) {
   useEffect(() => {
     if (!open) return;
@@ -40,10 +46,17 @@ export function Modal({
 
   if (!open) return null;
 
+  const centered = placement === "center";
+
   return (
     <Portal>
     <div
-      className="fixed inset-0 z-[var(--z-overlay)] flex items-end justify-center sm:items-center"
+      className={cn(
+        "fixed inset-0 z-[var(--z-overlay)] flex justify-center",
+        centered
+          ? "items-center p-4"
+          : "items-end sm:items-center",
+      )}
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -55,7 +68,10 @@ export function Modal({
       />
       <div
         className={cn(
-          "animate-sheet relative z-10 w-full max-w-[30rem] rounded-t-2xl bg-surface p-5 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] shadow-lg sm:rounded-2xl sm:pb-5 lg:max-w-xl",
+          "animate-sheet relative z-10 w-full max-w-[30rem] bg-surface p-5 shadow-lg lg:max-w-xl",
+          centered
+            ? "max-h-[min(90dvh,calc(100dvh-2rem))] overflow-y-auto rounded-2xl"
+            : "rounded-t-2xl pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] sm:rounded-2xl sm:pb-5",
           className,
         )}
       >
