@@ -187,10 +187,27 @@ async function putObject(path: string, body: Blob, contentType: string): Promise
     contentType,
     cacheControl: "3600",
   });
-  if (error) return null;
+  if (error) {
+    console.error(`[supabase] storage upload ${path}: ${error.message}`);
+    return null;
+  }
   const canonical = canonicalStorageUrl(path);
   await signedUrlFor(canonical);
   return canonical;
+}
+
+function fileExt(file: File): string {
+  const fromName = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (fromName && !BLOCKED_EXT.test(fromName)) return fromName.replace(/[^a-z0-9]/gi, "") || "bin";
+  return extFromContentType(file.type || "application/octet-stream");
+}
+
+async function blobForUpload(source: Blob, contentType: string): Promise<{ blob: Blob; contentType: string; ext: string }> {
+  if (contentType.startsWith("image/") && !isBlockedUpload(contentType, extFromContentType(contentType))) {
+    const compressed = await compressToJpeg(source, 1600, 0.82);
+    if (compressed) return { blob: compressed, contentType: "image/jpeg", ext: "jpg" };
+  }
+  return { blob: source, contentType, ext: extFromContentType(contentType) };
 }
 
 /** Upload a data URL to Storage and return the public URL. Leaves http(s) URLs as-is. */
@@ -198,8 +215,17 @@ export async function uploadDataUrl(dataUrl: string, pathWithoutExt: string): Pr
   if (!dataUrl.startsWith("data:")) return dataUrl;
   const parsed = parseDataUrl(dataUrl);
   if (!parsed) return dataUrl;
-  const fullPath = `${pathWithoutExt}.${parsed.ext}`;
-  return (await putObject(fullPath, parsed.blob, parsed.contentType)) ?? dataUrl;
+  const ready = await blobForUpload(parsed.blob, parsed.contentType);
+  const fullPath = `${pathWithoutExt}.${ready.ext}`;
+  return (await putObject(fullPath, ready.blob, ready.contentType)) ?? dataUrl;
+}
+
+/** Compress images and upload a File. Returns a Storage URL, or null on failure. */
+export async function uploadBinaryFile(file: File, pathWithoutExt: string): Promise<string | null> {
+  const ext = fileExt(file);
+  if (isBlockedUpload(file.type, ext)) return null;
+  const ready = await blobForUpload(file, file.type || "application/octet-stream");
+  return putObject(`${pathWithoutExt}.${ready.ext}`, ready.blob, ready.contentType);
 }
 
 /** Compress and upload an image file. Returns a public Storage URL, or null on failure. */

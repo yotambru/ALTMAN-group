@@ -4,7 +4,7 @@ import { getSupabase } from "@/lib/supabase/client";
 import { hydrateFileFields, stillEmbedded, warmSignedUrls } from "@/lib/supabase/files";
 import { COLLECTIONS, type Row } from "@/lib/supabase/mappers";
 import { isLoginRole } from "@/types";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 
 function isMissingRelation(message: string): boolean {
   return /Could not find the table/i.test(message) || /relation .+ does not exist/i.test(message);
@@ -23,23 +23,61 @@ function parseMissingColumn(message: string): string | null {
   return null;
 }
 
+function isUniqueViolation(error: PostgrestError): boolean {
+  return error.code === "23505" || /duplicate key/i.test(error.message);
+}
+
+function cloneState(state: DataState): DataState {
+  const next = emptyState();
+  for (const col of COLLECTIONS) {
+    (next[col.key] as unknown[]) = [...((state[col.key] as unknown[]) ?? [])];
+  }
+  return next;
+}
+
+function replaceById(
+  list: unknown[],
+  getId: (item: unknown) => string,
+  id: string,
+  item: unknown,
+): unknown[] {
+  const idx = list.findIndex((row) => getId(row) === id);
+  if (idx === -1) return [item, ...list];
+  const copy = list.slice();
+  copy[idx] = item;
+  return copy;
+}
+
 /**
- * Upsert a row; if PostgREST rejects unknown columns (migrations not applied yet),
- * drop those columns and retry so leases/docs still persist.
- * Always start with the full row so a just-applied migration (e.g. documents.folder)
- * begins persisting without a reload.
+ * Insert or update a row. Prefer insert for new ids — PostgREST upsert uses
+ * ON CONFLICT DO UPDATE, which also requires the UPDATE RLS policy to pass.
+ * Tenants can insert activity_log / manager notifications but cannot update them.
  */
-async function upsertRow(
+async function writeRow(
   supabase: SupabaseClient,
   table: string,
   row: Row,
+  mode: "insert" | "update",
+  idColumn: string,
+  id: string,
 ): Promise<string | null> {
   let current: Row = { ...row };
   for (let attempt = 0; attempt < 8; attempt++) {
-    const { error } = await supabase.from(table).upsert(current);
-    if (!error) return null;
-    const missing = parseMissingColumn(error.message);
-    if (!missing || !(missing in current)) return error.message;
+    const result =
+      mode === "insert"
+        ? await supabase.from(table).insert(current)
+        : await supabase.from(table).update(current).eq(idColumn, id).select(idColumn);
+    if (!result.error) {
+      if (mode === "update" && !result.data?.length) {
+        return "אין הרשאה לעדכון";
+      }
+      return null;
+    }
+    if (mode === "insert" && isUniqueViolation(result.error)) {
+      return null;
+    }
+    const missing = parseMissingColumn(result.error.message);
+    if (!missing || !(missing in current)) return result.error.message;
     console.warn(`[supabase] schema lag — omitting ${table}.${missing}`);
     const stripped = { ...current };
     delete stripped[missing];
@@ -90,29 +128,39 @@ export async function fetchAll(): Promise<DataState | null> {
   return next;
 }
 
-export async function persistDiff(prev: DataState, next: DataState): Promise<string[]> {
+export async function persistDiff(
+  prev: DataState,
+  next: DataState,
+): Promise<{ errors: string[]; applied: DataState }> {
   const supabase = getSupabase();
-  if (!supabase) return [];
+  if (!supabase) return { errors: [], applied: next };
 
   const errors: string[] = [];
+  const applied = cloneState(prev);
   const snapshots = COLLECTIONS.map((col) => {
     const prevList = (prev[col.key] as unknown[] | undefined) ?? [];
     const nextList = (next[col.key] as unknown[] | undefined) ?? [];
     const getId = col.getId as (item: unknown) => string;
     return {
       col,
+      getId,
       prevMap: new Map(prevList.map((item) => [getId(item), item])),
       nextMap: new Map(nextList.map((item) => [getId(item), item])),
     };
   });
 
-  // Deletes first so removed people/rows cannot come back if a later upsert fails.
-  for (const { col, prevMap, nextMap } of snapshots) {
+  // Deletes first so removed people/rows cannot come back if a later write fails.
+  for (const { col, getId, prevMap, nextMap } of snapshots) {
     const removedIds = [...prevMap.keys()].filter((id) => id && !nextMap.has(id));
     if (removedIds.length === 0) continue;
 
     const { error } = await supabase.from(col.table).delete().in(col.idColumn, removedIds);
-    if (!error) continue;
+    if (!error) {
+      (applied[col.key] as unknown[]) = (applied[col.key] as unknown[]).filter(
+        (row) => !removedIds.includes(getId(row)),
+      );
+      continue;
+    }
     if (isMissingRelation(error.message)) {
       console.warn(`[supabase] missing table ${col.table} — skipping`);
       const message = `${col.table}: הטבלה חסרה בשרת`;
@@ -127,37 +175,55 @@ export async function persistDiff(prev: DataState, next: DataState): Promise<str
         const message = `${col.table}/${id}: ${rowError.message}`;
         console.error(`[supabase] delete ${message}`);
         errors.push(message);
+        continue;
       }
+      (applied[col.key] as unknown[]) = (applied[col.key] as unknown[]).filter(
+        (row) => getId(row) !== id,
+      );
     }
   }
 
-  for (const { col, prevMap, nextMap } of snapshots) {
+  for (const { col, getId, prevMap, nextMap } of snapshots) {
     for (const [id, item] of nextMap) {
       const old = prevMap.get(id);
       if (old && JSON.stringify(old) === JSON.stringify(item)) continue;
       const prepared = await hydrateFileFields(col.key, item as Record<string, unknown>);
       if (stillEmbedded(prepared)) {
         const full = `${col.table}/${id}: העלאת קובץ לשרת נכשלה — המסמך לא נשמר`;
-        console.error(`[supabase] upsert ${full}`);
+        console.error(`[supabase] write ${full}`);
         errors.push(full);
         continue;
       }
-      const message = await upsertRow(supabase, col.table, col.toRow(prepared as never));
+      const message = await writeRow(
+        supabase,
+        col.table,
+        col.toRow(prepared as never),
+        old ? "update" : "insert",
+        col.idColumn,
+        id,
+      );
       if (message) {
         if (isMissingRelation(message)) {
           const full = `${col.table}/${id}: הטבלה חסרה בשרת — הבקשה לא נשמרה`;
-          console.error(`[supabase] upsert ${full}`);
+          console.error(`[supabase] write ${full}`);
           errors.push(full);
           continue;
         }
         const full = `${col.table}/${id}: ${message}`;
-        console.error(`[supabase] upsert ${full}`);
+        console.error(`[supabase] write ${full}`);
         errors.push(full);
+        continue;
       }
+      (applied[col.key] as unknown[]) = replaceById(
+        applied[col.key] as unknown[],
+        getId,
+        id,
+        item,
+      );
     }
   }
 
-  return errors;
+  return { errors, applied };
 }
 
 export function applyRealtimeChange(

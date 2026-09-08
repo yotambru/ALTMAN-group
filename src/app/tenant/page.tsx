@@ -58,11 +58,13 @@ import {
 } from "@/lib/alerts";
 import { currentMonthlyRent } from "@/lib/portfolio";
 import { nextPaymentDate } from "@/lib/payment-dates";
+import { uploadBinaryFile } from "@/lib/supabase/files";
 import {
   daysUntil,
   fileToDataUrl,
   formatDateSlashes,
   formatCurrency,
+  generateId,
   isValidIsoDate,
 } from "@/lib/utils";
 import type { AppNotification, UtilityKind } from "@/types";
@@ -168,12 +170,32 @@ export default function TenantDashboard() {
   const handleFile = async (file: File) => {
     const target = pendingUpload.current;
     if (!target) return;
-    const dataUrl = await fileToDataUrl(file);
+    const docId = generateId("doc");
+    const storedUrl = await uploadBinaryFile(file, `documents/${docId}`);
+    const fileDataUrl = storedUrl ?? (await fileToDataUrl(file));
     if (target === "insurance") {
-      const doc = addDocument({ name: "פוליסת ביטוח", type: "insurance", folder: "appendices", propertyId: property?.id, tenantId: tenantId, ownerUserId: user.id, fileDataUrl: dataUrl });
+      const doc = addDocument({
+        id: docId,
+        name: "פוליסת ביטוח",
+        type: "insurance",
+        folder: "appendices",
+        propertyId: property?.id,
+        tenantId: tenantId,
+        ownerUserId: user.id,
+        fileDataUrl,
+      });
       setInsuranceStatus(tenantId, "submitted", doc.id);
     } else {
-      const doc = addDocument({ name: `אישור החלפת ${utilityLabelHe(target)}`, type: "utility", folder: "appendices", propertyId: property?.id, tenantId: tenantId, ownerUserId: user.id, fileDataUrl: dataUrl });
+      const doc = addDocument({
+        id: docId,
+        name: `אישור החלפת ${utilityLabelHe(target)}`,
+        type: "utility",
+        folder: "appendices",
+        propertyId: property?.id,
+        tenantId: tenantId,
+        ownerUserId: user.id,
+        fileDataUrl,
+      });
       setUtilityStatus(tenantId, target, "submitted", doc.id);
     }
     addNotification({

@@ -339,6 +339,7 @@ interface DataContextValue extends DataState {
 
   // documents
   addDocument: (d: {
+    id?: string;
     name: string;
     type: DocumentType;
     folder?: DocumentFolder;
@@ -524,9 +525,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (!prev) return;
         persistInFlightRef.current = true;
         try {
-          const errors = await persistDiff(prev, next);
+          const { errors, applied } = await persistDiff(prev, next);
+          prevRef.current = applied;
           if (errors.length === 0) {
-            prevRef.current = next;
             setPersistError(null);
             return;
           }
@@ -1441,7 +1442,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const addDocument = useCallback<DataContextValue["addDocument"]>(
     (d) => {
       const doc: AppDocument = {
-        id: generateId("doc"),
+        id: d.id ?? generateId("doc"),
         name: d.name,
         type: d.type,
         folder: inferDocumentFolder({ type: d.type, name: d.name, folder: d.folder, tenantId: d.tenantId }),
