@@ -14,10 +14,13 @@ import {
   type CheckDraft,
 } from "@/lib/check-schedule";
 import {
+  activeLeasePeriods,
   alignPeriodRents,
-  buildLeasePeriods,
+  resolveLeasePeriods,
+  rescaleLeasePeriods,
   rentOnDate,
   rentScheduleFromPeriods,
+  type LeasePeriod,
 } from "@/lib/lease-periods";
 import { currentMonthlyRent, propertyDisplayValue } from "@/lib/portfolio";
 import { useData } from "@/lib/store";
@@ -48,7 +51,7 @@ function rentsFromLease(
   start: string,
   end: string,
 ): string[] {
-  const periods = start ? buildLeasePeriods(start, end || undefined) : [];
+  const periods = start ? resolveLeasePeriods(start, end || undefined, lease.rentAdjustments) : [];
   const fallback = String(currentMonthlyRent(lease) || lease.monthlyRent || "");
   if (!periods.length) return [fallback];
   return periods.map((period) => {
@@ -78,6 +81,7 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
   const [status, setStatus] = useState<PropertyStatus>("rented");
   const [leaseStartDate, setLeaseStartDate] = useState("");
   const [leaseEndDate, setLeaseEndDate] = useState("");
+  const [leasePeriods, setLeasePeriods] = useState<LeasePeriod[]>([]);
   const [periodRents, setPeriodRents] = useState<string[]>([""]);
   const [checkRows, setCheckRows] = useState<CheckDraft[]>([]);
   const [autoRebuildChecks, setAutoRebuildChecks] = useState(true);
@@ -100,6 +104,7 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
       const end = lease?.endDate?.slice(0, 10) ?? "";
       setLeaseStartDate(start);
       setLeaseEndDate(end);
+      setLeasePeriods(lease ? resolveLeasePeriods(start, end, lease.rentAdjustments) : []);
       setPeriodRents(lease ? rentsFromLease(lease, start, end) : [""]);
       const existingChecks = lease
         ? paymentsToCheckDrafts(payments.filter((pay) => pay.leaseId === lease.id))
@@ -124,10 +129,13 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
   const applyLeaseDates = (nextStart: string, nextEnd: string) => {
     setLeaseStartDate(nextStart);
     setLeaseEndDate(nextEnd);
-    const nextPeriods = nextStart ? buildLeasePeriods(nextStart, nextEnd || undefined) : [];
-    setPeriodRents((prev) =>
-      alignPeriodRents(prev, Math.max(nextPeriods.length, 1), prev[0] ?? ""),
-    );
+    setLeasePeriods((prev) => {
+      const nextPeriods = nextStart ? rescaleLeasePeriods(prev, nextStart, nextEnd) : [];
+      setPeriodRents((rents) =>
+        alignPeriodRents(rents, Math.max(nextPeriods.length, 1), rents[0] ?? ""),
+      );
+      return nextPeriods;
+    });
     setFormError("");
   };
 
@@ -145,7 +153,7 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
         setFormError("תאריך סיום החוזה חייב להיות אחרי תאריך ההתחלה.");
         return;
       }
-      const periods = buildLeasePeriods(leaseStartDate, leaseEndDate || undefined);
+      const periods = activeLeasePeriods(leasePeriods, leaseStartDate, leaseEndDate || undefined);
       const rentFields = alignPeriodRents(periodRents, Math.max(periods.length, 1));
       const rents = periods.map((_, i) => num(rentFields[i] ?? ""));
       if (rents.some((r) => r <= 0)) {
@@ -274,6 +282,8 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
               startDate={leaseStartDate}
               endDate={leaseEndDate}
               onDatesChange={applyLeaseDates}
+              periods={leasePeriods}
+              onPeriodsChange={setLeasePeriods}
               periodRents={periodRents}
               onPeriodRentsChange={setPeriodRents}
             />
@@ -281,6 +291,7 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
               leaseStartDate={leaseStartDate}
               leaseEndDate={leaseEndDate}
               periodRents={periodRents}
+              periods={leasePeriods}
               rows={checkRows}
               autoRebuild={autoRebuildChecks}
               onRowsChange={(next) => {

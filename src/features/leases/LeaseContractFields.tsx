@@ -23,17 +23,23 @@ interface LeaseContractFieldsProps {
   files: (LeasePickedFile | null)[];
   onFilesChange: (files: (LeasePickedFile | null)[]) => void;
   className?: string;
+  periods?: LeasePeriod[];
 }
 
-/** Optional lease PDF/image upload — one slot per yearly period when the lease spans multiple years. */
+/** Optional lease PDF/image upload — one slot per rent period. */
 export function LeaseContractFields({
   startDate,
   endDate,
   files,
   onFilesChange,
   className,
+  periods: periodsProp,
 }: LeaseContractFieldsProps) {
-  const periods = startDate ? buildLeasePeriods(startDate, endDate || undefined) : [];
+  const periods = periodsProp?.length
+    ? periodsProp
+    : startDate
+      ? buildLeasePeriods(startDate, endDate || undefined)
+      : [];
   const slots = alignPeriodSlots(files, Math.max(periods.length, 1));
   const multi = periods.length > 1;
 

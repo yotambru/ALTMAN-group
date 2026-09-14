@@ -25,6 +25,41 @@ function addYears(d: Date, years: number): Date {
   return next;
 }
 
+function addMonths(d: Date, months: number): Date {
+  const day = d.getDate();
+  const next = new Date(d.getFullYear(), d.getMonth() + months, 1);
+  const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(day, lastDay));
+  return next;
+}
+
+export function addMonthsIso(iso: string, months: number): string {
+  return formatYmd(addMonths(parseYmd(iso.slice(0, 10)), months));
+}
+
+export function makeLeasePeriod(index: number, startDate: string, endDate: string): LeasePeriod {
+  const start = startDate.slice(0, 10);
+  const end = endDate.slice(0, 10);
+  return {
+    index,
+    startDate: start,
+    endDate: end,
+    label: end
+      ? `תקופה ${index} (${formatHebShort(start)} – ${formatHebShort(end)})`
+      : `תקופה ${index} (מ-${formatHebShort(start)})`,
+  };
+}
+
+export function relabelLeasePeriods(periods: LeasePeriod[]): LeasePeriod[] {
+  return periods.map((period, i) => makeLeasePeriod(i + 1, period.startDate, period.endDate));
+}
+
+/** True when the contract spans more than 12 months. */
+export function leaseLongerThanYear(startIso: string, endIso?: string): boolean {
+  if (!startIso?.trim() || !endIso?.trim()) return false;
+  return parseYmd(endIso.slice(0, 10)) > addMonths(parseYmd(startIso.slice(0, 10)), 12);
+}
+
 function formatHebShort(iso: string): string {
   return parseYmd(iso).toLocaleDateString("he-IL", {
     day: "numeric",
@@ -160,7 +195,117 @@ export function buildLeasePeriods(
       ];
 }
 
-/** Map period rents into lease starting rent + dated adjustments. */
+/**
+ * Rebuild periods from lease start/end plus interior boundaries (stored as rent adjustment dates).
+ * Falls back to yearly anniversary slices when no custom boundaries exist.
+ */
+export function resolveLeasePeriods(
+  startIso: string,
+  endIso?: string,
+  adjustments?: RentAdjustment[],
+): LeasePeriod[] {
+  const start = startIso?.slice(0, 10);
+  if (!start) return [];
+  const end = endIso?.slice(0, 10) ?? "";
+  const interiors = [...new Set(
+    (adjustments ?? [])
+      .map((item) => item.date.slice(0, 10))
+      .filter((date) => date > start && (!end || date < end)),
+  )].sort();
+  if (interiors.length && end) {
+    const bounds = [start, ...interiors, end];
+    return relabelLeasePeriods(
+      bounds.slice(0, -1).map((bound, i) => makeLeasePeriod(i + 1, bound, bounds[i + 1] ?? end)),
+    );
+  }
+  return buildLeasePeriods(start, end || undefined);
+}
+
+/** Keep interior period starts when the overall lease dates change. */
+export function rescaleLeasePeriods(
+  previous: LeasePeriod[],
+  startIso: string,
+  endIso: string,
+): LeasePeriod[] {
+  if (!startIso.trim()) return [];
+  if (!previous.length) return buildLeasePeriods(startIso, endIso || undefined);
+  const interiors = previous
+    .slice(1)
+    .map((period) => period.startDate.slice(0, 10))
+    .filter((date) => date > startIso.slice(0, 10) && (!endIso || date < endIso.slice(0, 10)));
+  if (!interiors.length) return buildLeasePeriods(startIso, endIso || undefined);
+  return resolveLeasePeriods(
+    startIso,
+    endIso || undefined,
+    interiors.map((date) => ({ date, monthlyRent: 0 })),
+  );
+}
+
+/** Change period `index` (0-based) end date and shift the next period's start. */
+export function setPeriodEnd(
+  periods: LeasePeriod[],
+  index: number,
+  nextEndIso: string,
+  leaseEndIso: string,
+): LeasePeriod[] {
+  if (!periods[index]) return periods;
+  const start = periods[index].startDate.slice(0, 10);
+  let end = nextEndIso.slice(0, 10);
+  const cap = leaseEndIso.slice(0, 10);
+  if (end <= start) return periods;
+  if (cap && end > cap) end = cap;
+  const next = periods.map((period) => ({ ...period }));
+  next[index] = makeLeasePeriod(index + 1, start, end);
+  if (index < next.length - 1) {
+    next[index + 1] = makeLeasePeriod(index + 2, end, next[index + 1].endDate);
+  }
+  const cleaned = next.filter((period) => !period.endDate || period.startDate < period.endDate);
+  if (cleaned.length && cap) {
+    const last = cleaned[cleaned.length - 1];
+    cleaned[cleaned.length - 1] = makeLeasePeriod(cleaned.length, last.startDate, cap);
+  }
+  return relabelLeasePeriods(cleaned);
+}
+
+/** Stored custom periods if present; otherwise yearly anniversary slices. */
+export function activeLeasePeriods(
+  stored: LeasePeriod[],
+  startIso: string,
+  endIso?: string,
+): LeasePeriod[] {
+  if (stored.length) return stored;
+  return startIso.trim() ? buildLeasePeriods(startIso, endIso) : [];
+}
+
+/** Split the last period (prefer +12 months from its start, otherwise midpoint). */
+export function addLeasePeriod(periods: LeasePeriod[]): LeasePeriod[] {
+  if (!periods.length) return periods;
+  const last = periods[periods.length - 1];
+  if (!last.endDate) return periods;
+  let split = addMonthsIso(last.startDate, 12);
+  if (split <= last.startDate || split >= last.endDate) {
+    const mid = (parseYmd(last.startDate).getTime() + parseYmd(last.endDate).getTime()) / 2;
+    split = formatYmd(new Date(mid));
+  }
+  if (split <= last.startDate || split >= last.endDate) return periods;
+  return relabelLeasePeriods([
+    ...periods.slice(0, -1),
+    makeLeasePeriod(0, last.startDate, split),
+    makeLeasePeriod(0, split, last.endDate),
+  ]);
+}
+
+export function removeLastLeasePeriod(periods: LeasePeriod[]): LeasePeriod[] {
+  if (periods.length <= 1) return periods;
+  const last = periods[periods.length - 1];
+  const prev = periods[periods.length - 2];
+  return relabelLeasePeriods([
+    ...periods.slice(0, -2),
+    makeLeasePeriod(0, prev.startDate, last.endDate),
+  ]);
+}
+
+/** Map period rents into lease starting rent + dated adjustments (boundaries always stored). */
 export function rentScheduleFromPeriods(
   periods: LeasePeriod[],
   rents: number[],
@@ -174,10 +319,8 @@ export function rentScheduleFromPeriods(
   let previous = starting;
   for (let i = 1; i < periods.length; i++) {
     const rent = Math.max(0, rents[i] ?? previous);
-    if (rent !== previous) {
-      adjustments.push({ date: periods[i].startDate, monthlyRent: rent });
-      previous = rent;
-    }
+    adjustments.push({ date: periods[i].startDate, monthlyRent: rent });
+    previous = rent;
   }
 
   const today = localTodayIso();

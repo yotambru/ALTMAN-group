@@ -8,6 +8,7 @@ import {
   alignPeriodRents,
   buildLeasePeriods,
   rentScheduleFromPeriods,
+  type LeasePeriod,
 } from "@/lib/lease-periods";
 import { buildCheckDrafts, type CheckDraft } from "@/lib/check-schedule";
 import { formatCurrency } from "@/lib/utils";
@@ -20,6 +21,7 @@ interface CheckClearanceFieldsProps {
   onRowsChange: (rows: CheckDraft[]) => void;
   /** When false, keep loaded rows until the user changes the first date / rebuilds. */
   autoRebuild?: boolean;
+  periods?: LeasePeriod[];
 }
 
 const parseMoney = (value: string) => Number(value.replace(/[^0-9.]/g, "")) || 0;
@@ -42,6 +44,7 @@ export function CheckClearanceFields({
   rows,
   onRowsChange,
   autoRebuild = true,
+  periods: periodsProp,
 }: CheckClearanceFieldsProps) {
   const firstDate = rows[0]?.clearanceDate || leaseStartDate;
   const firstCheckNumber = rows[0]?.checkNumber ?? "";
@@ -54,7 +57,9 @@ export function CheckClearanceFields({
 
   const scheduleFromLease = () => {
     if (!leaseStartDate) return { startingMonthlyRent: 0, rentAdjustments: undefined as undefined };
-    const periods = buildLeasePeriods(leaseStartDate, leaseEndDate || undefined);
+    const periods = periodsProp?.length
+      ? periodsProp
+      : buildLeasePeriods(leaseStartDate, leaseEndDate || undefined);
     const rents = alignPeriodRents(periodRents, Math.max(periods.length, 1)).map(parseMoney);
     const schedule = rentScheduleFromPeriods(periods, rents);
     return {
@@ -80,6 +85,11 @@ export function CheckClearanceFields({
     );
   };
 
+  const periodRentsKey = periodRents.join("|");
+  const periodsKey = (periodsProp ?? [])
+    .map((period) => `${period.startDate}:${period.endDate}`)
+    .join("|");
+
   useEffect(() => {
     if (!autoRebuild || lockedRef.current || !leaseStartDate) return;
     const schedule = scheduleFromLease();
@@ -91,9 +101,9 @@ export function CheckClearanceFields({
       firstCheckNumber: rows[0]?.checkNumber,
     });
     if (!draftsEqual(rows, generated)) onRowsChangeRef.current(generated);
-    // Rebuild when lease dates / rents change; skip after the user edits individual rows.
+    // Rebuild when lease dates / rents / custom periods change; skip after the user edits individual rows.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRebuild, leaseStartDate, leaseEndDate, periodRents.join("|")]);
+  }, [autoRebuild, leaseStartDate, leaseEndDate, periodRentsKey, periodsKey]);
 
   const updateRow = (index: number, patch: Partial<CheckDraft>) => {
     lockedRef.current = true;
@@ -107,7 +117,8 @@ export function CheckClearanceFields({
       <div>
         <p className="text-sm font-semibold text-navy">לוח פרעון צ׳קים</p>
         <p className="mt-0.5 text-[0.7rem] text-text-muted">
-          אם לא מזינים תאריך אחר, הפרעון הוא באותו יום בחודש כמו תחילת החוזה — למשל כניסה ב־10, הפרעון בכל 10 לחודש
+          צ׳ק אחד לכל חודש שכירות (12 לשנה). תאריך סיום החוזה לא מוסיף צ׳ק נוסף.
+          {rows.length > 0 ? ` סה״כ ${rows.length} צ׳קים.` : ""}
         </p>
       </div>
 

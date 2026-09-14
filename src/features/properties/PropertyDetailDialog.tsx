@@ -38,7 +38,7 @@ import { can } from "@/lib/permissions";
 import { normalizeEmail } from "@/lib/auth";
 import { cn, fileToDataUrl, formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
 import { currentMonthlyRent, PROPERTY_STATUS_LABELS, propertyAddressLabel, propertyDisplayValue } from "@/lib/portfolio";
-import { buildLeasePeriods, rentOnDate } from "@/lib/lease-periods";
+import { resolveLeasePeriods, rentOnDate } from "@/lib/lease-periods";
 import { livePaymentStatus, paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
 import type { CheckDepositMode, Payment, PaymentStatus, Property } from "@/types";
 
@@ -313,7 +313,9 @@ export function PropertyDetailDialog({
   const floorLabel = property.floor === 0 ? "קומת קרקע" : `קומה ${property.floor}`;
   const currentRent = lease ? currentMonthlyRent(lease) : property.listedRent;
   const displayValue = propertyDisplayValue(property, currentRent);
-  const periods = lease ? buildLeasePeriods(lease.startDate, lease.endDate || undefined) : [];
+  const periods = lease
+    ? resolveLeasePeriods(lease.startDate, lease.endDate || undefined, lease.rentAdjustments)
+    : [];
   const periodRows = lease
     ? periods.map((period) => ({
         ...period,
@@ -324,7 +326,7 @@ export function PropertyDetailDialog({
         ),
       }))
     : [];
-  const showSchedule = periodRows.length > 1 && new Set(periodRows.map((p) => p.rent)).size > 1;
+  const showSchedule = periodRows.length > 1;
   const endDateLabel = lease && isValidIsoDate(lease.endDate) ? formatDateDots(lease.endDate) : "לא הוזן";
   const replaceCoverPhoto = async (file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -347,7 +349,6 @@ export function PropertyDetailDialog({
       onClose={onClose}
       title="פרטי נכס"
       description={undefined}
-      className="max-h-[90dvh] overflow-y-auto"
     >
       <div className="relative space-y-5 pb-14">
         {/* Hero — address only */}

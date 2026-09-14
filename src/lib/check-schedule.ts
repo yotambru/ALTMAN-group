@@ -65,20 +65,28 @@ export function livePaymentStatus(payment: Payment, today: string = localTodayIs
   return paymentStatusForDate(paymentClearanceDate(payment), false, today);
 }
 
-/** Monthly check dates from the first clearance until lease end (or 12 months). */
+/**
+ * Monthly check dates from the first clearance.
+ * With a lease end: one check per occupied month, 12 per year — the end date is exclusive
+ * so a 24-month contract (start → start+24 months) yields 24 checks, not 25.
+ * Without an end: 12 checks (months 0..11).
+ */
 export function buildMonthlyClearanceDates(firstIso: string, endIso?: string, maxMonths = 120): string[] {
   const first = firstIso.slice(0, 10);
   if (!parseYmd(first)) return [];
   const explicitEnd = endIso?.trim() ? parseYmd(endIso.slice(0, 10)) : null;
   const twelveMonths = parseYmd(addMonthsClamped(first, 11) ?? first);
-  const last = explicitEnd ?? twelveMonths;
   const dates: string[] = [];
   for (let i = 0; i < maxMonths; i++) {
     const next = i === 0 ? first : addMonthsClamped(first, i);
     if (!next) break;
     const parsed = parseYmd(next);
     if (!parsed) break;
-    if (last && parsed > last) break;
+    if (explicitEnd) {
+      if (parsed >= explicitEnd) break;
+    } else if (twelveMonths && parsed > twelveMonths) {
+      break;
+    }
     dates.push(next);
   }
   return dates.length ? dates : [first];

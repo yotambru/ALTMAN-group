@@ -23,10 +23,12 @@ import {
   type TenantPersonForm,
 } from "@/features/landlord/TenantPeopleFields";
 import {
+  activeLeasePeriods,
   alignPeriodRents,
   alignPeriodSlots,
-  buildLeasePeriods,
+  rescaleLeasePeriods,
   rentScheduleFromPeriods,
+  type LeasePeriod,
 } from "@/lib/lease-periods";
 import { resolveCheckSchedule, type CheckDraft } from "@/lib/check-schedule";
 import type { AirDirection, DocumentFolder, DocumentType } from "@/types";
@@ -79,6 +81,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
   const [tenantSecondary, setTenantSecondary] = useState<TenantPersonForm>(emptyTenantPerson);
   const [leaseStartDate, setLeaseStartDate] = useState("");
   const [leaseEndDate, setLeaseEndDate] = useState("");
+  const [leasePeriods, setLeasePeriods] = useState<LeasePeriod[]>([]);
   const [periodRents, setPeriodRents] = useState<string[]>([""]);
   const [checkRows, setCheckRows] = useState<CheckDraft[]>([]);
   const [leaseFiles, setLeaseFiles] = useState<(LeasePickedFile | null)[]>([null]);
@@ -139,6 +142,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     setTenantSecondary(emptyTenantPerson());
     setLeaseStartDate("");
     setLeaseEndDate("");
+    setLeasePeriods([]);
     setPeriodRents([""]);
     setCheckRows([]);
     setLeaseFiles([null]);
@@ -284,7 +288,11 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     }> = [];
 
     if (includeTenant) {
-      const activePeriods = buildLeasePeriods(leaseStartDate, leaseEndDate || undefined);
+      const activePeriods = activeLeasePeriods(
+        leasePeriods,
+        leaseStartDate,
+        leaseEndDate || undefined,
+      );
       const rentFields = alignPeriodRents(
         periodRents,
         Math.max(activePeriods.length, 1),
@@ -611,18 +619,29 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
                 onDatesChange={(nextStart, nextEnd) => {
                   setLeaseStartDate(nextStart);
                   setLeaseEndDate(nextEnd);
-                  const nextPeriods = nextStart
-                    ? buildLeasePeriods(nextStart, nextEnd || undefined)
-                    : [];
-                  setPeriodRents((prev) =>
-                    alignPeriodRents(
-                      prev,
-                      Math.max(nextPeriods.length, 1),
-                      monthlyRent.trim() || "",
-                    ),
-                  );
-                  setLeaseFiles((prev) =>
-                    alignPeriodSlots(prev, Math.max(nextPeriods.length, 1)),
+                  setLeasePeriods((prev) => {
+                    const nextPeriods = nextStart
+                      ? rescaleLeasePeriods(prev, nextStart, nextEnd)
+                      : [];
+                    setPeriodRents((rents) =>
+                      alignPeriodRents(
+                        rents,
+                        Math.max(nextPeriods.length, 1),
+                        monthlyRent.trim() || "",
+                      ),
+                    );
+                    setLeaseFiles((files) =>
+                      alignPeriodSlots(files, Math.max(nextPeriods.length, 1)),
+                    );
+                    return nextPeriods;
+                  });
+                  setFormError("");
+                }}
+                periods={leasePeriods}
+                onPeriodsChange={(next) => {
+                  setLeasePeriods(next);
+                  setLeaseFiles((files) =>
+                    alignPeriodSlots(files, Math.max(next.length, 1)),
                   );
                   setFormError("");
                 }}
@@ -637,6 +656,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
                 leaseStartDate={leaseStartDate}
                 leaseEndDate={leaseEndDate}
                 periodRents={periodRents}
+                periods={leasePeriods}
                 rows={checkRows}
                 onRowsChange={(next) => {
                   setCheckRows(next);
@@ -647,6 +667,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
                 <LeaseContractFields
                   startDate={leaseStartDate}
                   endDate={leaseEndDate}
+                  periods={leasePeriods}
                   files={leaseFiles}
                   onFilesChange={(next) => {
                     setLeaseFiles(next);

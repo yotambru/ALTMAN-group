@@ -69,8 +69,9 @@ export function Modal({
       <div
         className={cn(
           "animate-sheet relative z-10 w-full max-w-[30rem] bg-surface p-5 shadow-lg lg:max-w-xl",
+          "max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-bottom,0px)))] overflow-y-auto overscroll-contain",
           centered
-            ? "max-h-[min(90dvh,calc(100dvh-2rem))] overflow-y-auto rounded-2xl"
+            ? "rounded-2xl"
             : "rounded-t-2xl pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] sm:rounded-2xl sm:pb-5",
           className,
         )}
