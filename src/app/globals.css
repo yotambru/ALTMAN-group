@@ -124,12 +124,38 @@ html.h-full[data-capacitor="true"] {
 
 html.plt-capacitor body,
 html[data-capacitor="true"] body {
+  position: relative;
   height: auto;
   min-height: 100%;
   background: var(--surface-muted);
   overscroll-behavior-x: none;
   overscroll-behavior-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Rubber-band continuation: navy above the dusk header, canvas below the sheet. */
+html.plt-capacitor body::before,
+html[data-capacitor="true"] body::before,
+html.plt-capacitor body::after,
+html[data-capacitor="true"] body::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  pointer-events: none;
+}
+
+html.plt-capacitor body::before,
+html[data-capacitor="true"] body::before {
+  top: -100vh;
+  height: 100vh;
+  background: var(--navy);
+}
+
+html.plt-capacitor body::after,
+html[data-capacitor="true"] body::after {
+  bottom: -100vh;
+  height: 100vh;
+  background: var(--surface-muted);
 }
 
 html.plt-capacitor .overflow-y-auto,

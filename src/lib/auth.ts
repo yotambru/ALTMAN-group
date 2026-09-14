@@ -59,15 +59,12 @@ export function validateNewPassword(password: string, confirm: string): string |
 }
 
 async function accountApi(
-  action: "pending" | "activate" | "legacy" | "upgrade" | "set-password" | "invite",
+  action: "pending" | "activate" | "legacy" | "upgrade" | "set-password",
   payload: { email?: string; password?: string; newPassword?: string; userId?: string },
 ): Promise<{
   ok: boolean;
   error?: string;
   needsNewPassword?: boolean;
-  retry?: boolean;
-  alreadyActive?: boolean;
-  invitePending?: boolean;
 }> {
   const supabase = getSupabase();
   const token = supabase ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
@@ -84,9 +81,6 @@ async function accountApi(
       ok: boolean;
       error?: string;
       needsNewPassword?: boolean;
-      retry?: boolean;
-      alreadyActive?: boolean;
-      invitePending?: boolean;
     };
   } catch {
     return { ok: false, error: "השרת לא זמין. נסו שוב." };
@@ -205,49 +199,6 @@ export async function setPasswordAsManager(
   const result = await accountApi("set-password", { userId, newPassword });
   if (!result.ok) return { ok: false, error: result.error ?? "עדכון הסיסמה נכשל." };
   return { ok: true };
-}
-
-/** Invite a newly created landlord/tenant by email (Supabase Auth verification). */
-export async function sendAccountInvite(
-  email: string,
-): Promise<{ ok: true; alreadyActive?: boolean } | { ok: false; error: string; retry?: boolean }> {
-  if (!isValidEmail(email)) {
-    return { ok: false, error: "יש להזין כתובת מייל תקינה." };
-  }
-  if (!isSupabaseConfigured()) {
-    return { ok: true, alreadyActive: true };
-  }
-  const result = await accountApi("invite", { email: normalizeEmail(email) });
-  if (!result.ok) {
-    return {
-      ok: false,
-      error: result.error ?? "שליחת ההזמנה נכשלה.",
-      retry: Boolean(result.retry),
-    };
-  }
-  return { ok: true, alreadyActive: Boolean(result.alreadyActive) };
-}
-
-/** Fire invites after app_users rows are persisted (retries briefly on lag). */
-export function queueAccountInvites(emails: Array<string | undefined | null>): void {
-  const unique = [
-    ...new Set(
-      emails
-        .map((e) => (e ? normalizeEmail(e) : ""))
-        .filter((e) => e.includes("@")),
-    ),
-  ];
-  if (!unique.length || !isSupabaseConfigured()) return;
-
-  void (async () => {
-    for (const email of unique) {
-      for (let attempt = 0; attempt < 6; attempt += 1) {
-        await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
-        const result = await sendAccountInvite(email);
-        if (result.ok || !result.retry) break;
-      }
-    }
-  })();
 }
 
 export async function signOutSession(): Promise<void> {

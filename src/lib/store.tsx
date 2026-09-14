@@ -16,11 +16,13 @@ import {
   persistDiff,
   subscribeToData,
 } from "@/lib/supabase/sync";
-import { accountDisplayName, normalizeEmail, queueAccountInvites } from "@/lib/auth";
+import { accountDisplayName, normalizeEmail } from "@/lib/auth";
 import { generateId, formatCurrency } from "@/lib/utils";
 import { localTodayIso } from "@/lib/lease-periods";
 import { paymentClearanceDate, paymentStatusForDate, resolveCheckSchedule } from "@/lib/check-schedule";
 import { inferDocumentFolder } from "@/lib/document-folders";
+import { isAwaitingSignature } from "@/lib/document-signing";
+import { storage } from "@/lib/storage";
 import { removeLandlord, removeOwnAccount, removeTenant } from "@/lib/delete-users";
 import { isNotificationForAudience } from "@/lib/notifications";
 import { landlordRentPool, propertyAddressLabel } from "@/lib/withdrawals";
@@ -891,9 +893,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         };
       });
 
-      const inviteEmails = loginUsers.map((u) => u.email).filter(Boolean) as string[];
-      queueAccountInvites(inviteEmails);
-
       return { propertyId, leaseId, tenantId, landlordId };
     },
     [makeLog],
@@ -1064,8 +1063,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           ],
         };
       });
-
-      queueAccountInvites([email, input.secondaryEmail]);
 
       return { tenantId, leaseId, userId };
     },
@@ -1469,6 +1466,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                 createdAt: doc.createdAt,
                 read: false,
                 forUserId: d.ownerUserId,
+                relatedId: doc.id,
                 actionRequired: true,
               },
               ...p.notifications,
@@ -1500,9 +1498,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const signDocument = useCallback<DataContextValue["signDocument"]>(
     (id, signedByName) => {
       const at = new Date().toISOString();
+      const signerId = storage.getSession()?.userId;
       setState((p) => {
         const doc = p.documents.find((d) => d.id === id);
-        const pending = doc?.pendingLeaseUpdate;
+        if (!doc || !isAwaitingSignature(doc)) return p;
+        if (doc.ownerUserId && signerId && doc.ownerUserId !== signerId) return p;
+        const pending = doc.pendingLeaseUpdate;
         let leases = p.leases;
         if (pending) {
           leases = p.leases.map((lease) => {

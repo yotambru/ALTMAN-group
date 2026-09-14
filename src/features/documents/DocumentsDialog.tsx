@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   Building2,
@@ -28,6 +28,8 @@ import { DocumentPreviewDialog } from "@/features/documents/DocumentPreviewDialo
 import { SignatureDialog } from "@/features/documents/SignatureDialog";
 import { useData } from "@/lib/store";
 import { propertyAddressLabel, sortPropertiesByLocation } from "@/lib/portfolio";
+import { canSignDocument } from "@/lib/document-signing";
+import { storage } from "@/lib/storage";
 import {
   DOCUMENT_FOLDER_CHILD,
   DOCUMENT_FOLDER_LABEL,
@@ -80,6 +82,8 @@ interface DocumentsDialogProps {
   tenants?: Tenant[];
   /** Prefocus signature-only view. */
   awaitingSignatureOnly?: boolean;
+  /** Open the signature sheet for this document when the vault mounts. */
+  focusDocumentId?: string | null;
 }
 
 const statusLabel: Record<NonNullable<AppDocument["status"]>, { label: string; tone: "success" | "warning" | "neutral" }> = {
@@ -179,6 +183,7 @@ function DocRow({
   moveToFolder,
   moveLabel,
   onMove,
+  location,
 }: {
   doc: AppDocument;
   canSign: boolean;
@@ -187,6 +192,7 @@ function DocRow({
   moveToFolder?: DocumentFolder;
   moveLabel?: string;
   onMove?: (doc: AppDocument, folder: DocumentFolder) => void;
+  location?: string;
 }) {
   const meta = statusLabel[doc.status ?? (doc.signed ? "signed" : "draft")];
   return (
@@ -203,6 +209,7 @@ function DocRow({
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-navy">{doc.name}</p>
           <p className="text-[0.7rem] text-text-muted">
+            {location ? `${location} · ` : ""}
             {DOCUMENT_FOLDER_LABEL[inferDocumentFolder(doc)]} · {formatDateDots(doc.createdAt)}
             {doc.signedByName ? ` • נחתם ע״י ${doc.signedByName}` : ""}
           </p>
@@ -254,6 +261,7 @@ export function DocumentsDialog({
   landlords = [],
   tenants = [],
   awaitingSignatureOnly = false,
+  focusDocumentId = null,
 }: DocumentsDialogProps) {
   const { addDocument, updateDocument, leases, tenants: allTenants, users } = useData();
   const [signingDoc, setSigningDoc] = useState<AppDocument | null>(null);
@@ -266,6 +274,19 @@ export function DocumentsDialog({
   const [selectedTenantId, setSelectedTenantId] = useState<FolderId | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<DocumentFolder | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const openedFocus = useRef<string | null>(null);
+  const signerUserId = storage.getSession()?.userId;
+
+  /* eslint-disable react-hooks/set-state-in-effect -- open the focused doc after vault data lands */
+  useEffect(() => {
+    if (!focusDocumentId || openedFocus.current === focusDocumentId) return;
+    const doc = documents.find((d) => d.id === focusDocumentId);
+    if (!doc) return;
+    openedFocus.current = focusDocumentId;
+    if (canSignDocument(doc, signerUserId)) setSigningDoc(doc);
+    else setPreviewDoc(doc);
+  }, [focusDocumentId, documents, signerUserId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const landlordFirstMode = landlordFirst && landlords.length > 0;
   const activeLandlordId = landlordFirstMode ? selectedLandlordId : null;
@@ -286,10 +307,9 @@ export function DocumentsDialog({
         if (d.type === "property_photo") return false;
         if (hiddenFolders.includes(inferDocumentFolder(d))) return false;
         if (!awaitingSignatureOnly) return true;
-        const st = d.status ?? (d.signed ? "signed" : "draft");
-        return st === "awaiting_signature";
+        return canSignDocument(d, signerUserId);
       }),
-    [documents, awaitingSignatureOnly, hiddenFolders],
+    [documents, awaitingSignatureOnly, hiddenFolders, signerUserId],
   );
 
   const knownIds = useMemo(() => new Set(properties.map((p) => p.id)), [properties]);
@@ -753,7 +773,7 @@ export function DocumentsDialog({
     </div>
   );
 
-  const filters = searchable && (
+  const filters = searchable && !awaitingSignatureOnly && (
     <div className="mb-3 space-y-2">
       <SearchField value={query} onChange={setQuery} placeholder={searchPlaceholder} />
       {!landlordFirstMode && !activePropertyId && landlords.length > 0 && (
@@ -777,7 +797,7 @@ export function DocumentsDialog({
     </div>
   );
 
-  const uploadBox = upload && selectedFolder && (
+  const uploadBox = upload && selectedFolder && !awaitingSignatureOnly && (
     <div className="mb-4 rounded-xl border border-dashed border-border bg-surface-muted p-3">
       <input
         value={uploadName}
@@ -803,7 +823,25 @@ export function DocumentsDialog({
 
   const list = (
     <div className={inline ? "space-y-2" : "no-scrollbar max-h-[55vh] space-y-2 overflow-y-auto"}>
-      {selectedFolder ? (
+      {awaitingSignatureOnly ? (
+        vaultDocs.length === 0 ? (
+          <p className="py-6 text-center text-sm text-text-muted">אין מסמכים שממתינים לחתימתך.</p>
+        ) : (
+          vaultDocs.map((doc) => {
+            const prop = properties.find((p) => p.id === doc.propertyId);
+            return (
+              <DocRow
+                key={doc.id}
+                doc={doc}
+                canSign={canSign && canSignDocument(doc, signerUserId)}
+                onSign={setSigningDoc}
+                onPreview={setPreviewDoc}
+                location={prop ? propertyAddressLabel(prop) : undefined}
+              />
+            );
+          })
+        )
+      ) : selectedFolder ? (
         <>
           {childFolder && ChildIcon && folderCount(tenantDocs, childFolder) > 0 && (
             <FolderRow
@@ -821,7 +859,7 @@ export function DocumentsDialog({
               <DocRow
                 key={doc.id}
                 doc={doc}
-                canSign={canSign}
+                canSign={canSign && canSignDocument(doc, signerUserId)}
                 onSign={setSigningDoc}
                 onPreview={setPreviewDoc}
                 moveToFolder={moveToFolder}

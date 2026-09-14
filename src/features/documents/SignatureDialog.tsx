@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, PenLine } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { DocumentFilePreview } from "@/features/documents/DocumentPreviewDialog";
+import { canSignDocument } from "@/lib/document-signing";
 import { useData } from "@/lib/store";
+import { storage } from "@/lib/storage";
 import type { AppDocument } from "@/types";
 
 interface SignatureDialogProps {
@@ -17,7 +20,7 @@ interface SignatureDialogProps {
   onSigned?: () => void;
 }
 
-/** Digital-signature flow: type name, confirm, and record the signature. */
+/** Typed-name acknowledgment: preview, confirm, and record who signed when. */
 export function SignatureDialog({
   open,
   onClose,
@@ -25,31 +28,47 @@ export function SignatureDialog({
   signerName = "",
   onSigned,
 }: SignatureDialogProps) {
-  const { signDocument } = useData();
+  const { signDocument, documents } = useData();
   const [name, setName] = useState(signerName);
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
+  const [error, setError] = useState("");
+
+  const liveDoc = document
+    ? (documents.find((d) => d.id === document.id) ?? document)
+    : null;
+  const signerId = storage.getSession()?.userId;
+  const allowed = liveDoc ? canSignDocument(liveDoc, signerId) : false;
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (open) setName(signerName);
-  }, [open, signerName]);
+    if (!open) return;
+    setName(signerName);
+    setAgreed(false);
+    setSigned(false);
+    setError("");
+  }, [open, signerName, document?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const documentName = document?.name ?? "מסמך לחתימה";
+  const documentName = liveDoc?.name ?? "מסמך לחתימה";
 
   const handleClose = () => {
     onClose();
     setTimeout(() => {
       setAgreed(false);
       setSigned(false);
+      setError("");
     }, 200);
   };
 
   const handleSign = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !agreed) return;
-    if (document) signDocument(document.id, name.trim());
+    if (!liveDoc || !allowed) {
+      setError("לא ניתן לחתום על המסמך. פנו למשרד.");
+      return;
+    }
+    signDocument(liveDoc.id, name.trim());
     setSigned(true);
     onSigned?.();
   };
@@ -65,13 +84,17 @@ export function SignatureDialog({
         <div className="flex flex-col items-center gap-3 py-6 text-center">
           <CheckCircle2 className="h-14 w-14 text-success" />
           <h4 className="text-lg font-bold text-navy">המסמך נחתם בהצלחה</h4>
-          <p className="text-sm text-text-muted">עותק חתום נשמר בכספת המסמכים שלך.</p>
+          <p className="text-sm text-text-muted">
+            החתימה נרשמה במערכת. המסמך זמין בכספת עם סטטוס חתום.
+          </p>
           <Button onClick={handleClose} fullWidth className="mt-2">
             סגירה
           </Button>
         </div>
       ) : (
         <form onSubmit={handleSign} className="space-y-4">
+          <DocumentFilePreview document={liveDoc} compact />
+
           <div className="rounded-xl bg-surface-muted p-4 text-sm text-text-muted">
             אני מאשר/ת כי קראתי את המסמך <b className="text-navy">{documentName}</b>{" "}
             וכי חתימתי הדיגיטלית מהווה הסכמה מחייבת לתנאיו.
@@ -85,8 +108,12 @@ export function SignatureDialog({
               <PenLine className="pointer-events-none absolute inset-y-0 end-3.5 my-auto h-5 w-5 text-orange" />
               <input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError("");
+                }}
                 placeholder="שם מלא"
+                autoComplete="name"
                 className="w-full rounded-xl border bg-surface px-3.5 py-3 pe-10 font-[cursive] text-lg text-navy focus:border-orange focus:outline-none"
               />
             </div>
@@ -102,7 +129,9 @@ export function SignatureDialog({
             אני מסכים/ה לתנאי המסמך
           </label>
 
-          <Button type="submit" fullWidth size="lg" disabled={!name.trim() || !agreed}>
+          {error && <p className="text-sm font-semibold text-danger">{error}</p>}
+
+          <Button type="submit" fullWidth size="lg" disabled={!name.trim() || !agreed || !allowed}>
             חתום ואשר
           </Button>
         </form>

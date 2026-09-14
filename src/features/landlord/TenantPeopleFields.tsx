@@ -35,11 +35,11 @@ export function TenantPeopleFields({
         person={primary}
         onChange={onPrimaryChange}
         emailRequired={primaryEmailRequired}
-        emailHint="מייל כניסה — יישלח מייל הזמנה"
+        emailHint="מייל כניסה — יקבע סיסמה בכניסה הראשונה"
       />
       <PersonBlock
         title="שוכר 2"
-        hint="אופציונלי — גם לו/לה יישלח מייל הזמנה אם יוזן מייל"
+        hint="אופציונלי — גם לו/לה ייפתח חשבון כניסה אם יוזן מייל"
         person={secondary}
         onChange={onSecondaryChange}
         emailRequired={false}

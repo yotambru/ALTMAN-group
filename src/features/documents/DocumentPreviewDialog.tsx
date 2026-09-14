@@ -36,6 +36,75 @@ function isPdfSource(url: string, doc?: AppDocument | null): boolean {
   return PDF_EXT.test(url) || PDF_EXT.test(doc?.name ?? "");
 }
 
+export function DocumentFilePreview({
+  document: doc,
+  compact = false,
+  emptyTitle = "אין קובץ לתצוגה",
+  emptyDescription = "המסמך עדיין לא הועלה, או שלא ניתן להציג אותו כאן.",
+}: {
+  document?: AppDocument | null;
+  compact?: boolean;
+  emptyTitle?: string;
+  emptyDescription?: string;
+}) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const url = useSignedUrl(doc?.fileDataUrl);
+  const heading = doc?.name ?? "מסמך";
+  const imageFailed = Boolean(url && failedUrl === url);
+  const showImage = Boolean(url && !imageFailed && isImageSource(url, doc));
+  const showPdf = Boolean(url && !showImage && isPdfSource(url, doc));
+  const frameClass = compact
+    ? "h-[28vh] w-full rounded-xl ring-1 ring-border"
+    : "h-[60vh] w-full rounded-xl ring-1 ring-border";
+
+  return (
+    <div className="space-y-3">
+      {url && showImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={url}
+          alt={heading}
+          className={
+            compact
+              ? "max-h-[28vh] w-full rounded-xl object-contain ring-1 ring-border"
+              : "max-h-[60vh] w-full rounded-xl object-contain ring-1 ring-border"
+          }
+          onError={() => {
+            if (url) setFailedUrl(url);
+          }}
+        />
+      ) : url && showPdf ? (
+        <object title={heading} data={url} type="application/pdf" className={frameClass}>
+          <iframe title={heading} src={url} className={frameClass} />
+        </object>
+      ) : url ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-8 text-center">
+          <FileText className="h-8 w-8 text-text-muted" />
+          <p className="text-sm font-semibold text-navy">אין תצוגה מקדימה לסוג קובץ זה</p>
+          <p className="text-xs text-text-muted">ניתן לפתוח את המסמך בחלון חדש.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-8 text-center">
+          <FileText className="h-8 w-8 text-text-muted" />
+          <p className="text-sm font-semibold text-navy">{emptyTitle}</p>
+          <p className="text-xs text-text-muted">{emptyDescription}</p>
+        </div>
+      )}
+
+      {url && (
+        <Button
+          variant="outline"
+          fullWidth
+          onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
+        >
+          <ExternalLink className="h-4 w-4" />
+          פתיחה בחלון חדש
+        </Button>
+      )}
+    </div>
+  );
+}
+
 /** Full-screen overlay for viewing an uploaded document (image, PDF, or fallback). */
 export function DocumentPreviewDialog({
   open,
@@ -46,9 +115,6 @@ export function DocumentPreviewDialog({
   emptyTitle = "אין קובץ לתצוגה",
   emptyDescription = "המסמך עדיין לא הועלה, או שלא ניתן להציג אותו כאן.",
 }: DocumentPreviewDialogProps) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const url = useSignedUrl(doc?.fileDataUrl);
-
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -64,9 +130,6 @@ export function DocumentPreviewDialog({
   if (!open) return null;
 
   const heading = title ?? doc?.name ?? "מסמך";
-  const imageFailed = Boolean(url && failedUrl === url);
-  const showImage = Boolean(url && !imageFailed && isImageSource(url, doc));
-  const showPdf = Boolean(url && !showImage && isPdfSource(url, doc));
 
   return (
     <Portal>
@@ -98,47 +161,11 @@ export function DocumentPreviewDialog({
           </button>
         </div>
 
-        {url && showImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={url}
-            alt={heading}
-            className="max-h-[60vh] w-full rounded-xl object-contain ring-1 ring-border"
-            onError={() => {
-              if (url) setFailedUrl(url);
-            }}
-          />
-        ) : url && showPdf ? (
-          <iframe
-            title={heading}
-            src={url}
-            className="h-[60vh] w-full rounded-xl ring-1 ring-border"
-          />
-        ) : url ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-10 text-center">
-            <FileText className="h-8 w-8 text-text-muted" />
-            <p className="text-sm font-semibold text-navy">אין תצוגה מקדימה לסוג קובץ זה</p>
-            <p className="text-xs text-text-muted">ניתן לפתוח את המסמך בחלון חדש.</p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-4 py-10 text-center">
-            <FileText className="h-8 w-8 text-text-muted" />
-            <p className="text-sm font-semibold text-navy">{emptyTitle}</p>
-            <p className="text-xs text-text-muted">{emptyDescription}</p>
-          </div>
-        )}
-
-        {url && (
-          <Button
-            variant="outline"
-            fullWidth
-            className="mt-4"
-            onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
-          >
-            <ExternalLink className="h-4 w-4" />
-            פתיחה בחלון חדש
-          </Button>
-        )}
+        <DocumentFilePreview
+          document={doc}
+          emptyTitle={emptyTitle}
+          emptyDescription={emptyDescription}
+        />
       </div>
     </div>
     </Portal>

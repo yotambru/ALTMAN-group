@@ -28,9 +28,12 @@ final class AltmanBridgeViewController: CAPBridgeViewController {
         scrollView.contentInsetAdjustmentBehavior = .never
         scrollView.keyboardDismissMode = .interactive
         scrollView.showsHorizontalScrollIndicator = false
-        // Bottom overscroll should match the dashboard canvas, not the navy splash.
-        let canvas = UIColor(red: 245 / 255, green: 247 / 255, blue: 251 / 255, alpha: 1)
-        scrollView.backgroundColor = canvas
+        // Match --navy so top rubber-band continues the dusk header.
+        // Bottom continuation is painted by the CSS body::after canvas band.
+        let navy = UIColor(red: 20 / 255, green: 40 / 255, blue: 90 / 255, alpha: 1)
+        webView.isOpaque = true
+        webView.backgroundColor = navy
+        scrollView.backgroundColor = navy
     }
 }
 

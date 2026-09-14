@@ -132,6 +132,7 @@ export default function TenantDashboard() {
   const [dialog, setDialog] = useState<Dialog>(null);
   /** Infinitive phrase for the lock sheet, e.g. "להשתמש בצ׳אט עם המנהל". */
   const [lockAction, setLockAction] = useState<string | null>(null);
+  const [focusDocId, setFocusDocId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const pendingUpload = useRef<UtilityKind | "insurance" | null>(null);
 
@@ -248,7 +249,10 @@ export default function TenantDashboard() {
         guard("לצפות במעקב תקלות", () => openPanel("tickets"))();
         break;
       case "signature":
-        guard("לגשת למסמכים וחתימה", () => openPanel("docs"))();
+        guard("לגשת למסמכים וחתימה", () => {
+          setFocusDocId(n.relatedId ?? null);
+          setTab("documents");
+        })();
         break;
       case "payment":
         setDialog("contract");
@@ -456,6 +460,8 @@ export default function TenantDashboard() {
                     signerName={session.fullName}
                     properties={tenantProperties}
                     hiddenFolders={["id_photos", "landlord_id", "management"]}
+                    awaitingSignatureOnly
+                    focusDocumentId={focusDocId}
                     upload={{
                       ownerUserId: user.id,
                       propertyId: property.id,
@@ -634,6 +640,7 @@ export default function TenantDashboard() {
               signerName={session.fullName}
               properties={tenantProperties}
               hiddenFolders={["id_photos", "landlord_id", "management"]}
+              focusDocumentId={tab === "documents" ? focusDocId : null}
               upload={{
                 ownerUserId: user.id,
                 propertyId: property.id,

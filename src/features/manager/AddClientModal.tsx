@@ -443,8 +443,8 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     ? `הוספת נכס · ${existing?.fullName ?? "משכיר קיים"}`
     : "משכיר חדש";
   const description = attaching || mode === "existing"
-    ? "אפשר לצרף שוכר לפי מייל — יישלח מייל הזמנה. שאר השדות אופציונליים"
-    : "פתיחת חשבון לפי מייל — יישלח מייל הזמנה לאימות ולהגדרת סיסמה";
+    ? "אפשר לצרף שוכר לפי מייל. שאר השדות אופציונליים"
+    : "פתיחת חשבון לפי מייל — הסיסמה תיקבע בכניסה הראשונה";
 
   return (
     <Modal
@@ -587,7 +587,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
             <span>
               <span className="block text-sm font-semibold text-navy">פתיחת יוזר שוכר</span>
               <span className="mt-0.5 block text-xs text-text-muted">
-                מייל — יישלח מייל הזמנה. אפשר גם שוכר שני (זוג) עם כניסה נפרדת
+                מייל כניסה. אפשר גם שוכר שני (זוג) עם כניסה נפרדת
               </span>
             </span>
           </label>

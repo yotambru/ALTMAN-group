@@ -24,7 +24,7 @@ interface LoginModalProps {
 
 type Step = "regular" | "first" | "set-password";
 
-/** Login + first-time password setup (email-only invite). */
+/** Login + first-time password setup. */
 export function LoginModal({ open, onClose }: LoginModalProps) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("regular");
@@ -177,7 +177,7 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
     step === "set-password"
       ? "בחרו סיסמה לחשבון. מכאן והלאה תיכנסו איתה"
       : step === "first"
-        ? "אם קיבלתם מייל הזמנה — לחצו על הקישור שם. אחרת הזינו כאן את המייל מהמשרד"
+        ? "הזינו את המייל שקיבלתם מהמשרד"
         : "הזינו מייל וסיסמה";
 
   return (

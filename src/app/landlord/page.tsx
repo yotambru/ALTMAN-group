@@ -68,6 +68,7 @@ export default function LandlordDashboard() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [docsCanSign, setDocsCanSign] = useState(false);
+  const [focusDocId, setFocusDocId] = useState<string | null>(null);
   const [detailProperty, setDetailProperty] = useState<Property | null>(null);
   const [statusFilter, setStatusFilter] = useState<PropertyStatus | "all">("all");
   const [focusWithdrawalId, setFocusWithdrawalId] = useState<string | null>(null);
@@ -118,7 +119,10 @@ export default function LandlordDashboard() {
     setTab("dashboard");
   };
 
-  const openDocs = (canSign: boolean) => openPanel("docs", { canSign });
+  const openDocs = (canSign: boolean, docId: string | null = null) => {
+    setFocusDocId(docId);
+    openPanel("docs", { canSign });
+  };
 
   const openNotification = (n: AppNotification) => {
     switch (n.kind) {
@@ -129,7 +133,7 @@ export default function LandlordDashboard() {
         openPanel("tickets");
         break;
       case "signature":
-        openDocs(true);
+        openDocs(true, n.relatedId ?? null);
         break;
       case "payment":
         setDialog("rentals");
@@ -413,6 +417,7 @@ export default function LandlordDashboard() {
                         landlords={myLandlordRecords}
                         tenants={myTenants}
                         awaitingSignatureOnly={docsCanSign}
+                        focusDocumentId={focusDocId}
                         upload={{ ownerUserId: user.id, landlordId }}
                       />
                     )}
@@ -465,6 +470,7 @@ export default function LandlordDashboard() {
                   properties={myProperties}
                   landlords={myLandlordRecords}
                   tenants={myTenants}
+                  focusDocumentId={tab === "documents" ? focusDocId : null}
                   upload={{ ownerUserId: user.id, landlordId }}
                 />
               </div>

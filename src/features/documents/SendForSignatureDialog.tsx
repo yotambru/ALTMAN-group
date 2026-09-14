@@ -48,7 +48,7 @@ export function SendForSignatureDialog({ open, onClose }: SendForSignatureDialog
       );
       if (tenantLogins.length) return tenantLogins;
     }
-    return users.filter((u) => u.role === "landlord" || u.role === "tenant");
+    return users.filter((u) => (u.role === "landlord" || u.role === "tenant") && u.email);
   }, [renewal, selectedProperty, users]);
 
   const applyProperty = (nextId: string) => {
@@ -96,6 +96,10 @@ export function SendForSignatureDialog({ open, onClose }: SendForSignatureDialog
     e.preventDefault();
     setError("");
     if (!name.trim() || !ownerUserId) return;
+    if (!fileData) {
+      setError("יש לצרף את קובץ המסמך לפני השליחה.");
+      return;
+    }
 
     if (renewal) {
       if (!propertyId || !activeLease) {
@@ -283,7 +287,7 @@ export function SendForSignatureDialog({ open, onClose }: SendForSignatureDialog
             />
             <Button type="button" variant="outline" fullWidth onClick={() => fileRef.current?.click()}>
               <Upload className="h-5 w-5" />
-              {fileName || (renewal ? "העלאת נספח חידוש" : "העלאת קובץ (לא חובה)")}
+              {fileName || (renewal ? "העלאת נספח חידוש" : "העלאת קובץ המסמך")}
             </Button>
           </div>
 
