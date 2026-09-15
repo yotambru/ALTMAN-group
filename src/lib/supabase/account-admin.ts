@@ -101,7 +101,23 @@ export async function provisionAuthUser(
   });
   if (error) throw error;
   if (!data.user) throw new Error("createUser returned no user");
-  await linkAuthUser(admin, appUserId, data.user.id);
+  try {
+    await linkAuthUser(admin, appUserId, data.user.id);
+  } catch (err) {
+    await admin.auth.admin.deleteUser(data.user.id);
+    throw err;
+  }
+}
+
+export async function deleteAuthUserByEmail(
+  admin: SupabaseClient,
+  email: string,
+): Promise<boolean> {
+  const existing = await findAuthUserByEmail(admin, email);
+  if (!existing) return false;
+  const { error } = await admin.auth.admin.deleteUser(existing.id);
+  if (error) throw error;
+  return true;
 }
 
 /** Whether the Auth user still needs to set a password (unused invite leftover). */

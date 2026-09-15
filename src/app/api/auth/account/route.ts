@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   authInvitePending,
   createAdminClient,
+  deleteAuthUserByEmail,
   findAppUserByEmail,
   findAppUserById,
   findAuthUserByEmail,
@@ -47,12 +48,6 @@ type Body = {
 
 export async function POST(request: Request) {
   const key = clientKey(request);
-  if (rateLimited(key)) {
-    return NextResponse.json(
-      { ok: false, error: "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות." },
-      { status: 429 },
-    );
-  }
 
   let body: Body;
   try {
@@ -64,6 +59,14 @@ export async function POST(request: Request) {
   const email = (body.email ?? "").trim().toLowerCase();
   const password = body.password ?? "";
   const action = body.action ?? "";
+
+  const managerAuthActions = action === "set-password" || action === "purge-auth";
+  if (!managerAuthActions && rateLimited(key)) {
+    return NextResponse.json(
+      { ok: false, error: "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות." },
+      { status: 429 },
+    );
+  }
 
   try {
     const admin = createAdminClient();
@@ -108,6 +111,32 @@ export async function POST(request: Request) {
         );
       }
       await provisionAuthUser(admin, targetEmail, nextPassword, target.id);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === "purge-auth") {
+      const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+      if (!token) {
+        return NextResponse.json({ ok: false, error: "יש להתחבר מחדש." }, { status: 401 });
+      }
+      const { data: authData, error: authError } = await admin.auth.getUser(token);
+      if (authError || !authData.user) {
+        return NextResponse.json({ ok: false, error: "יש להתחבר מחדש." }, { status: 401 });
+      }
+      const { data: caller, error: callerError } = await admin
+        .from("app_users")
+        .select("id, role")
+        .eq("auth_user_id", authData.user.id)
+        .maybeSingle();
+      if (callerError || caller?.role !== "manager") {
+        return NextResponse.json({ ok: false, error: "אין הרשאה." }, { status: 403 });
+      }
+      if (!email || !email.includes("@")) {
+        return NextResponse.json({ ok: false, error: "יש להזין כתובת מייל תקינה." }, { status: 400 });
+      }
+      const stillUsed = await findAppUserByEmail(admin, email);
+      if (stillUsed) return NextResponse.json({ ok: true, skipped: true });
+      await deleteAuthUserByEmail(admin, email);
       return NextResponse.json({ ok: true });
     }
 

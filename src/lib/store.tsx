@@ -12,6 +12,7 @@ import { emptyState, seedState, type DataState } from "@/lib/data-state";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   applyRealtimeChange,
+  dropUnpersisted,
   fetchAll,
   persistDiff,
   subscribeToData,
@@ -23,7 +24,13 @@ import { paymentClearanceDate, paymentStatusForDate, resolveCheckSchedule } from
 import { inferDocumentFolder } from "@/lib/document-folders";
 import { isAwaitingSignature } from "@/lib/document-signing";
 import { storage } from "@/lib/storage";
-import { removeLandlord, removeOwnAccount, removeProperty, removeTenant } from "@/lib/delete-users";
+import {
+  removeDanglingLogins,
+  removeLandlord,
+  removeOwnAccount,
+  removeProperty,
+  removeTenant,
+} from "@/lib/delete-users";
 import { isNotificationForAudience } from "@/lib/notifications";
 import { landlordRentPool, propertyAddressLabel } from "@/lib/withdrawals";
 import type {
@@ -482,7 +489,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             withdrawals: remote.withdrawals ?? [],
             notifications: collapseChatNotifications(remote.notifications ?? []),
           };
-          const healed = repairMissingLeases(merged);
+          const healed = removeDanglingLogins(repairMissingLeases(merged));
           setState(healed);
           prevRef.current = merged;
         } else {
@@ -536,6 +543,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           setPersistError(errors[0] ?? "שמירה לשרת נכשלה");
+          setState((current) => dropUnpersisted(current, next, applied));
         } catch (err) {
           console.error("[supabase] persist", err);
           setPersistError("שמירה לשרת נכשלה");

@@ -288,3 +288,28 @@ export function removeOwnAccount(
     activityLog: [log, ...state.activityLog],
   };
 }
+
+/**
+ * Drop login accounts whose landlord/tenant row is missing.
+ * That leftover occupies the email and blocks creating the person again.
+ */
+export function removeDanglingLogins(state: DataState): DataState {
+  const landlordIds = new Set(state.landlords.map((l) => l.id));
+  const tenantIds = new Set(state.tenants.map((t) => t.id));
+  const dangling = new Set(
+    state.users
+      .filter((u) => {
+        if (u.landlordId && !landlordIds.has(u.landlordId)) return true;
+        if (u.tenantId && !tenantIds.has(u.tenantId)) return true;
+        return false;
+      })
+      .map((u) => u.id),
+  );
+  if (dangling.size === 0) return state;
+  const social = stripUsers(state, dangling);
+  return {
+    ...state,
+    ...social,
+    users: state.users.filter((u) => !dangling.has(u.id)),
+  };
+}
