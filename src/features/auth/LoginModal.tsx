@@ -131,13 +131,14 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
   const handleFirstSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setError("");
     const result = await checkFirstLoginEmail(identifier);
     setSubmitting(false);
     if (!result.ok) {
       setError(result.error);
       return;
     }
-    setPendingEmail(identifier.trim());
+    setPendingEmail(resolveLoginEmail(identifier));
     setPassword("");
     setConfirmPassword("");
     setError("");

@@ -29,12 +29,30 @@ export function getSupabase(): SupabaseClient | null {
   return browserClient;
 }
 
+/** Thrown when the server cannot reach Supabase Auth admin APIs. */
+export class SupabaseServiceConfigError extends Error {
+  readonly code = "SUPABASE_SERVICE_CONFIG" as const;
+  constructor(message = "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.") {
+    super(message);
+    this.name = "SupabaseServiceConfigError";
+  }
+}
+
+export function isSupabaseServiceConfigError(err: unknown): err is SupabaseServiceConfigError {
+  return (
+    err instanceof SupabaseServiceConfigError ||
+    (Boolean(err) &&
+      typeof err === "object" &&
+      (err as { code?: string }).code === "SUPABASE_SERVICE_CONFIG")
+  );
+}
+
 export function createServiceClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Copy .env.example to .env.local.",
+    throw new SupabaseServiceConfigError(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Set them in Vercel / .env.local.",
     );
   }
   return createClient(url, key, {

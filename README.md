@@ -83,7 +83,10 @@ username, and the seed password (`SEED_DEMO_PASSWORD`, default `Altman1234`):
 | שוכר | `tenant` | `danny@example.com` | seed password |
 
 New landlord/tenant accounts opened by the office use **כניסה פעם ראשונה** with
-their email, then set a password (minimum 8 characters).
+their email, then set a password (minimum 8 characters). That flow calls
+`/api/auth/account`, which **requires** `SUPABASE_SERVICE_ROLE_KEY` on the server
+(Vercel Environment Variables). Without it, first-time activation returns an error
+and new accounts cannot sign in.
 
 Dashboard URLs require a valid Auth session; unauthenticated visits redirect to `/`.
 

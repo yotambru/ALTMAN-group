@@ -54,13 +54,37 @@ export async function findAppUserByEmail(
   email: string,
 ): Promise<AppUserRow | null> {
   const needle = email.trim().toLowerCase();
+  if (!needle) return null;
+  // Emails are stored normalized (lowercase). Prefer exact eq — ilike treats `_`
+  // as a wildcard and can match the wrong row or trip maybeSingle().
   const { data, error } = await admin
     .from("app_users")
     .select("id, email, auth_user_id, password_hash, role")
-    .ilike("email", needle)
+    .eq("email", needle)
     .maybeSingle();
   if (error) throw error;
-  return (data as AppUserRow | null) ?? null;
+  if (data) return data as AppUserRow;
+
+  // Legacy rows that were saved with mixed case before normalizeEmail.
+  const { data: fallback, error: fallbackError } = await admin
+    .from("app_users")
+    .select("id, email, auth_user_id, password_hash, role")
+    .ilike("email", needle.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_"))
+    .limit(5);
+  if (fallbackError) throw fallbackError;
+  const matches = (fallback ?? []).filter(
+    (row) => String(row.email ?? "").trim().toLowerCase() === needle,
+  );
+  return (matches[0] as AppUserRow | undefined) ?? null;
+}
+
+/** Clear a stale auth_user_id when the Auth user was deleted or never linked. */
+export async function clearAuthLink(admin: SupabaseClient, appUserId: string): Promise<void> {
+  const { error } = await admin
+    .from("app_users")
+    .update({ auth_user_id: null })
+    .eq("id", appUserId);
+  if (error) throw error;
 }
 
 export async function linkAuthUser(
@@ -107,6 +131,41 @@ export async function provisionAuthUser(
     await admin.auth.admin.deleteUser(data.user.id);
     throw err;
   }
+}
+
+/**
+ * True when first-login may still set a password for this app row
+ * (no Auth link, invite leftover, or dangling auth_user_id).
+ */
+export async function authLinkNeedsActivation(
+  admin: SupabaseClient,
+  row: AppUserRow,
+  email: string,
+): Promise<boolean> {
+  if (!row.auth_user_id) return true;
+
+  const needle = email.trim().toLowerCase();
+  const byEmail = await findAuthUserByEmail(admin, needle);
+  if (byEmail) {
+    if (byEmail.id !== row.auth_user_id) {
+      // Stale link on the app row — clear so provision can attach the email's Auth user.
+      await clearAuthLink(admin, row.id);
+    }
+    return authInvitePending(byEmail);
+  }
+
+  const { data, error } = await admin.auth.admin.getUserById(row.auth_user_id);
+  if (error || !data.user) {
+    await clearAuthLink(admin, row.id);
+    return true;
+  }
+  const linkedEmail = data.user.email?.toLowerCase() ?? "";
+  if (linkedEmail && linkedEmail !== needle) {
+    // App email and Auth email diverged — allow activate to create/link the login email.
+    await clearAuthLink(admin, row.id);
+    return true;
+  }
+  return authInvitePending(data.user);
 }
 
 export async function deleteAuthUserByEmail(
