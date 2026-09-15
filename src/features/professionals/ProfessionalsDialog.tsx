@@ -52,7 +52,7 @@ export function ProfessionalsDialog({ open, onClose, canManage = true }: Profess
         )
       )}
 
-      <div className="no-scrollbar max-h-[55vh] space-y-2 overflow-y-auto">
+      <div className="space-y-2">
         {professionals.map((p) => {
           const jobs = tickets.filter((t) => t.assignedProfessionalId === p.id).length;
           return (

@@ -481,7 +481,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
           </Button>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="no-scrollbar max-h-[64vh] space-y-4 overflow-y-auto pe-1">
+        <form onSubmit={handleSubmit} className="space-y-4 pe-1">
           {!attaching && (
             <>
               <Section title="סוג הזנה" />

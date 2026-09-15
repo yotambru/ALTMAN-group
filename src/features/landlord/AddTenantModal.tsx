@@ -326,7 +326,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
       ) : (
         <form
           onSubmit={handleSubmit}
-          className="no-scrollbar max-h-[64vh] space-y-4 overflow-y-auto pe-1"
+          className="space-y-4 pe-1"
         >
           <FormField label="נכס">
             <select

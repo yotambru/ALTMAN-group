@@ -21,7 +21,7 @@ export function CriticalDatesDialog({ open, onClose, landlordId }: CriticalDates
 
   return (
     <Modal open={open} onClose={onClose} title="התראות קריטיות" description="מועדים חשובים ב-90 הימים הקרובים">
-      <div className="no-scrollbar max-h-[64vh] space-y-2 overflow-y-auto">
+      <div className="space-y-2">
         {dates.length === 0 && (
           <p className="py-6 text-center text-sm text-text-muted">אין מועדים קריטיים בטווח הקרוב.</p>
         )}

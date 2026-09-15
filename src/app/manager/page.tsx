@@ -98,7 +98,7 @@ type HomePanel = "clients" | "tickets" | "docs" | "chat" | "report" | "withdrawa
 export default function ManagerDashboard() {
   const { session, user, ready, logout } = useSession(["manager", "assistant"]);
   const data = useData();
-  const { properties, landlords, tenants, documents, notifications, leases, users, chatThreads, tickets, deleteLandlord } = data;
+  const { properties, landlords, tenants, documents, notifications, leases, users, chatThreads, tickets, deleteLandlord, deleteProperty } = data;
   const role = session.role;
 
   const [tab, setTab] = useState<AppTab>("dashboard");
@@ -116,6 +116,7 @@ export default function ManagerDashboard() {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [addForLandlordId, setAddForLandlordId] = useState<string | null>(null);
   const [pendingLandlord, setPendingLandlord] = useState<{ id: string; name: string } | null>(null);
+  const [pendingProperty, setPendingProperty] = useState<{ id: string; name: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [scrollToClients, setScrollToClients] = useState(false);
   const clientsSectionRef = useRef<HTMLElement | null>(null);
@@ -533,6 +534,15 @@ export default function ManagerDashboard() {
                             onClick={() => setDetailProperty(p)}
                             rent={rent}
                             tenantName={tenant?.fullName}
+                            onDelete={
+                              can(role, "clients.delete")
+                                ? () =>
+                                    setPendingProperty({
+                                      id: p.id,
+                                      name: propertyAddressLabel(p),
+                                    })
+                                : undefined
+                            }
                           />
                         );
                       })}
@@ -705,6 +715,15 @@ export default function ManagerDashboard() {
           setDialog(null);
           setDetailProperty(p);
         }}
+        onDelete={
+          can(role, "clients.delete")
+            ? (p) =>
+                setPendingProperty({
+                  id: p.id,
+                  name: propertyAddressLabel(p),
+                })
+            : undefined
+        }
       />
       <AddClientModal
         open={dialog === "add"}
@@ -763,6 +782,25 @@ export default function ManagerDashboard() {
         description={
           pendingLandlord
             ? `למחוק את ${pendingLandlord.name}? יימחקו גם הנכסים, השוכרים והשכירויות הקשורים. לא ניתן לשחזר.`
+            : ""
+        }
+        confirmLabel="מחיקה"
+      />
+      <ConfirmDialog
+        open={pendingProperty != null}
+        onClose={() => setPendingProperty(null)}
+        onConfirm={() => {
+          if (!pendingProperty) return;
+          deleteProperty(pendingProperty.id);
+          if (detailProperty?.id === pendingProperty.id) setDetailProperty(null);
+          if (editProperty?.id === pendingProperty.id) setEditProperty(null);
+          setPendingProperty(null);
+          setToast("הנכס נמחק");
+        }}
+        title="מחיקת נכס"
+        description={
+          pendingProperty
+            ? `למחוק את ${pendingProperty.name}? יימחקו גם השוכר, השכירות, התשלומים והמסמכים של הנכס. לא ניתן לשחזר.`
             : ""
         }
         confirmLabel="מחיקה"

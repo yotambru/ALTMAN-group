@@ -16,7 +16,7 @@ export function ActivityLogDialog({ open, onClose }: ActivityLogDialogProps) {
 
   return (
     <Modal open={open} onClose={onClose} title="יומן פעילות" description={`${activityLog.length} פעולות תועדו`}>
-      <div className="no-scrollbar max-h-[64vh] space-y-2 overflow-y-auto">
+      <div className="space-y-2">
         {activityLog.length === 0 && (
           <p className="py-6 text-center text-sm text-text-muted">עדיין לא תועדו פעולות.</p>
         )}

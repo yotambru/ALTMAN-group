@@ -95,7 +95,7 @@ export function ProtocolDialog({ open, onClose }: ProtocolDialogProps) {
             <ClipboardList className="h-5 w-5" />
             פרוטוקול חדש
           </Button>
-          <div className="no-scrollbar max-h-[55vh] space-y-2 overflow-y-auto">
+          <div className="space-y-2">
             {protocols.length === 0 && (
               <p className="py-6 text-center text-sm text-text-muted">אין פרוטוקולים עדיין.</p>
             )}
@@ -116,7 +116,7 @@ export function ProtocolDialog({ open, onClose }: ProtocolDialogProps) {
           </div>
         </>
       ) : (
-        <form onSubmit={submit} className="no-scrollbar max-h-[64vh] space-y-4 overflow-y-auto pe-1">
+        <form onSubmit={submit} className="space-y-4 pe-1">
           <FormField label="נכס">
             <select
               value={propertyId}

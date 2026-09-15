@@ -57,7 +57,7 @@ export function UtilitiesTrackerDialog({ open, onClose }: UtilitiesTrackerDialog
   return (
     <>
       <Modal open={open} onClose={handleClose} title="מעקב החלפת חשבונות" description="ארנונה · מים · חשמל · גז · ועד בית · ביטוח">
-        <div className="no-scrollbar max-h-[64vh] space-y-3 overflow-y-auto">
+        <div className="space-y-3">
           {rows.map(({ ob, tenant, property, tenantUser }) => {
             const pending = pendingOnboardingCount(ob);
             const awaiting = awaitingManagementApproval(ob);

@@ -126,7 +126,7 @@ export function TicketsDialog({
         </div>
       </div>
 
-      <div className={inline ? "space-y-2" : "no-scrollbar max-h-[60vh] space-y-2 overflow-y-auto"}>
+      <div className="space-y-2">
         {visible.length === 0 && (
           <p className="py-6 text-center text-sm text-text-muted">{emptyMessage}</p>
         )}

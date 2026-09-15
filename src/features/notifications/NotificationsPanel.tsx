@@ -59,7 +59,7 @@ export function NotificationsPanel({ open, onClose, forUserId, forRole, onOpen }
           נקה הכל
         </button>
       )}
-      <div className="no-scrollbar max-h-[62vh] space-y-2 overflow-y-auto">
+      <div className="space-y-2">
         {mine.length === 0 && <p className="py-6 text-center text-sm text-text-muted">אין התראות.</p>}
         {mine.map((n) => {
           const Icon = kindIcon[n.kind];

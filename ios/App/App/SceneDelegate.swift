@@ -29,7 +29,7 @@ final class AltmanBridgeViewController: CAPBridgeViewController {
         scrollView.keyboardDismissMode = .interactive
         scrollView.showsHorizontalScrollIndicator = false
         // Match --navy so top rubber-band continues the dusk header.
-        // Bottom continuation is painted by the CSS body::after canvas band.
+        // Bottom continuation is painted by the CSS body box-shadow canvas band.
         let navy = UIColor(red: 20 / 255, green: 40 / 255, blue: 90 / 255, alpha: 1)
         webView.isOpaque = true
         webView.backgroundColor = navy

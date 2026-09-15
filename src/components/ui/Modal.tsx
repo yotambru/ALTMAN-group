@@ -37,9 +37,13 @@ export function Modal({
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
+    const html = document.documentElement;
+    const prevOverscroll = html.style.overscrollBehavior;
+    html.style.overscrollBehavior = "none";
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKey);
+      html.style.overscrollBehavior = prevOverscroll;
       document.body.style.overflow = "";
     };
   }, [open, onClose]);
@@ -68,15 +72,15 @@ export function Modal({
       />
       <div
         className={cn(
-          "animate-sheet relative z-10 w-full max-w-[30rem] bg-surface p-5 shadow-lg lg:max-w-xl",
-          "max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-bottom,0px)))] overflow-y-auto overscroll-contain",
+          "animate-sheet relative z-10 flex w-full max-w-[30rem] flex-col bg-surface p-5 shadow-lg lg:max-w-xl",
+          "max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-bottom,0px)))]",
           centered
             ? "rounded-2xl"
             : "rounded-t-2xl pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] sm:rounded-2xl sm:pb-5",
           className,
         )}
       >
-        <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-4">
           <div>
             <h3 className="text-lg font-bold text-navy">{title}</h3>
             {description && (
@@ -92,8 +96,8 @@ export function Modal({
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div>{children}</div>
-        {footer && <div className="mt-5">{footer}</div>}
+        <div className="min-h-0 overflow-y-auto overscroll-contain">{children}</div>
+        {footer && <div className="mt-5 shrink-0">{footer}</div>}
       </div>
     </div>
     </Portal>

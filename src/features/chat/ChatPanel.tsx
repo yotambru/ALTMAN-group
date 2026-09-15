@@ -133,7 +133,7 @@ export function ChatPanel({
           className="w-full rounded-xl border border-border bg-surface py-2.5 pe-3 ps-9 text-sm text-text placeholder:text-text-muted/70 focus:border-orange focus:outline-none"
         />
       </label>
-      <div className={inline ? "space-y-2" : "no-scrollbar max-h-[60vh] space-y-2 overflow-y-auto"}>
+      <div className="space-y-2">
         {filteredPeers.length === 0 ? (
           <p className="py-8 text-center text-sm text-text-muted">לא נמצאו שיחות.</p>
         ) : (

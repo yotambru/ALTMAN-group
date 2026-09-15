@@ -97,6 +97,70 @@ export function removeTenant(
   };
 }
 
+/** Remove one property and the tenants / leases / files attached to it. */
+export function removeProperty(
+  state: DataState,
+  propertyId: string,
+  log: ActivityLogEntry,
+): DataState | null {
+  const property = state.properties.find((p) => p.id === propertyId);
+  if (!property) return null;
+
+  const tenantIds = new Set<string>();
+  if (property.tenantId) tenantIds.add(property.tenantId);
+  for (const tenant of state.tenants) {
+    if (tenant.propertyId === propertyId) tenantIds.add(tenant.id);
+  }
+  for (const lease of state.leases) {
+    if (lease.propertyId === propertyId) tenantIds.add(lease.tenantId);
+  }
+
+  const leaseIds = new Set(
+    state.leases
+      .filter((l) => l.propertyId === propertyId || tenantIds.has(l.tenantId))
+      .map((l) => l.id),
+  );
+
+  const emails = new Set<string>();
+  for (const tenant of state.tenants) {
+    if (!tenantIds.has(tenant.id)) continue;
+    const email = emailKey(tenant.email);
+    if (email) emails.add(email);
+    const secondary = emailKey(tenant.secondaryEmail);
+    if (secondary) emails.add(secondary);
+  }
+
+  const userIds = loginUserIds(state.users, { tenantIds, emails });
+  const social = stripUsers(state, userIds);
+
+  return {
+    ...state,
+    ...social,
+    users: state.users.filter((u) => !userIds.has(u.id)),
+    properties: state.properties.filter((p) => p.id !== propertyId),
+    landlords: state.landlords.map((l) =>
+      l.id === property.landlordId || l.propertyIds.includes(propertyId)
+        ? { ...l, propertyIds: l.propertyIds.filter((id) => id !== propertyId) }
+        : l,
+    ),
+    tenants: state.tenants.filter((t) => !tenantIds.has(t.id)),
+    leases: state.leases.filter((l) => !leaseIds.has(l.id)),
+    payments: state.payments.filter((p) => !leaseIds.has(p.leaseId)),
+    expenses: state.expenses.filter((e) => e.propertyId !== propertyId),
+    tickets: state.tickets.filter((t) => t.propertyId !== propertyId),
+    documents: state.documents.filter(
+      (d) =>
+        d.propertyId !== propertyId &&
+        !(d.tenantId && tenantIds.has(d.tenantId)),
+    ),
+    onboardings: state.onboardings.filter((o) => !tenantIds.has(o.tenantId)),
+    protocols: state.protocols.filter((p) => p.propertyId !== propertyId),
+    withdrawals: state.withdrawals.filter((w) => w.propertyId !== propertyId),
+    tasks: social.tasks.filter((t) => t.relatedPropertyId !== propertyId),
+    activityLog: [log, ...state.activityLog],
+  };
+}
+
 /** Remove a landlord, their properties, and everyone/everything attached to them. */
 export function removeLandlord(
   state: DataState,

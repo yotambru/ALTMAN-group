@@ -23,7 +23,7 @@ import { paymentClearanceDate, paymentStatusForDate, resolveCheckSchedule } from
 import { inferDocumentFolder } from "@/lib/document-folders";
 import { isAwaitingSignature } from "@/lib/document-signing";
 import { storage } from "@/lib/storage";
-import { removeLandlord, removeOwnAccount, removeTenant } from "@/lib/delete-users";
+import { removeLandlord, removeOwnAccount, removeProperty, removeTenant } from "@/lib/delete-users";
 import { isNotificationForAudience } from "@/lib/notifications";
 import { landlordRentPool, propertyAddressLabel } from "@/lib/withdrawals";
 import type {
@@ -320,6 +320,8 @@ interface DataContextValue extends DataState {
   updateTenant: (id: string, patch: Partial<Tenant>) => void;
   /** Manager: delete a landlord and cascade properties / tenants / logins. */
   deleteLandlord: (id: string) => void;
+  /** Manager: delete a property and cascade its tenant / lease / files. */
+  deleteProperty: (id: string) => void;
   /** Manager: delete a tenant, their login, and vacate the current property. */
   deleteTenant: (id: string) => void;
   /** Signed-in user: permanently delete this login and related personal data. */
@@ -1269,6 +1271,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [makeLog],
   );
 
+  const deleteProperty = useCallback<DataContextValue["deleteProperty"]>(
+    (id) => {
+      setState((p) => {
+        const property = p.properties.find((it) => it.id === id);
+        const next = removeProperty(
+          p,
+          id,
+          makeLog(
+            "מחיקת נכס",
+            "property",
+            id,
+            property ? propertyAddressLabel(property) : undefined,
+          ),
+        );
+        return next ?? p;
+      });
+    },
+    [makeLog],
+  );
+
   const deleteTenant = useCallback<DataContextValue["deleteTenant"]>(
     (id) => {
       setState((p) => {
@@ -1994,6 +2016,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     updateLandlord,
     updateTenant,
     deleteLandlord,
+    deleteProperty,
     deleteTenant,
     deleteOwnAccount,
     confirmPaymentClearance,

@@ -71,7 +71,7 @@ export function TasksDialog({ open, onClose, self }: TasksDialogProps) {
         </Button>
       )}
 
-      <div className="no-scrollbar max-h-[55vh] space-y-2 overflow-y-auto">
+      <div className="space-y-2">
         {tasks.map((t) => {
           const owner = users.find((u) => u.id === t.assigneeUserId);
           const done = t.status === "done";

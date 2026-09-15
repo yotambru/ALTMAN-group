@@ -79,7 +79,7 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
         title={title}
         description={description}
       >
-        <div className="no-scrollbar max-h-[62vh] space-y-2 overflow-y-auto">
+        <div className="space-y-2">
           {isAccounts
             ? [...users]
                 .sort((a, b) => {

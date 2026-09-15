@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PropertyImage } from "@/components/brand/PropertyImage";
@@ -16,6 +16,7 @@ interface PropertyListDialogProps {
   title?: string;
   properties: Property[];
   onSelect: (property: Property) => void;
+  onDelete?: (property: Property) => void;
 }
 
 /** Scrollable list of properties; selecting a row opens its detail dialog. */
@@ -25,6 +26,7 @@ export function PropertyListDialog({
   title = "כל הנכסים",
   properties,
   onSelect,
+  onDelete,
 }: PropertyListDialogProps) {
   const [statusFilter, setStatusFilter] = useState<PropertyStatus | "all">("all");
   const ordered = sortPropertiesByLocation(properties);
@@ -45,13 +47,13 @@ export function PropertyListDialog({
       <div className="mb-3">
         <PropertyStatusFilter value={statusFilter} onChange={setStatusFilter} counts={counts} />
       </div>
-      <div className="no-scrollbar max-h-[55vh] space-y-2 overflow-y-auto">
+      <div className="space-y-2">
         {visible.map((property) => (
+          <div key={property.id} className="flex items-center gap-1">
           <button
-            key={property.id}
             type="button"
             onClick={() => onSelect(property)}
-            className="flex w-full items-center gap-3 rounded-xl border border-border p-2.5 text-start transition-colors hover:bg-surface-muted"
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-border p-2.5 text-start transition-colors hover:bg-surface-muted"
           >
             <PropertyImage
               variant={property.imageId}
@@ -77,6 +79,17 @@ export function PropertyListDialog({
             </div>
             <ChevronLeft className="h-5 w-5 shrink-0 text-text-muted" />
           </button>
+          {onDelete && (
+            <button
+              type="button"
+              aria-label={`מחיקת ${propertyAddressLabel(property)}`}
+              onClick={() => onDelete(property)}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-danger/70 transition-colors hover:bg-danger/10 hover:text-danger"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+          </div>
         ))}
         {visible.length === 0 && (
           <p className="py-8 text-center text-sm text-text-muted">אין נכסים בסטטוס זה</p>

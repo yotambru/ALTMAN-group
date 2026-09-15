@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   FileText,
   ReceiptText,
+  Trash2,
   Users,
   Zap,
 } from "lucide-react";
@@ -135,6 +136,7 @@ export function PropertyRow({
   tenantName,
   detailsLabel,
   onClick,
+  onDelete,
 }: {
   property: Property;
   /** Fallback secondary line when rent/tenant aren't provided. */
@@ -144,14 +146,16 @@ export function PropertyRow({
   /** Visible action label for dashboards that expose the full detail dialog. */
   detailsLabel?: string;
   onClick?: () => void;
+  onDelete?: () => void;
 }) {
   const tone = PROPERTY_STATUS_TONES[property.status];
 
   return (
+    <div className="flex items-center gap-0.5">
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full items-center gap-3 rounded-2xl px-2.5 py-3 text-start transition-all hover:bg-surface-muted/90 active:scale-[0.995]"
+      className="group flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-2.5 py-3 text-start transition-all hover:bg-surface-muted/90 active:scale-[0.995]"
     >
       <span
         className={cn(
@@ -230,6 +234,17 @@ export function PropertyRow({
         <ChevronLeft className="h-4 w-4" strokeWidth={2} />
       </span>
     </button>
+      {onDelete && (
+        <button
+          type="button"
+          aria-label={`מחיקת ${propertyAddressLabel(property)}`}
+          onClick={onDelete}
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-danger/70 transition-colors hover:bg-danger/10 hover:text-danger"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
+    </div>
   );
 }
 

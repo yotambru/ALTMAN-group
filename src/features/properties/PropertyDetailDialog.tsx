@@ -254,9 +254,11 @@ export function PropertyDetailDialog({
     actor,
     confirmPaymentClearance,
     deleteTenant,
+    deleteProperty,
     setPropertyPhotos,
   } = useData();
   const [pendingTenant, setPendingTenant] = useState<{ id: string; name: string } | null>(null);
+  const [pendingProperty, setPendingProperty] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [showFullDetails, setShowFullDetails] = useState(false);
   const canDelete = can(actor.role, "clients.delete");
@@ -264,11 +266,13 @@ export function PropertyDetailDialog({
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setShowFullDetails(false);
+    setPendingProperty(false);
   }, [property?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const toastEl = <Toast message={toast} onDone={() => setToast(null)} />;
   const confirmEl = (
+    <>
     <ConfirmDialog
       open={pendingTenant != null}
       onClose={() => setPendingTenant(null)}
@@ -286,6 +290,25 @@ export function PropertyDetailDialog({
       }
       confirmLabel="מחיקה"
     />
+    <ConfirmDialog
+      open={pendingProperty}
+      onClose={() => setPendingProperty(false)}
+      onConfirm={() => {
+        if (!property) return;
+        deleteProperty(property.id);
+        setPendingProperty(false);
+        onClose();
+        setToast("הנכס נמחק");
+      }}
+      title="מחיקת נכס"
+      description={
+        property
+          ? `למחוק את ${propertyAddressLabel(property)}? יימחקו גם השוכר, השכירות, התשלומים והמסמכים של הנכס. לא ניתן לשחזר.`
+          : ""
+      }
+      confirmLabel="מחיקה"
+    />
+    </>
   );
 
   if (!property) {
@@ -620,6 +643,18 @@ export function PropertyDetailDialog({
               </>
             )}
           </>
+        )}
+
+        {canDelete && (
+          <Button
+            variant="outline"
+            fullWidth
+            onClick={() => setPendingProperty(true)}
+            className="border-danger/25 text-danger hover:bg-danger/10"
+          >
+            <Trash2 className="h-5 w-5" />
+            מחיקת נכס
+          </Button>
         )}
 
         {collapsible && (

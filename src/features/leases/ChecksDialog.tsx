@@ -45,7 +45,7 @@ export function ChecksDialog({ open, onClose, landlordId }: ChecksDialogProps) {
       title="פרעון צ׳קים"
       description={rows.length ? `${rows.length} צ׳קים שטרם נפרעו` : "אין צ׳קים מתוכננים"}
     >
-      <div className="no-scrollbar max-h-[62vh] space-y-2 overflow-y-auto">
+      <div className="space-y-2">
         {rows.length === 0 ? (
           <p className="py-8 text-center text-sm text-text-muted">אין תאריכי פרעון להצגה</p>
         ) : (

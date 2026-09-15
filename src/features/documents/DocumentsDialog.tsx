@@ -822,7 +822,7 @@ export function DocumentsDialog({
   );
 
   const list = (
-    <div className={inline ? "space-y-2" : "no-scrollbar max-h-[55vh] space-y-2 overflow-y-auto"}>
+    <div className="space-y-2">
       {awaitingSignatureOnly ? (
         vaultDocs.length === 0 ? (
           <p className="py-6 text-center text-sm text-text-muted">אין מסמכים שממתינים לחתימתך.</p>

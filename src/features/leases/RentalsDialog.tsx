@@ -31,7 +31,7 @@ export function RentalsDialog({ open, onClose, landlordId }: RentalsDialogProps)
 
   return (
     <Modal open={open} onClose={onClose} title="ניהול שכירויות" description={`${rows.length} שכירויות פעילות`}>
-      <div className="no-scrollbar max-h-[62vh] space-y-2 overflow-y-auto">
+      <div className="space-y-2">
         {rows.map(({ lease, property, tenant, nextCheck }) => (
           <div key={lease.id} className="rounded-xl border border-border p-3">
             <div className="flex items-center gap-3">

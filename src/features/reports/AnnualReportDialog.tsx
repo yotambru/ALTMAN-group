@@ -276,7 +276,7 @@ export function AnnualReportDialog({
       <IncomeGrowthChart points={yieldHistory} />
       <YieldGrowthChart points={yieldHistory} />
 
-      <div className={inline ? "space-y-2" : "no-scrollbar max-h-[30vh] space-y-2 overflow-y-auto"}>
+      <div className="space-y-2">
         {rows.map(({ property, yearly, yieldPct, marketValue }) => (
           <div key={property.id} className="flex items-center justify-between rounded-xl border border-border p-3">
             <div className="min-w-0">
