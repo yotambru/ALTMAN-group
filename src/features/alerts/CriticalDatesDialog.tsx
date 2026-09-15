@@ -13,15 +13,19 @@ interface CriticalDatesDialogProps {
   landlordId?: string;
 }
 
-/** Critical dates within 90 days: lease end, option, insurance, guarantees. */
+/** Critical dates within 90 days: lease end, option, insurance, bank-guarantee renewal. */
 export function CriticalDatesDialog({ open, onClose, landlordId }: CriticalDatesDialogProps) {
   const { leases, properties } = useData();
   const scoped = landlordId ? leases.filter((l) => l.landlordId === landlordId) : leases;
   const dates = getCriticalDates(scoped, properties);
 
   return (
-    <Modal open={open} onClose={onClose} title="התראות קריטיות" description="מועדים חשובים ב-90 הימים הקרובים">
-      <div className="space-y-2">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="התראות קריטיות"
+      description="סיום חוזה, ערבות בנקאית, אופציה וביטוח — ב־90 הימים הקרובים"
+    >      <div className="space-y-2">
         {dates.length === 0 && (
           <p className="py-6 text-center text-sm text-text-muted">אין מועדים קריטיים בטווח הקרוב.</p>
         )}

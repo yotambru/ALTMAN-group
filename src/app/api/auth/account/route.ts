@@ -9,6 +9,7 @@ import {
   MIN_AUTH_PASSWORD_LENGTH,
   provisionAuthUser,
   sha256Hex,
+  updateAuthEmailForAppUser,
 } from "@/lib/supabase/account-admin";
 import { isLoginRole } from "@/types";
 
@@ -44,6 +45,7 @@ type Body = {
   password?: string;
   newPassword?: string;
   userId?: string;
+  newEmail?: string;
 };
 
 export async function POST(request: Request) {
@@ -60,8 +62,9 @@ export async function POST(request: Request) {
   const password = body.password ?? "";
   const action = body.action ?? "";
 
-  const managerAuthActions = action === "set-password" || action === "purge-auth";
-  if (!managerAuthActions && rateLimited(key)) {
+  const staffAuthActions =
+    action === "set-password" || action === "purge-auth" || action === "update-auth-email";
+  if (!staffAuthActions && rateLimited(key)) {
     return NextResponse.json(
       { ok: false, error: "יותר מדי ניסיונות. נסו שוב בעוד כמה דקות." },
       { status: 429 },
@@ -70,6 +73,55 @@ export async function POST(request: Request) {
 
   try {
     const admin = createAdminClient();
+
+    if (action === "update-auth-email") {
+      const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+      if (!token) {
+        return NextResponse.json({ ok: false, error: "יש להתחבר מחדש." }, { status: 401 });
+      }
+      const { data: authData, error: authError } = await admin.auth.getUser(token);
+      if (authError || !authData.user) {
+        return NextResponse.json({ ok: false, error: "יש להתחבר מחדש." }, { status: 401 });
+      }
+      const { data: caller, error: callerError } = await admin
+        .from("app_users")
+        .select("id, role")
+        .eq("auth_user_id", authData.user.id)
+        .maybeSingle();
+      const callerRole = caller?.role ?? "";
+      if (callerError || (callerRole !== "manager" && callerRole !== "assistant")) {
+        return NextResponse.json({ ok: false, error: "אין הרשאה לעדכן מייל כניסה." }, { status: 403 });
+      }
+      const targetId = (body.userId ?? "").trim();
+      const nextEmail = (body.newEmail ?? body.email ?? "").trim().toLowerCase();
+      if (!targetId || !nextEmail.includes("@")) {
+        return NextResponse.json({ ok: false, error: "חסרים מזהה משתמש או מייל חדש." }, { status: 400 });
+      }
+      const target = await findAppUserById(admin, targetId);
+      if (!target || !isLoginRole(target.role)) {
+        return NextResponse.json({ ok: false, error: "המשתמש לא נמצא." }, { status: 404 });
+      }
+      const emailTaken = await findAppUserByEmail(admin, nextEmail);
+      if (emailTaken && emailTaken.id !== target.id) {
+        return NextResponse.json(
+          { ok: false, error: "המייל כבר משויך למשתמש אחר במערכת." },
+          { status: 409 },
+        );
+      }
+      try {
+        await updateAuthEmailForAppUser(admin, target.id, nextEmail);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "";
+        if (message.includes("email already in auth")) {
+          return NextResponse.json(
+            { ok: false, error: "המייל כבר תפוס בחשבון כניסה אחר." },
+            { status: 409 },
+          );
+        }
+        throw err;
+      }
+      return NextResponse.json({ ok: true });
+    }
 
     if (action === "set-password") {
       const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";

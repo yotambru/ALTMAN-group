@@ -147,8 +147,18 @@ async function writeRow(
       return mode === "insert" ? "created" : "updated";
     }
     if (mode === "insert" && isUniqueViolation(result.error)) {
+      // Row already in DB (race / remount / prevRef lag). Prefer update; if RLS
+      // hides the row from SELECT, still treat primary-key conflict as synced so
+      // we don't spam the UI with duplicate-key overlays.
+      const updated = await supabase
+        .from(table)
+        .update(current)
+        .eq(idColumn, id)
+        .select(idColumn);
+      if (!updated.error && updated.data?.length) return "updated";
       const existing = await supabase.from(table).select(idColumn).eq(idColumn, id).maybeSingle();
       if (!existing.error && existing.data) return "exists";
+      if (/_pkey\b/i.test(result.error.message)) return "exists";
       return result.error.message;
     }
     const missing = parseMissingColumn(result.error.message);

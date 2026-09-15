@@ -10,6 +10,35 @@ export function formatCurrency(value: number): string {
   return `₪${value.toLocaleString("en-US")}`;
 }
 
+/** Strip currency junk and parse a money field (supports thousands separators). */
+export function parseMoneyInput(value: string): number {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  if (!cleaned) return 0;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Format a whole-ILS amount for form inputs, e.g. 5150 -> "5,150". Empty when blank/0. */
+export function formatMoneyInput(value: string | number): string {
+  if (value === "" || value == null) return "";
+  const n = typeof value === "number" ? value : parseMoneyInput(String(value));
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return Math.round(n).toLocaleString("en-US");
+}
+
+/** Keep typing usable: allow digits (and optional decimals), then group thousands. */
+export function maskMoneyInput(raw: string): string {
+  const cleaned = raw.replace(/[^\d.]/g, "");
+  if (!cleaned) return "";
+  const dot = cleaned.indexOf(".");
+  const wholeRaw = dot >= 0 ? cleaned.slice(0, dot) : cleaned;
+  const fraction = dot >= 0 ? cleaned.slice(dot + 1).replace(/\D/g, "").slice(0, 2) : "";
+  const wholeDigits = wholeRaw.replace(/^0+(?=\d)/, "");
+  if (!wholeDigits && dot < 0) return "";
+  const grouped = Number(wholeDigits || "0").toLocaleString("en-US");
+  return dot >= 0 ? `${grouped}.${fraction}` : grouped;
+}
+
 /** Hebrew month + year, e.g. "ספט׳ 2024". */
 export function formatMonthYear(iso: string): string {
   const [y, m] = iso.slice(0, 10).split("-").map(Number);

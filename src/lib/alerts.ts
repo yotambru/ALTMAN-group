@@ -28,7 +28,7 @@ const kindLabels: Record<CriticalKind, string> = {
   lease_end: "סיום חוזה",
   option: "מימוש אופציה",
   insurance: "חידוש ביטוח",
-  guarantee: "פקיעת ערבויות",
+  guarantee: "חידוש ערבות בנקאית",
 };
 
 /**

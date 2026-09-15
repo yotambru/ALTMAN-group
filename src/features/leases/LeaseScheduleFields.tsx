@@ -12,7 +12,7 @@ import {
   setPeriodEnd,
   type LeasePeriod,
 } from "@/lib/lease-periods";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatMoneyInput, maskMoneyInput } from "@/lib/utils";
 
 interface LeaseScheduleFieldsProps {
   startDate: string;
@@ -25,6 +25,18 @@ interface LeaseScheduleFieldsProps {
   listedRentHint?: string;
   startRequired?: boolean;
   className?: string;
+}
+
+function periodLengthLabel(startIso: string, endIso: string): string {
+  if (!startIso || !endIso || endIso <= startIso) return "";
+  const start = new Date(`${startIso.slice(0, 10)}T12:00:00`);
+  const end = new Date(`${endIso.slice(0, 10)}T12:00:00`);
+  const months =
+    (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+  const dayAdjust = end.getDate() >= start.getDate() ? 0 : -1;
+  const total = Math.max(1, months + dayAdjust);
+  if (total === 1) return "חודש אחד";
+  return `${total} חודשים`;
 }
 
 /** Start/end dates plus rent (and custom date range) per lease period. */
@@ -86,14 +98,23 @@ export function LeaseScheduleFields({
           <div>
             <p className="text-sm font-semibold text-navy">תקופות שכירות</p>
             <p className="mt-0.5 text-[0.7rem] text-text-muted">
-              בחרו מתי כל תקופה מתחילה ונגמרת. לדוגמה 15 חודשים ואז 12 — סה״כ 27 חודשים
+              בחרו מתי כל תקופה מתחילה ונגמרת. לדוגמה 15 חודשים ואז 12 — סה״כ 27 חודשים.
+              אורך כל תקופה מוצג ליד הכותרת.
             </p>
           </div>
           {activePeriods.map((period, i) => {
             const isLast = i === activePeriods.length - 1;
+            const lengthLabel = periodLengthLabel(period.startDate, period.endDate);
             return (
               <div key={`${period.startDate}-${i}`} className="space-y-2 rounded-xl border border-border bg-surface p-3">
-                <p className="text-sm font-semibold text-navy">תקופה {period.index}</p>
+                <p className="text-sm font-semibold text-navy">
+                  תקופה {period.index}
+                  {lengthLabel ? (
+                    <span className="ms-2 text-[0.7rem] font-medium text-text-muted">
+                      · {lengthLabel}
+                    </span>
+                  ) : null}
+                </p>
                 <div className="grid grid-cols-2 gap-3">
                   <FormField
                     label="התחלה"
@@ -130,16 +151,19 @@ export function LeaseScheduleFields({
                 <FormField
                   label="שכ״ד חודשי (₪)"
                   inputProps={{
-                    value: rentFields[i] ?? "",
+                    value: formatMoneyInput(rentFields[i] ?? "") || rentFields[i] || "",
                     onChange: (e) => {
                       const next = alignPeriodRents(periodRents, activePeriods.length, listedRentHint);
                       onPeriodRentsChange(
-                        next.map((value, index) => (index === i ? e.target.value : value)),
+                        next.map((value, index) =>
+                          index === i ? maskMoneyInput(e.target.value) : value,
+                        ),
                       );
                     },
                     inputMode: "numeric",
                     required: true,
-                    placeholder: listedRentHint || "₪",
+                    placeholder: listedRentHint ? formatMoneyInput(listedRentHint) || "₪" : "₪",
+                    dir: "ltr",
                   }}
                 />
               </div>
@@ -172,11 +196,12 @@ export function LeaseScheduleFields({
           label="דמי שכירות חודשיים (₪)"
           hint={listedHint}
           inputProps={{
-            value: rentFields[0] ?? "",
-            onChange: (e) => onPeriodRentsChange([e.target.value]),
+            value: formatMoneyInput(rentFields[0] ?? "") || rentFields[0] || "",
+            onChange: (e) => onPeriodRentsChange([maskMoneyInput(e.target.value)]),
             inputMode: "numeric",
             required: startRequired,
-            placeholder: listedRentHint || undefined,
+            placeholder: listedRentHint ? formatMoneyInput(listedRentHint) || undefined : undefined,
+            dir: "ltr",
           }}
         />
       )}

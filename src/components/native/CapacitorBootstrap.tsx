@@ -21,6 +21,7 @@ export function CapacitorBootstrap() {
 
     let removeBack: { remove: () => void } | undefined;
     let removeNetwork: { remove: () => void } | undefined;
+    let removeAppState: { remove: () => void } | undefined;
 
     const boot = async () => {
       try {
@@ -57,6 +58,18 @@ export function CapacitorBootstrap() {
         document.documentElement.dataset.offline = status.connected ? "false" : "true";
       });
 
+      removeAppState = await App.addListener("appStateChange", ({ isActive }) => {
+        if (!isActive) return;
+        // Refresh auth when returning from background so a long idle doesn't drop mid-flow.
+        void import("@/lib/supabase/client").then(({ getSupabase }) => {
+          const supabase = getSupabase();
+          if (!supabase) return;
+          void supabase.auth.getSession().then(({ data }) => {
+            if (data.session) void supabase.auth.refreshSession();
+          });
+        });
+      });
+
       const current = await Network.getStatus();
       document.documentElement.dataset.offline = current.connected ? "false" : "true";
     };
@@ -66,6 +79,7 @@ export function CapacitorBootstrap() {
     return () => {
       removeBack?.remove();
       removeNetwork?.remove();
+      removeAppState?.remove();
     };
   }, []);
 

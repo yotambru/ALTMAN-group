@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { PhotoGridField } from "@/components/ui/PhotoGridField";
 import { CheckClearanceFields } from "@/features/leases/CheckClearanceFields";
+import {
+  CriticalLeaseDatesFields,
+  emptyCriticalLeaseDates,
+  type CriticalLeaseDates,
+} from "@/features/leases/CriticalLeaseDatesFields";
 import { LeaseScheduleFields } from "@/features/leases/LeaseScheduleFields";
 import {
   paymentsToCheckDrafts,
@@ -24,7 +29,7 @@ import {
 } from "@/lib/lease-periods";
 import { currentMonthlyRent, propertyDisplayValue } from "@/lib/portfolio";
 import { useData } from "@/lib/store";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatMoneyInput, maskMoneyInput, parseMoneyInput } from "@/lib/utils";
 import type { Property, PropertyStatus } from "@/types";
 
 interface EditPropertyModalProps {
@@ -32,7 +37,7 @@ interface EditPropertyModalProps {
   onClose: () => void;
 }
 
-const num = (v: string) => Number(v.replace(/[^0-9.]/g, "")) || 0;
+const num = (v: string) => parseMoneyInput(v);
 
 const statusOptions: { id: PropertyStatus; label: string }[] = [
   { id: "rented", label: "מושכר" },
@@ -85,15 +90,16 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
   const [periodRents, setPeriodRents] = useState<string[]>([""]);
   const [checkRows, setCheckRows] = useState<CheckDraft[]>([]);
   const [autoRebuildChecks, setAutoRebuildChecks] = useState(true);
+  const [criticalDates, setCriticalDates] = useState<CriticalLeaseDates>(emptyCriticalLeaseDates);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [formError, setFormError] = useState("");
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (property) {
-      setValue(property.value > 0 ? String(property.value) : "");
-      setMunicipalTax(String(property.municipalTax));
-      setBuildingFee(String(property.buildingFee));
+      setValue(property.value > 0 ? formatMoneyInput(property.value) : "");
+      setMunicipalTax(property.municipalTax ? formatMoneyInput(property.municipalTax) : "");
+      setBuildingFee(property.buildingFee ? formatMoneyInput(property.buildingFee) : "");
       setElectricityMeter(property.electricityMeter);
       setGasMeter(property.gasMeter ?? "");
       setWaterMeter(property.waterMeter ?? "");
@@ -105,12 +111,26 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
       setLeaseStartDate(start);
       setLeaseEndDate(end);
       setLeasePeriods(lease ? resolveLeasePeriods(start, end, lease.rentAdjustments) : []);
-      setPeriodRents(lease ? rentsFromLease(lease, start, end) : [""]);
+      setPeriodRents(
+        lease
+          ? rentsFromLease(lease, start, end).map((r) => formatMoneyInput(r) || r)
+          : [""],
+      );
       const existingChecks = lease
         ? paymentsToCheckDrafts(payments.filter((pay) => pay.leaseId === lease.id))
         : [];
-      setCheckRows(existingChecks);
+      setCheckRows(
+        existingChecks.map((row) => ({
+          ...row,
+          amount: formatMoneyInput(row.amount) || row.amount,
+        })),
+      );
       setAutoRebuildChecks(existingChecks.length === 0);
+      setCriticalDates({
+        guaranteeExpiry: lease?.guaranteeExpiry?.slice(0, 10) ?? "",
+        optionDate: lease?.optionDate?.slice(0, 10) ?? "",
+        insuranceRenewalDate: lease?.insuranceRenewalDate?.slice(0, 10) ?? "",
+      });
       setPhotoUrls(property.photoUrls ?? []);
       setFormError("");
     }
@@ -200,6 +220,9 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
         startingMonthlyRent: schedule.startingMonthlyRent,
         rentAdjustments: schedule.rentAdjustments,
         nextPaymentDate: checks[0]?.clearanceDate || leaseStartDate || lease.nextPaymentDate,
+        optionDate: criticalDates.optionDate || undefined,
+        guaranteeExpiry: criticalDates.guaranteeExpiry || undefined,
+        insuranceRenewalDate: criticalDates.insuranceRenewalDate || undefined,
       });
       replaceLeaseChecks(lease.id, checks);
     }
@@ -218,10 +241,32 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
                 : "אם ריק, מחושב לפי תשואה 2.8%"
             }
             className="col-span-2"
-            inputProps={{ value, onChange: (e) => setValue(e.target.value), inputMode: "numeric", placeholder: estimatedValue ? String(estimatedValue) : undefined }}
+            inputProps={{
+              value,
+              onChange: (e) => setValue(maskMoneyInput(e.target.value)),
+              inputMode: "numeric",
+              placeholder: estimatedValue ? formatMoneyInput(estimatedValue) : undefined,
+              dir: "ltr",
+            }}
           />
-          <FormField label="ארנונה (₪)" inputProps={{ value: municipalTax, onChange: (e) => setMunicipalTax(e.target.value), inputMode: "numeric" }} />
-          <FormField label="ועד בית (₪)" inputProps={{ value: buildingFee, onChange: (e) => setBuildingFee(e.target.value), inputMode: "numeric" }} />
+          <FormField
+            label="ארנונה (₪)"
+            inputProps={{
+              value: municipalTax,
+              onChange: (e) => setMunicipalTax(maskMoneyInput(e.target.value)),
+              inputMode: "numeric",
+              dir: "ltr",
+            }}
+          />
+          <FormField
+            label="ועד בית (₪)"
+            inputProps={{
+              value: buildingFee,
+              onChange: (e) => setBuildingFee(maskMoneyInput(e.target.value)),
+              inputMode: "numeric",
+              dir: "ltr",
+            }}
+          />
           <FormField
             label="מס׳ נכס בארנונה"
             className="col-span-2"
@@ -299,6 +344,7 @@ export function EditPropertyModal({ property, onClose }: EditPropertyModalProps)
                 setFormError("");
               }}
             />
+            <CriticalLeaseDatesFields value={criticalDates} onChange={setCriticalDates} />
           </>
         )}
         {formError && <p className="text-sm font-medium text-danger">{formError}</p>}

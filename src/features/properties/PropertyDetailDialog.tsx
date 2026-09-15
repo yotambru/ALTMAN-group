@@ -228,6 +228,8 @@ interface PropertyDetailDialogProps {
   onClose: () => void;
   /** When provided, shows an edit button (manager/assistant). */
   onEdit?: (property: Property) => void;
+  /** Edit tenant contact / login details (manager/assistant). */
+  onEditTenant?: (tenantId: string) => void;
   /** Shows a compact image replacement button when photo editing is allowed. */
   onEditPhoto?: (file: File) => void | Promise<void>;
   /** Allow confirming check clearance (manager / landlord). */
@@ -240,6 +242,7 @@ export function PropertyDetailDialog({
   property,
   onClose,
   onEdit,
+  onEditTenant,
   onEditPhoto,
   canConfirmClearance = false,
   collapsible = false,
@@ -483,6 +486,16 @@ export function PropertyDetailDialog({
                   </div>
                 </div>
               )}
+              {onEditTenant && (
+                <button
+                  type="button"
+                  onClick={() => onEditTenant(tenant.id)}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-bold text-navy transition-colors hover:bg-surface-muted"
+                >
+                  <Pencil className="h-4 w-4 text-orange" />
+                  עריכת פרטי שוכר
+                </button>
+              )}
               {canDelete && (
                 <button
                   type="button"
@@ -616,6 +629,28 @@ export function PropertyDetailDialog({
                 )}
                 {lease.managementEndDate && (
                   <Line label="סיום הסכם ניהול" value={formatDateDots(lease.managementEndDate)} />
+                )}
+                {lease.guaranteeExpiry && (
+                  <Line
+                    icon={<CalendarDays className="h-4 w-4" />}
+                    label="חידוש ערבות בנקאית"
+                    value={formatDateDots(lease.guaranteeExpiry)}
+                    valueClass="text-orange"
+                  />
+                )}
+                {lease.optionDate && (
+                  <Line
+                    icon={<CalendarDays className="h-4 w-4" />}
+                    label="מימוש אופציה"
+                    value={formatDateDots(lease.optionDate)}
+                  />
+                )}
+                {lease.insuranceRenewalDate && (
+                  <Line
+                    icon={<CalendarDays className="h-4 w-4" />}
+                    label="חידוש ביטוח"
+                    value={formatDateDots(lease.insuranceRenewalDate)}
+                  />
                 )}
                 {lease.managementFeePercent != null && (
                   <Line label="דמי ניהול" value={`${lease.managementFeePercent}%`} />

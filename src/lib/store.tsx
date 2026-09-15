@@ -135,6 +135,9 @@ export interface NewClientInput {
   rentAdjustments?: RentAdjustment[];
   startDate?: string;
   endDate?: string;
+  optionDate?: string;
+  guaranteeExpiry?: string;
+  insuranceRenewalDate?: string;
   managementStartDate?: string;
   managementEndDate?: string;
   managementFeeBeforeVat?: number;
@@ -172,6 +175,9 @@ export interface NewTenantInput {
   rentAdjustments?: RentAdjustment[];
   startDate?: string;
   endDate?: string;
+  optionDate?: string;
+  guaranteeExpiry?: string;
+  insuranceRenewalDate?: string;
   /** Replace the property's current tenant after an explicit UI confirmation. */
   replaceExistingTenant?: boolean;
   /** Lease / ID files attached while opening the tenant account. */
@@ -720,6 +726,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             endDate: input.endDate || "",
             nextPaymentDate: checkSchedule[0]?.clearanceDate || leaseStart,
             active: true,
+            ...(input.optionDate?.trim() ? { optionDate: input.optionDate.slice(0, 10) } : {}),
+            ...(input.guaranteeExpiry?.trim()
+              ? { guaranteeExpiry: input.guaranteeExpiry.slice(0, 10) }
+              : {}),
+            ...(input.insuranceRenewalDate?.trim()
+              ? { insuranceRenewalDate: input.insuranceRenewalDate.slice(0, 10) }
+              : {}),
             managementStartDate: input.managementStartDate,
             managementEndDate: input.managementEndDate,
             managementFeePercent: input.managementFeePercent,
@@ -988,6 +1001,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           endDate: input.endDate || "",
           nextPaymentDate: checkSchedule[0]?.clearanceDate || startDate,
           active: true,
+          ...(input.optionDate?.trim() ? { optionDate: input.optionDate.slice(0, 10) } : {}),
+          ...(input.guaranteeExpiry?.trim()
+            ? { guaranteeExpiry: input.guaranteeExpiry.slice(0, 10) }
+            : {}),
+          ...(input.insuranceRenewalDate?.trim()
+            ? { insuranceRenewalDate: input.insuranceRenewalDate.slice(0, 10) }
+            : {}),
         };
         const onboarding: TenantOnboarding = {
           tenantId,
@@ -1255,11 +1275,117 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateTenant = useCallback<DataContextValue["updateTenant"]>(
     (id, patch) => {
-      setState((p) => ({
-        ...p,
-        tenants: p.tenants.map((it) => (it.id === id ? { ...it, ...patch } : it)),
-        activityLog: [makeLog("עדכון שוכר", "tenant", id), ...p.activityLog],
-      }));
+      setState((p) => {
+        const prev = p.tenants.find((it) => it.id === id);
+        if (!prev) return p;
+        const merged: Tenant = { ...prev, ...patch };
+        // Explicit clears for optional secondary fields when patch sets undefined.
+        if ("secondaryFullName" in patch && patch.secondaryFullName === undefined) {
+          delete merged.secondaryFullName;
+        }
+        if ("secondaryEmail" in patch && patch.secondaryEmail === undefined) {
+          delete merged.secondaryEmail;
+        }
+        if ("secondaryPhone" in patch && patch.secondaryPhone === undefined) {
+          delete merged.secondaryPhone;
+        }
+        if ("secondaryIdNumber" in patch && patch.secondaryIdNumber === undefined) {
+          delete merged.secondaryIdNumber;
+        }
+        if ("idNumber" in patch && patch.idNumber === undefined) {
+          delete merged.idNumber;
+        }
+
+        const oldPrimary = normalizeEmail(prev.email);
+        const newPrimary = normalizeEmail(merged.email);
+        const oldSecondary = prev.secondaryEmail ? normalizeEmail(prev.secondaryEmail) : "";
+        const newSecondary = merged.secondaryEmail ? normalizeEmail(merged.secondaryEmail) : "";
+
+        const logins = tenantLoginUsers(p.users, id);
+        const taken = new Set(
+          p.users
+            .filter((u) => u.tenantId !== id)
+            .map((u) => (u.email ? normalizeEmail(u.email) : ""))
+            .filter(Boolean),
+        );
+
+        let primaryUser =
+          logins.find((u) => u.email && normalizeEmail(u.email) === oldPrimary) ??
+          (logins.length === 1 && !oldSecondary ? logins[0] : undefined);
+        let secondaryUser = oldSecondary
+          ? logins.find((u) => u.email && normalizeEmail(u.email) === oldSecondary)
+          : undefined;
+
+        let nextUsers = [...p.users];
+
+        const upsertLogin = (
+          existing: User | undefined,
+          email: string,
+          fullName: string,
+          phone: string | undefined,
+        ): User | undefined => {
+          if (!email || taken.has(email)) return existing;
+          if (existing) {
+            nextUsers = nextUsers.map((u) =>
+              u.id === existing.id
+                ? { ...u, email, fullName: fullName || u.fullName, phone: phone || undefined }
+                : u,
+            );
+            return { ...existing, email, fullName: fullName || existing.fullName, phone };
+          }
+          const created: User = {
+            id: generateId("u"),
+            fullName: fullName || accountDisplayName(undefined, email),
+            role: "tenant",
+            email,
+            phone: phone || undefined,
+            tenantId: id,
+          };
+          nextUsers = [created, ...nextUsers];
+          taken.add(email);
+          return created;
+        };
+
+        if (newPrimary) {
+          primaryUser = upsertLogin(
+            primaryUser,
+            newPrimary,
+            merged.fullName,
+            merged.phone || undefined,
+          );
+        }
+
+        if (newSecondary) {
+          // Don't reuse primary login row for secondary.
+          if (secondaryUser && primaryUser && secondaryUser.id === primaryUser.id) {
+            secondaryUser = undefined;
+          }
+          secondaryUser = upsertLogin(
+            secondaryUser,
+            newSecondary,
+            merged.secondaryFullName || accountDisplayName(undefined, newSecondary),
+            merged.secondaryPhone || undefined,
+          );
+        } else if (secondaryUser) {
+          nextUsers = nextUsers.filter((u) => u.id !== secondaryUser!.id);
+          secondaryUser = undefined;
+        }
+
+        // Drop any extra orphan tenant logins that no longer match primary/secondary emails.
+        const keepIds = new Set(
+          [primaryUser?.id, secondaryUser?.id].filter(Boolean) as string[],
+        );
+        nextUsers = nextUsers.filter(
+          (u) => u.tenantId !== id || u.role !== "tenant" || keepIds.has(u.id),
+        );
+
+        return {
+          ...p,
+          tenants: p.tenants.map((it) => (it.id === id ? merged : it)),
+          users: nextUsers,
+          activityLog: [makeLog("עדכון שוכר", "tenant", id, merged.fullName), ...p.activityLog],
+        };
+      });
     },
     [makeLog],
   );

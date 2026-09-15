@@ -59,8 +59,14 @@ export function validateNewPassword(password: string, confirm: string): string |
 }
 
 async function accountApi(
-  action: "pending" | "activate" | "legacy" | "upgrade" | "set-password",
-  payload: { email?: string; password?: string; newPassword?: string; userId?: string },
+  action: "pending" | "activate" | "legacy" | "upgrade" | "set-password" | "update-auth-email",
+  payload: {
+    email?: string;
+    password?: string;
+    newPassword?: string;
+    userId?: string;
+    newEmail?: string;
+  },
 ): Promise<{
   ok: boolean;
   error?: string;
@@ -198,6 +204,22 @@ export async function setPasswordAsManager(
   if (invalid) return { ok: false, error: invalid };
   const result = await accountApi("set-password", { userId, newPassword });
   if (!result.ok) return { ok: false, error: result.error ?? "עדכון הסיסמה נכשל." };
+  return { ok: true };
+}
+
+/** Keep Supabase Auth email in sync after app_users.email changes (staff only). */
+export async function syncAuthLoginEmail(
+  userId: string,
+  newEmail: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!userId || !isValidEmail(newEmail)) {
+    return { ok: false, error: "חסרים מזהה משתמש או מייל תקין." };
+  }
+  const result = await accountApi("update-auth-email", {
+    userId,
+    newEmail: normalizeEmail(newEmail),
+  });
+  if (!result.ok) return { ok: false, error: result.error ?? "סנכרון מייל הכניסה נכשל." };
   return { ok: true };
 }
 

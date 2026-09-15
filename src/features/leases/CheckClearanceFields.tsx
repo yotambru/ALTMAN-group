@@ -11,7 +11,7 @@ import {
   type LeasePeriod,
 } from "@/lib/lease-periods";
 import { buildCheckDrafts, type CheckDraft } from "@/lib/check-schedule";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, maskMoneyInput } from "@/lib/utils";
 
 interface CheckClearanceFieldsProps {
   leaseStartDate: string;
@@ -173,7 +173,8 @@ export function CheckClearanceFields({
                 inputMode="numeric"
                 aria-label={`סכום צ׳ק ${index + 1}`}
                 value={row.amount}
-                onChange={(e) => updateRow(index, { amount: e.target.value })}
+                dir="ltr"
+                onChange={(e) => updateRow(index, { amount: maskMoneyInput(e.target.value) })}
                 className="w-full rounded-xl border bg-surface px-2.5 py-2.5 text-sm text-text focus:border-orange focus:outline-none"
               />
               <input

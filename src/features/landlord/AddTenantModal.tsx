@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, IdCard, Paperclip, Upload, X } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -8,6 +8,11 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FormField } from "@/components/ui/FormField";
 import { LeaseScheduleFields } from "@/features/leases/LeaseScheduleFields";
 import { CheckClearanceFields } from "@/features/leases/CheckClearanceFields";
+import {
+  CriticalLeaseDatesFields,
+  emptyCriticalLeaseDates,
+  type CriticalLeaseDates,
+} from "@/features/leases/CriticalLeaseDatesFields";
 import {
   LeaseContractFields,
   leaseFilesToDocuments,
@@ -20,6 +25,11 @@ import {
 } from "@/features/landlord/TenantPeopleFields";
 import { emailInUse, isValidEmail, normalizeEmail } from "@/lib/auth";
 import {
+  clearAddTenantDraft,
+  loadAddTenantDraft,
+  saveAddTenantDraft,
+} from "@/lib/form-drafts";
+import {
   activeLeasePeriods,
   alignPeriodRents,
   alignPeriodSlots,
@@ -31,7 +41,7 @@ import { resolveCheckSchedule, type CheckDraft } from "@/lib/check-schedule";
 import { can } from "@/lib/permissions";
 import { useData } from "@/lib/store";
 import { intakeDocumentName } from "@/lib/document-folders";
-import { fileToDataUrl } from "@/lib/utils";
+import { fileToDataUrl, parseMoneyInput } from "@/lib/utils";
 import type { DocumentFolder, DocumentType, Property } from "@/types";
 
 interface AddTenantModalProps {
@@ -45,7 +55,7 @@ interface PickedFile {
   dataUrl: string;
 }
 
-const parseMoney = (v: string) => Number(v.replace(/[^0-9.]/g, "")) || 0;
+const parseMoney = (v: string) => parseMoneyInput(v);
 
 /** Landlord (or manager) opens a tenant login by email — with lease details and optional docs. */
 export function AddTenantModal({ open, onClose, properties }: AddTenantModalProps) {
@@ -59,6 +69,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
   const [leasePeriods, setLeasePeriods] = useState<LeasePeriod[]>([]);
   const [periodRents, setPeriodRents] = useState<string[]>([""]);
   const [checkRows, setCheckRows] = useState<CheckDraft[]>([]);
+  const [criticalDates, setCriticalDates] = useState<CriticalLeaseDates>(emptyCriticalLeaseDates);
   const [leaseFiles, setLeaseFiles] = useState<(LeasePickedFile | null)[]>([null]);
   const [idPhoto, setIdPhoto] = useState<PickedFile | null>(null);
   const [idPhoto2, setIdPhoto2] = useState<PickedFile | null>(null);
@@ -67,6 +78,8 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
   const [extraFile, setExtraFile] = useState<PickedFile | null>(null);
   const [error, setError] = useState("");
   const [confirmReplacement, setConfirmReplacement] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const hydratedRef = useRef(false);
   const selectedPropertyId = properties.some((p) => p.id === propertyId)
     ? propertyId
     : (properties[0]?.id ?? "");
@@ -77,6 +90,67 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     ? String(selectedProperty.listedRent)
     : "";
   const isManager = can(actor.role, "documents.viewAll");
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!open) {
+      hydratedRef.current = false;
+      return;
+    }
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    const draft = loadAddTenantDraft();
+    if (!draft) return;
+    setPropertyId(draft.propertyId || properties[0]?.id || "");
+    setPrimary(draft.primary ?? emptyTenantPerson());
+    setSecondary(draft.secondary ?? emptyTenantPerson());
+    setStartDate(draft.startDate ?? "");
+    setEndDate(draft.endDate ?? "");
+    setLeasePeriods(draft.leasePeriods ?? []);
+    setPeriodRents(draft.periodRents?.length ? draft.periodRents : [""]);
+    setCheckRows(draft.checkRows ?? []);
+    setCriticalDates(draft.criticalDates ?? emptyCriticalLeaseDates());
+    setDraftRestored(true);
+  }, [open, properties]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    if (!open || done || !hydratedRef.current) return;
+    const hasContent =
+      Boolean(primary.email.trim() || primary.name.trim() || primary.phone.trim()) ||
+      Boolean(startDate || endDate) ||
+      periodRents.some((r) => r.trim()) ||
+      checkRows.length > 0 ||
+      Boolean(
+        criticalDates.guaranteeExpiry ||
+          criticalDates.optionDate ||
+          criticalDates.insuranceRenewalDate,
+      );
+    if (!hasContent) return;
+    saveAddTenantDraft({
+      propertyId: selectedPropertyId,
+      primary,
+      secondary,
+      startDate,
+      endDate,
+      leasePeriods,
+      periodRents,
+      checkRows,
+      criticalDates,
+    });
+  }, [
+    open,
+    done,
+    selectedPropertyId,
+    primary,
+    secondary,
+    startDate,
+    endDate,
+    leasePeriods,
+    periodRents,
+    checkRows,
+    criticalDates,
+  ]);
 
   const applyLeaseDates = (nextStart: string, nextEnd: string) => {
     setStartDate(nextStart);
@@ -110,6 +184,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     setLeasePeriods([]);
     setPeriodRents([""]);
     setCheckRows([]);
+    setCriticalDates(emptyCriticalLeaseDates());
     setLeaseFiles([null]);
     setIdPhoto(null);
     setIdPhoto2(null);
@@ -118,11 +193,33 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     setExtraFile(null);
     setError("");
     setConfirmReplacement(false);
+    setDraftRestored(false);
   };
 
   const handleClose = () => {
     onClose();
     setTimeout(reset, 200);
+  };
+
+  const discardDraft = () => {
+    clearAddTenantDraft();
+    setDraftRestored(false);
+    setPropertyId(properties[0]?.id ?? "");
+    setPrimary(emptyTenantPerson());
+    setSecondary(emptyTenantPerson());
+    setStartDate("");
+    setEndDate("");
+    setLeasePeriods([]);
+    setPeriodRents([""]);
+    setCheckRows([]);
+    setCriticalDates(emptyCriticalLeaseDates());
+    setLeaseFiles([null]);
+    setIdPhoto(null);
+    setIdPhoto2(null);
+    setGuarantorIdPhoto1(null);
+    setGuarantorIdPhoto2(null);
+    setExtraFile(null);
+    setError("");
   };
 
   const submitTenant = () => {
@@ -209,6 +306,9 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
       secondaryIdNumber: secondary.idNumber.trim() || undefined,
       startDate,
       endDate: endDate || undefined,
+      optionDate: criticalDates.optionDate || undefined,
+      guaranteeExpiry: criticalDates.guaranteeExpiry || undefined,
+      insuranceRenewalDate: criticalDates.insuranceRenewalDate || undefined,
       monthlyRent: schedule.monthlyRent,
       startingMonthlyRent: schedule.startingMonthlyRent,
       rentAdjustments: schedule.rentAdjustments.length
@@ -226,6 +326,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
       replaceExistingTenant: isReplacement,
       documents: documents.length ? documents : undefined,
     });
+    clearAddTenantDraft();
     setConfirmReplacement(false);
     setDone(true);
   };
@@ -300,7 +401,9 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
         description={
           done
             ? undefined
-            : "פתיחת חשבון שוכר עם פרטי חוזה. השוכר יקבע סיסמה בכניסה הראשונה"
+            : draftRestored
+              ? "שוחזרה טיוטה שנשמרה מהפעם הקודמת — אפשר להמשיך מהמקום שעצרתם"
+              : "פתיחת חשבון שוכר עם פרטי חוזה. השוכר יקבע סיסמה בכניסה הראשונה"
         }
       >
       {done ? (
@@ -328,6 +431,14 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
           onSubmit={handleSubmit}
           className="space-y-4 pe-1"
         >
+          {draftRestored && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-orange/30 bg-orange-soft/40 px-3 py-2">
+              <p className="text-xs font-medium text-navy">נמצאה טיוטה שמורה של התהליך</p>
+              <Button type="button" variant="ghost" onClick={discardDraft}>
+                מחיקת טיוטה
+              </Button>
+            </div>
+          )}
           <FormField label="נכס">
             <select
               value={selectedPropertyId}
@@ -393,6 +504,8 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
               setError("");
             }}
           />
+
+          <CriticalLeaseDatesFields value={criticalDates} onChange={setCriticalDates} />
 
           {isManager && (
             <div className="space-y-3">

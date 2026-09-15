@@ -1,4 +1,5 @@
 import { localTodayIso, rentOnDate } from "@/lib/lease-periods";
+import { formatMoneyInput } from "@/lib/utils";
 import type { CheckScheduleEntry, Payment, PaymentStatus, RentAdjustment } from "@/types";
 
 export interface CheckDraft {
@@ -66,6 +67,35 @@ export function livePaymentStatus(payment: Payment, today: string = localTodayIs
 }
 
 /**
+ * If the lease end sits 1–2 days after a monthly anniversary of the first clearance,
+ * snap it back to that anniversary. Users often enter "day after last rent day" and that
+ * otherwise yields an extra check (e.g. 25 instead of 24 for a two-year lease).
+ */
+export function snapLeaseEndForChecks(firstIso: string, endIso: string): string {
+  const first = firstIso.slice(0, 10);
+  const end = endIso.slice(0, 10);
+  const endDate = parseYmd(end);
+  if (!endDate || !parseYmd(first)) return end;
+
+  let lastAnniversary: string | null = null;
+  for (let n = 1; n <= 120; n++) {
+    const anniversary = addMonthsClamped(first, n);
+    if (!anniversary) break;
+    const annDate = parseYmd(anniversary);
+    if (!annDate || annDate > endDate) break;
+    lastAnniversary = anniversary;
+  }
+  if (!lastAnniversary) return end;
+
+  const annDate = parseYmd(lastAnniversary);
+  if (!annDate) return end;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const daysAfter = Math.round((endDate.getTime() - annDate.getTime()) / dayMs);
+  if (daysAfter >= 1 && daysAfter <= 2) return lastAnniversary;
+  return end;
+}
+
+/**
  * Monthly check dates from the first clearance.
  * With a lease end: one check per occupied month, 12 per year — the end date is exclusive
  * so a 24-month contract (start → start+24 months) yields 24 checks, not 25.
@@ -74,7 +104,8 @@ export function livePaymentStatus(payment: Payment, today: string = localTodayIs
 export function buildMonthlyClearanceDates(firstIso: string, endIso?: string, maxMonths = 120): string[] {
   const first = firstIso.slice(0, 10);
   if (!parseYmd(first)) return [];
-  const explicitEnd = endIso?.trim() ? parseYmd(endIso.slice(0, 10)) : null;
+  const snappedEnd = endIso?.trim() ? snapLeaseEndForChecks(first, endIso.slice(0, 10)) : "";
+  const explicitEnd = snappedEnd ? parseYmd(snappedEnd) : null;
   const twelveMonths = parseYmd(addMonthsClamped(first, 11) ?? first);
   const dates: string[] = [];
   for (let i = 0; i < maxMonths; i++) {
@@ -102,13 +133,14 @@ export function buildCheckDrafts(opts: {
   const first = opts.firstDate.slice(0, 10);
   if (!parseYmd(first)) return [];
   const seed = opts.firstCheckNumber?.trim() ?? "";
-  return buildMonthlyClearanceDates(first, opts.endDate).map((date, i) => ({
-    clearanceDate: date,
-    amount: String(
-      rentOnDate(Math.max(0, opts.startingMonthlyRent), opts.rentAdjustments, date) || "",
-    ),
-    checkNumber: incrementCheckNumber(seed, i),
-  }));
+  return buildMonthlyClearanceDates(first, opts.endDate).map((date, i) => {
+    const amount = rentOnDate(Math.max(0, opts.startingMonthlyRent), opts.rentAdjustments, date);
+    return {
+      clearanceDate: date,
+      amount: amount > 0 ? formatMoneyInput(amount) : "",
+      checkNumber: incrementCheckNumber(seed, i),
+    };
+  });
 }
 
 export function draftsToCheckEntries(rows: CheckDraft[]): CheckScheduleEntry[] {
@@ -126,7 +158,7 @@ export function paymentsToCheckDrafts(payments: Payment[]): CheckDraft[] {
     .sort((a, b) => paymentClearanceDate(a).localeCompare(paymentClearanceDate(b)))
     .map((payment) => ({
       clearanceDate: paymentClearanceDate(payment),
-      amount: payment.amount ? String(payment.amount) : "",
+      amount: payment.amount > 0 ? formatMoneyInput(payment.amount) : "",
       checkNumber: payment.checkNumber ?? "",
     }));
 }

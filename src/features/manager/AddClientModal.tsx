@@ -8,10 +8,15 @@ import { FormField } from "@/components/ui/FormField";
 import { useData } from "@/lib/store";
 import { emailInUse, isValidEmail, normalizeEmail } from "@/lib/auth";
 import { intakeDocumentName } from "@/lib/document-folders";
-import { fileToDataUrl } from "@/lib/utils";
+import { fileToDataUrl, parseMoneyInput } from "@/lib/utils";
 import { PhotoGridField } from "@/components/ui/PhotoGridField";
 import { LeaseScheduleFields } from "@/features/leases/LeaseScheduleFields";
 import { CheckClearanceFields } from "@/features/leases/CheckClearanceFields";
+import {
+  CriticalLeaseDatesFields,
+  emptyCriticalLeaseDates,
+  type CriticalLeaseDates,
+} from "@/features/leases/CriticalLeaseDatesFields";
 import {
   LeaseContractFields,
   leaseFilesToDocuments,
@@ -55,7 +60,7 @@ const airOptions: { id: AirDirection; label: string }[] = [
   { id: "west", label: "מערב" },
 ];
 
-const num = (v: string) => Number(v.replace(/[^0-9.]/g, "")) || 0;
+const num = (v: string) => parseMoneyInput(v);
 const triBool = (v: Tri): boolean | undefined => (v === "yes" ? true : v === "no" ? false : undefined);
 
 /** New-landlord intake: owner + property details. All fields are optional / skippable. */
@@ -84,6 +89,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
   const [leasePeriods, setLeasePeriods] = useState<LeasePeriod[]>([]);
   const [periodRents, setPeriodRents] = useState<string[]>([""]);
   const [checkRows, setCheckRows] = useState<CheckDraft[]>([]);
+  const [criticalDates, setCriticalDates] = useState<CriticalLeaseDates>(emptyCriticalLeaseDates);
   const [leaseFiles, setLeaseFiles] = useState<(LeasePickedFile | null)[]>([null]);
   const [tenantIdPhoto1, setTenantIdPhoto1] = useState<PickedFile | null>(null);
   const [tenantIdPhoto2, setTenantIdPhoto2] = useState<PickedFile | null>(null);
@@ -145,6 +151,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     setLeasePeriods([]);
     setPeriodRents([""]);
     setCheckRows([]);
+    setCriticalDates(emptyCriticalLeaseDates());
     setLeaseFiles([null]);
     setTenantIdPhoto1(null);
     setTenantIdPhoto2(null);
@@ -432,6 +439,9 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
             rentAdjustments,
             startDate: leaseStartDate || undefined,
             endDate: leaseEndDate || undefined,
+            optionDate: criticalDates.optionDate || undefined,
+            guaranteeExpiry: criticalDates.guaranteeExpiry || undefined,
+            insuranceRenewalDate: criticalDates.insuranceRenewalDate || undefined,
             checks: resolveCheckSchedule({
               rows: checkRows,
               startDate: leaseStartDate,
@@ -663,6 +673,7 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
                   setFormError("");
                 }}
               />
+              <CriticalLeaseDatesFields value={criticalDates} onChange={setCriticalDates} />
               <div className="space-y-3">
                 <LeaseContractFields
                   startDate={leaseStartDate}

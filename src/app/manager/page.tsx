@@ -45,6 +45,7 @@ import { DocumentsDialog } from "@/features/documents/DocumentsDialog";
 import { SendForSignatureDialog } from "@/features/documents/SendForSignatureDialog";
 import { AddClientModal } from "@/features/manager/AddClientModal";
 import { AddTenantModal } from "@/features/landlord/AddTenantModal";
+import { EditTenantModal } from "@/features/landlord/EditTenantModal";
 import { PropertyDetailDialog } from "@/features/properties/PropertyDetailDialog";
 import { PropertyListDialog } from "@/features/properties/PropertyListDialog";
 import { EditPropertyModal } from "@/features/properties/EditPropertyModal";
@@ -107,6 +108,7 @@ export default function ManagerDashboard() {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [detailProperty, setDetailProperty] = useState<Property | null>(null);
   const [editProperty, setEditProperty] = useState<Property | null>(null);
+  const [editTenantId, setEditTenantId] = useState<string | null>(null);
   const [chatPeerId, setChatPeerId] = useState<string | null>(null);
   const [focusTicketId, setFocusTicketId] = useState<string | null>(null);
   const [focusWithdrawalId, setFocusWithdrawalId] = useState<string | null>(null);
@@ -766,8 +768,19 @@ export default function ManagerDashboard() {
               }
             : undefined
         }
+        onEditTenant={
+          can(role, "clients.edit")
+            ? (tenantId) => {
+                setEditTenantId(tenantId);
+              }
+            : undefined
+        }
       />
       <EditPropertyModal property={editProperty} onClose={() => setEditProperty(null)} />
+      <EditTenantModal
+        tenant={editTenantId ? (tenants.find((t) => t.id === editTenantId) ?? null) : null}
+        onClose={() => setEditTenantId(null)}
+      />
       <ConfirmDialog
         open={pendingLandlord != null}
         onClose={() => setPendingLandlord(null)}

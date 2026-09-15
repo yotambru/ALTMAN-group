@@ -9,6 +9,8 @@ import type { Role } from "@/types";
 const KEYS = {
   session: "altman.session",
   remember: "altman.remember",
+  addTenantDraft: "altman.draft.addTenant",
+  addClientDraft: "altman.draft.addClient",
 } as const;
 
 export interface Session {

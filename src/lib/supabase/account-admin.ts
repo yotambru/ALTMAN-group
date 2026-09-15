@@ -120,6 +120,33 @@ export async function deleteAuthUserByEmail(
   return true;
 }
 
+/** Rename Auth login email for an app user that already has auth_user_id. */
+export async function updateAuthEmailForAppUser(
+  admin: SupabaseClient,
+  appUserId: string,
+  newEmail: string,
+): Promise<"updated" | "skipped"> {
+  const needle = newEmail.trim().toLowerCase();
+  if (!needle.includes("@")) throw new Error("invalid email");
+  const row = await findAppUserById(admin, appUserId);
+  if (!row?.auth_user_id) return "skipped";
+  const authId = row.auth_user_id;
+  const { data: authUser, error: getError } = await admin.auth.admin.getUserById(authId);
+  if (getError) throw getError;
+  const current = authUser.user?.email?.toLowerCase() ?? "";
+  if (current === needle) return "skipped";
+  const conflict = await findAuthUserByEmail(admin, needle);
+  if (conflict && conflict.id !== authId) {
+    throw new Error("email already in auth");
+  }
+  const { error } = await admin.auth.admin.updateUserById(authId, {
+    email: needle,
+    email_confirm: true,
+  });
+  if (error) throw error;
+  return "updated";
+}
+
 /** Whether the Auth user still needs to set a password (unused invite leftover). */
 export function authInvitePending(user: AuthUser): boolean {
   if (user.last_sign_in_at) return false;
