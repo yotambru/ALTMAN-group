@@ -497,7 +497,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           };
           const healed = removeDanglingLogins(repairMissingLeases(merged));
           setState(healed);
-          prevRef.current = merged;
+          prevRef.current = healed;
         } else {
           const empty = emptyState();
           setState(empty);

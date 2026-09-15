@@ -71,6 +71,7 @@ async function accountApi(
   ok: boolean;
   error?: string;
   needsNewPassword?: boolean;
+  retry?: boolean;
 }> {
   const supabase = getSupabase();
   const token = supabase ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
@@ -87,6 +88,7 @@ async function accountApi(
       ok: boolean;
       error?: string;
       needsNewPassword?: boolean;
+      retry?: boolean;
     };
   } catch {
     return { ok: false, error: "השרת לא זמין. נסו שוב." };
@@ -135,9 +137,17 @@ export async function checkFirstLoginEmail(
   if (!isValidEmail(email)) {
     return { ok: false, error: "יש להזין כתובת מייל תקינה." };
   }
-  const result = await accountApi("pending", { email: normalizeEmail(email) });
-  if (!result.ok) return { ok: false, error: result.error ?? "לא ניתן להפעיל את החשבון." };
-  return { ok: true };
+  const normalized = normalizeEmail(email);
+  // Persist can lag a second or two after the office opens the account.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const result = await accountApi("pending", { email: normalized });
+    if (result.ok) return { ok: true };
+    if (!result.retry || attempt === 3) {
+      return { ok: false, error: result.error ?? "לא ניתן להפעיל את החשבון." };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+  }
+  return { ok: false, error: "לא ניתן להפעיל את החשבון." };
 }
 
 export async function upgradeLegacyPassword(
@@ -165,16 +175,27 @@ export async function activateAccount(
   email: string,
   password: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const result = await accountApi("activate", { email: normalizeEmail(email), password });
+  const normalized = normalizeEmail(email);
+  let result = await accountApi("activate", { email: normalized, password });
+  for (let attempt = 0; !result.ok && result.retry && attempt < 3; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+    result = await accountApi("activate", { email: normalized, password });
+  }
   if (!result.ok) return { ok: false, error: result.error ?? "הפעלת החשבון נכשלה." };
 
   const supabase = getSupabase();
   if (!supabase) return { ok: false, error: "אין חיבור לשרת." };
   const { error } = await supabase.auth.signInWithPassword({
-    email: normalizeEmail(email),
+    email: normalized,
     password,
   });
-  if (error) return { ok: false, error: INVALID_CREDENTIALS };
+  if (error) {
+    return {
+      ok: false,
+      error:
+        "הסיסמה נשמרה אך ההתחברות נכשלה. נסו להיכנס עם הסיסמה החדשה במסך הכניסה הרגיל.",
+    };
+  }
   return { ok: true };
 }
 

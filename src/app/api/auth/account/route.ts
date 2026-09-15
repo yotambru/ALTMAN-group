@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import {
-  authInvitePending,
+  authLinkNeedsActivation,
   createAdminClient,
   deleteAuthUserByEmail,
   findAppUserByEmail,
   findAppUserById,
-  findAuthUserByEmail,
   MIN_AUTH_PASSWORD_LENGTH,
   provisionAuthUser,
   sha256Hex,
   updateAuthEmailForAppUser,
 } from "@/lib/supabase/account-admin";
+import { isSupabaseServiceConfigError } from "@/lib/supabase/client";
 import { isLoginRole } from "@/types";
 
 const WINDOW_MS = 15 * 60 * 1000;
@@ -19,6 +19,8 @@ const attempts = new Map<string, { count: number; resetAt: number }>();
 
 const GENERIC_ACTIVATE = "לא ניתן להפעיל את החשבון. בדקו את המייל או פנו למשרד.";
 const GENERIC_LOGIN = "שם משתמש או סיסמה שגויים.";
+const SERVICE_CONFIG =
+  "הגדרת השרת חסרה (מפתח שירות). פנו למשרד כדי להשלים את הגדרת המערכת.";
 
 function clientKey(request: Request): string {
   return (
@@ -199,13 +201,19 @@ export async function POST(request: Request) {
     if (action === "pending") {
       const row = await findAppUserByEmail(admin, email);
       if (!row || !isLoginRole(row.role)) {
-        return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
+        return NextResponse.json({
+          ok: false,
+          retry: true,
+          error: "החשבון עדיין לא נמצא. אם הרגע נפתח — המתינו רגע ונסו שוב.",
+        });
       }
-      if (row.auth_user_id) {
-        const authUser = await findAuthUserByEmail(admin, email);
-        if (authUser && authInvitePending(authUser)) {
-          return NextResponse.json({ ok: true, pending: true });
-        }
+      if (row.password_hash) {
+        return NextResponse.json({
+          ok: false,
+          error: "החשבון כבר הופעל. היכנסו עם הסיסמה.",
+        });
+      }
+      if (!(await authLinkNeedsActivation(admin, row, email))) {
         return NextResponse.json({ ok: false, error: "החשבון כבר הופעל. היכנסו עם הסיסמה." });
       }
       return NextResponse.json({ ok: true, pending: true });
@@ -220,17 +228,16 @@ export async function POST(request: Request) {
       }
       const row = await findAppUserByEmail(admin, email);
       if (!row || !isLoginRole(row.role)) {
-        return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
-      }
-      if (row.auth_user_id) {
-        const authUser = await findAuthUserByEmail(admin, email);
-        if (authUser && authInvitePending(authUser)) {
-          await provisionAuthUser(admin, email, password, row.id);
-          return NextResponse.json({ ok: true });
-        }
-        return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
+        return NextResponse.json({
+          ok: false,
+          retry: true,
+          error: "החשבון עדיין לא נמצא. אם הרגע נפתח — המתינו רגע ונסו שוב.",
+        });
       }
       if (row.password_hash) {
+        return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
+      }
+      if (!(await authLinkNeedsActivation(admin, row, email))) {
         return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
       }
       await provisionAuthUser(admin, email, password, row.id);
@@ -277,6 +284,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: false, error: "בקשה לא תקינה." }, { status: 400 });
   } catch (err) {
+    if (isSupabaseServiceConfigError(err)) {
+      console.error("[auth/account] missing service role configuration");
+      return NextResponse.json({ ok: false, error: SERVICE_CONFIG }, { status: 503 });
+    }
     console.error("[auth/account]", err);
     return NextResponse.json({ ok: false, error: "הפעולה נכשלה. נסו שוב." }, { status: 500 });
   }
