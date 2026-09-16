@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Building2,
   CalendarCheck,
@@ -52,6 +52,7 @@ import {
 import { heroIncomeChartProps } from "@/lib/hero-income-chart";
 import { formatCurrency, formatDateDots } from "@/lib/utils";
 import { paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
+import { localTodayIso } from "@/lib/lease-periods";
 import { nextPaymentDate } from "@/lib/payment-dates";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
@@ -73,6 +74,9 @@ export default function LandlordDashboard() {
   const [statusFilter, setStatusFilter] = useState<PropertyStatus | "all">("all");
   const [focusWithdrawalId, setFocusWithdrawalId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [todayIso, setTodayIso] = useState(localTodayIso);
+  const panelRef = useRef<HTMLElement>(null);
+  const skipPanelScroll = useRef(true);
   const firstName = session.fullName.trim().split(/\s+/)[0] || session.fullName;
 
   const myProperties = sortPropertiesByLocation(
@@ -82,7 +86,10 @@ export default function LandlordDashboard() {
   const myLeases = leases.filter(
     (l) => l.active && (l.landlordId === landlordId || myPropertyIds.includes(l.propertyId)),
   );
-  const incomeChart = heroIncomeChartProps(myLeases);
+  const myLeaseHistory = leases.filter(
+    (l) => l.landlordId === landlordId || myPropertyIds.includes(l.propertyId),
+  );
+  const incomeChart = heroIncomeChartProps(myLeaseHistory, { properties: myProperties });
   const { monthlyIncome: expectedIncome, portfolioValue } = summarizePortfolio(
     myProperties,
     myLeases,
@@ -118,6 +125,20 @@ export default function LandlordDashboard() {
     setHomePanel(panel);
     setTab("dashboard");
   };
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTodayIso(localTodayIso()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (skipPanelScroll.current) {
+      skipPanelScroll.current = false;
+      return;
+    }
+    if (tab !== "dashboard") return;
+    panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [homePanel, tab]);
 
   const openDocs = (canSign: boolean, docId: string | null = null) => {
     setFocusDocId(docId);
@@ -156,6 +177,7 @@ export default function LandlordDashboard() {
   const upcomingChecks = upcomingCheckPayments(
     payments,
     myLeases.map((lease) => lease.id),
+    todayIso,
   );
   const nextCheck = upcomingChecks[0];
   const nextCheckFromLease = nextCheck
@@ -210,7 +232,7 @@ export default function LandlordDashboard() {
   if (!ready) return null;
 
   return (
-    <DashboardFrame items={appBottomNavItems(unread)} active={tab} onSelect={onNav}>
+    <DashboardFrame items={appBottomNavItems(unread)} active={tab} onSelect={onNav} scrollResetKey={tab}>
       {tab === "dashboard" ? (
         <div className="dash-wide">
           <div className="dusk-header dash-wide-chrome">
@@ -326,7 +348,7 @@ export default function LandlordDashboard() {
                 ]}
               />
 
-              <section className="space-y-1 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
+              <section ref={panelRef} className="space-y-1 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
                 {homePanel === "properties" ? (
                   <>
                     <SectionHeader
@@ -359,9 +381,7 @@ export default function LandlordDashboard() {
                               {formatDateDots(paymentClearanceDate(payment))}
                             </span>
                             <span className="min-w-0 flex-1 truncate text-xs text-text-muted">
-                              {property
-                                ? `${property.address}${property.apartmentNumber ? ` דירה ${property.apartmentNumber}` : ""}`
-                                : "נכס"}
+                              {property ? propertyAddressLabel(property) : "נכס"}
                             </span>
                             <span className="shrink-0 text-sm font-extrabold text-orange">
                               {formatCurrency(payment.amount)}
@@ -418,11 +438,12 @@ export default function LandlordDashboard() {
                         tenants={myTenants}
                         awaitingSignatureOnly={docsCanSign}
                         focusDocumentId={focusDocId}
+                        hiddenFolders={["landlord_id"]}
                         upload={{ ownerUserId: user.id, landlordId }}
                       />
                     )}
                     {homePanel === "report" && (
-                      <AnnualReportDialog inline landlordId={landlordId} canAddExpenses />
+                      <AnnualReportDialog inline landlordId={landlordId} canAddExpenses showAssetValues={false} />
                     )}
                     {homePanel === "chat" && (
                       <ChatPanel
@@ -471,6 +492,7 @@ export default function LandlordDashboard() {
                   landlords={myLandlordRecords}
                   tenants={myTenants}
                   focusDocumentId={tab === "documents" ? focusDocId : null}
+                  hiddenFolders={["landlord_id"]}
                   upload={{ ownerUserId: user.id, landlordId }}
                 />
               </div>
@@ -496,7 +518,7 @@ export default function LandlordDashboard() {
                   userId={user.id}
                   fullName={session.fullName}
                   role="landlord"
-                  detail={`${myProperties.length} נכסים · ${formatCurrency(expectedIncome)} / חודש`}
+                  allowDeleteAccount={false}
                   onLogout={logout}
                   onBack={() => onNav("dashboard")}
                 />
@@ -525,12 +547,17 @@ export default function LandlordDashboard() {
         }}
       />
       <RentalsDialog open={dialog === "rentals"} onClose={() => setDialog(null)} landlordId={landlordId} />
-      <ChecksDialog open={dialog === "checks"} onClose={() => setDialog(null)} landlordId={landlordId} />
+      <ChecksDialog
+        open={dialog === "checks"}
+        onClose={() => setDialog(null)}
+        landlordId={landlordId}
+        canReportReturned
+      />
       <CriticalDatesDialog open={dialog === "critical"} onClose={() => setDialog(null)} landlordId={landlordId} />
       <PropertyDetailDialog
         property={detailProperty}
         onClose={() => setDetailProperty(null)}
-        canConfirmClearance
+        showTenantCallAction={false}
         collapsible
       />
       <Toast message={toast} onDone={() => setToast(null)} />

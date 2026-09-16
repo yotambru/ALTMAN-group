@@ -73,13 +73,6 @@ function accountRows(property: Property, hideLocation: boolean): AccountRow[] {
       value: property.gasMeter?.trim() ?? "",
       ltr: true,
     },
-    {
-      id: "vaad",
-      icon: Phone,
-      label: "טלפון חברת ניהול",
-      value: property.managementCompanyPhone?.trim() ?? "",
-      ltr: true,
-    },
   ];
 }
 

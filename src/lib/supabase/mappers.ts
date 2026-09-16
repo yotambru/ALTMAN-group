@@ -214,6 +214,9 @@ function propertyToRow(p: Property): Row {
     listed_rent: p.listedRent ?? null,
     entry_date: p.entryDate ?? null,
     keys_received: p.keysReceived ?? null,
+    keys_apartment: p.keysApartment ?? null,
+    keys_storage: p.keysStorage ?? null,
+    keys_mailbox: p.keysMailbox ?? null,
     subcontractor_phones: p.subcontractorPhones ?? null,
     management_company_phone: p.managementCompanyPhone ?? null,
     gas_meter: p.gasMeter ?? null,
@@ -257,6 +260,9 @@ function propertyFromRow(row: Row): Property {
     listedRent: row.listed_rent == null ? undefined : num(row.listed_rent) || undefined,
     entryDate: opt(row.entry_date as string | null),
     keysReceived: opt(row.keys_received as number | null),
+    keysApartment: opt(row.keys_apartment as number | null),
+    keysStorage: opt(row.keys_storage as number | null),
+    keysMailbox: opt(row.keys_mailbox as number | null),
     subcontractorPhones: opt(row.subcontractor_phones as string | null),
     managementCompanyPhone: opt(row.management_company_phone as string | null),
     gasMeter: opt(row.gas_meter as string | null),
@@ -365,6 +371,8 @@ function paymentToRow(p: Payment): Row {
     deposit_date: p.depositDate ?? null,
     clearance_confirmed: p.clearanceConfirmed ?? null,
     clearance_confirmed_at: p.clearanceConfirmedAt ?? null,
+    check_returned: p.checkReturned ?? null,
+    check_returned_at: p.checkReturnedAt ?? null,
   };
 }
 
@@ -380,6 +388,8 @@ function paymentFromRow(row: Row): Payment {
     depositDate: opt(row.deposit_date as string | null),
     clearanceConfirmed: opt(row.clearance_confirmed as boolean | null),
     clearanceConfirmedAt: opt(row.clearance_confirmed_at as string | null),
+    checkReturned: opt(row.check_returned as boolean | null),
+    checkReturnedAt: opt(row.check_returned_at as string | null),
   };
 }
 

@@ -21,6 +21,7 @@ export interface AnnualReportPdfInput {
   totalIncome: number;
   totalExpenses: number;
   netIncome: number;
+  showAssetValues?: boolean;
   portfolioValue: number;
   portfolioYield: number;
   occupancy: number;
@@ -38,15 +39,20 @@ function escapeHtml(value: string): string {
 
 /** Build printable RTL Hebrew HTML for the annual portfolio report. */
 function buildReportHtml(data: AnnualReportPdfInput): string {
+  const showAssetValues = data.showAssetValues !== false;
   const propertyRows = data.properties
     .map(
       (p) => `
       <tr>
         <td style="padding:10px 12px;border-bottom:1px solid #eaeef5;font-weight:700;color:#14285a;">${escapeHtml(p.address)}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #eaeef5;color:#7c89a1;font-size:12px;">
+        ${
+          showAssetValues
+            ? `<td style="padding:10px 12px;border-bottom:1px solid #eaeef5;color:#7c89a1;font-size:12px;">
           שווי ${formatCurrency(p.marketValue)}
           ${p.yearlyIncome > 0 ? ` · תשואה ${formatPercent(p.yieldPct)}` : " · ללא שכירות פעילה"}
-        </td>
+        </td>`
+            : ""
+        }
         <td style="padding:10px 12px;border-bottom:1px solid #eaeef5;font-weight:800;color:#f26a21;text-align:left;white-space:nowrap;">
           ${formatCurrency(p.yearlyIncome)}
         </td>
@@ -86,18 +92,22 @@ function buildReportHtml(data: AnnualReportPdfInput): string {
       <div style="background:linear-gradient(90deg,#0e1c40,#23427f);color:#ffffff;border-radius:18px;padding:20px 22px;margin-bottom:22px;">
         <p style="margin:0;font-size:13px;opacity:0.85;">הכנסה שנתית צפויה (${data.year})</p>
         <p style="margin:8px 0 0;font-size:34px;font-weight:800;">${formatCurrency(data.totalIncome)}</p>
-        <div style="display:flex;flex-wrap:wrap;gap:14px 22px;margin-top:14px;font-size:12px;opacity:0.85;">
+        ${
+          showAssetValues
+            ? `<div style="display:flex;flex-wrap:wrap;gap:14px 22px;margin-top:14px;font-size:12px;opacity:0.85;">
           <span>שווי נכסים ${formatCurrency(data.portfolioValue)}</span>
           <span>תפוסה ${data.occupancy}%</span>
           <span>תשואה ${formatPercent(data.portfolioYield)}</span>
-        </div>
+        </div>`
+            : ""
+        }
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.18);">
           <div>
             <p style="margin:0;font-size:12px;opacity:0.7;">הוצאות</p>
             <p style="margin:4px 0 0;font-size:18px;font-weight:700;">${formatCurrency(data.totalExpenses)}</p>
           </div>
           <div>
-            <p style="margin:0;font-size:12px;opacity:0.7;">נטו</p>
+            <p style="margin:0;font-size:12px;opacity:0.7;">רווח נקי</p>
             <p style="margin:4px 0 0;font-size:18px;font-weight:800;color:#f26a21;">${formatCurrency(data.netIncome)}</p>
           </div>
         </div>
@@ -108,7 +118,7 @@ function buildReportHtml(data: AnnualReportPdfInput): string {
         <thead>
           <tr style="background:#f5f7fb;text-align:right;">
             <th style="padding:10px 12px;font-size:12px;color:#7c89a1;font-weight:700;">כתובת</th>
-            <th style="padding:10px 12px;font-size:12px;color:#7c89a1;font-weight:700;">שווי ותשואה</th>
+            ${showAssetValues ? `<th style="padding:10px 12px;font-size:12px;color:#7c89a1;font-weight:700;">שווי ותשואה</th>` : ""}
             <th style="padding:10px 12px;font-size:12px;color:#7c89a1;font-weight:700;text-align:left;">הכנסה שנתית</th>
           </tr>
         </thead>

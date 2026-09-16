@@ -2,6 +2,7 @@ import type { AppDocument, DocumentFolder, DocumentType } from "@/types";
 
 export const ROOT_DOCUMENT_FOLDERS: DocumentFolder[] = [
   "lease",
+  "lease_renewal",
   "management",
   "landlord_id",
   "id_photos",
@@ -27,12 +28,10 @@ export function isDocumentFolder(value: string | undefined | null): value is Doc
 }
 
 export const DOCUMENT_FOLDER_CHILD: Partial<Record<DocumentFolder, DocumentFolder>> = {
-  lease: "lease_renewal",
   id_photos: "guarantor_id",
 };
 
 export const DOCUMENT_FOLDER_PARENT: Partial<Record<DocumentFolder, DocumentFolder>> = {
-  lease_renewal: "lease",
   guarantor_id: "id_photos",
 };
 

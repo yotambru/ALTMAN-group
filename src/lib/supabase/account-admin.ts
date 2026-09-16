@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient, User as AuthUser } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/client";
+import { isLoginRole } from "@/types";
 
 export const MIN_AUTH_PASSWORD_LENGTH = 8;
 
@@ -49,18 +50,60 @@ export async function findAppUserById(
   return (data as AppUserRow | null) ?? null;
 }
 
+function escapeIlike(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+const APP_USER_AUTH_COLS = "id, email, auth_user_id, password_hash, role";
+
 export async function findAppUserByEmail(
   admin: SupabaseClient,
   email: string,
 ): Promise<AppUserRow | null> {
   const needle = email.trim().toLowerCase();
+  if (!needle) return null;
+  const exact = await admin
+    .from("app_users")
+    .select(APP_USER_AUTH_COLS)
+    .eq("email", needle)
+    .maybeSingle();
+  if (exact.error) throw exact.error;
+  if (exact.data) return exact.data as AppUserRow;
   const { data, error } = await admin
     .from("app_users")
-    .select("id, email, auth_user_id, password_hash, role")
-    .ilike("email", needle)
+    .select(APP_USER_AUTH_COLS)
+    .ilike("email", escapeIlike(needle))
     .maybeSingle();
   if (error) throw error;
   return (data as AppUserRow | null) ?? null;
+}
+
+export async function findAuthUserForAppUser(
+  admin: SupabaseClient,
+  row: AppUserRow,
+): Promise<AuthUser | null> {
+  if (row.auth_user_id) {
+    const { data } = await admin.auth.admin.getUserById(row.auth_user_id);
+    if (data.user) return data.user;
+  }
+  const email = (row.email ?? "").trim();
+  if (!email) return null;
+  return findAuthUserByEmail(admin, email);
+}
+
+/** First-login can still set a password if Auth was created but nobody ever signed in. */
+export function canSetFirstPassword(row: AppUserRow, authUser: AuthUser | null): boolean {
+  if (!isLoginRole(row.role)) return false;
+  if (!row.auth_user_id) return true;
+  if (!authUser || authUser.last_sign_in_at) return false;
+  if (authInvitePending(authUser)) return true;
+  return row.role === "landlord" || row.role === "tenant";
+}
+
+/** Whether the Auth user still needs to set a password (unused invite leftover). */
+export function authInvitePending(user: AuthUser): boolean {
+  if (user.last_sign_in_at) return false;
+  return Boolean(user.invited_at) || !user.email_confirmed_at;
 }
 
 export async function linkAuthUser(
@@ -81,7 +124,12 @@ export async function provisionAuthUser(
   password: string,
   appUserId: string,
 ): Promise<void> {
-  const existing = await findAuthUserByEmail(admin, email);
+  const row = await findAppUserById(admin, appUserId);
+  const linked =
+    row?.auth_user_id != null
+      ? (await admin.auth.admin.getUserById(row.auth_user_id)).data.user
+      : null;
+  const existing = linked ?? (await findAuthUserByEmail(admin, email));
   if (existing) {
     const { error } = await admin.auth.admin.updateUserById(existing.id, {
       password,
@@ -145,10 +193,4 @@ export async function updateAuthEmailForAppUser(
   });
   if (error) throw error;
   return "updated";
-}
-
-/** Whether the Auth user still needs to set a password (unused invite leftover). */
-export function authInvitePending(user: AuthUser): boolean {
-  if (user.last_sign_in_at) return false;
-  return Boolean(user.invited_at) || !user.email_confirmed_at;
 }

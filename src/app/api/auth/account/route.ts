@@ -1,17 +1,20 @@
 import { NextResponse } from "next/server";
 import {
-  authInvitePending,
+  canSetFirstPassword,
   createAdminClient,
   deleteAuthUserByEmail,
   findAppUserByEmail,
   findAppUserById,
-  findAuthUserByEmail,
+  findAuthUserForAppUser,
   MIN_AUTH_PASSWORD_LENGTH,
   provisionAuthUser,
   sha256Hex,
   updateAuthEmailForAppUser,
 } from "@/lib/supabase/account-admin";
 import { isLoginRole } from "@/types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 12;
@@ -201,11 +204,8 @@ export async function POST(request: Request) {
       if (!row || !isLoginRole(row.role)) {
         return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
       }
-      if (row.auth_user_id) {
-        const authUser = await findAuthUserByEmail(admin, email);
-        if (authUser && authInvitePending(authUser)) {
-          return NextResponse.json({ ok: true, pending: true });
-        }
+      const authUser = await findAuthUserForAppUser(admin, row);
+      if (!canSetFirstPassword(row, authUser)) {
         return NextResponse.json({ ok: false, error: "החשבון כבר הופעל. היכנסו עם הסיסמה." });
       }
       return NextResponse.json({ ok: true, pending: true });
@@ -222,15 +222,11 @@ export async function POST(request: Request) {
       if (!row || !isLoginRole(row.role)) {
         return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
       }
-      if (row.auth_user_id) {
-        const authUser = await findAuthUserByEmail(admin, email);
-        if (authUser && authInvitePending(authUser)) {
-          await provisionAuthUser(admin, email, password, row.id);
-          return NextResponse.json({ ok: true });
-        }
+      if (row.password_hash && !row.auth_user_id) {
         return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
       }
-      if (row.password_hash) {
+      const authUser = await findAuthUserForAppUser(admin, row);
+      if (!canSetFirstPassword(row, authUser)) {
         return NextResponse.json({ ok: false, error: GENERIC_ACTIVATE });
       }
       await provisionAuthUser(admin, email, password, row.id);
@@ -277,7 +273,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: false, error: "בקשה לא תקינה." }, { status: 400 });
   } catch (err) {
-    console.error("[auth/account]", err);
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("SUPABASE_SERVICE_ROLE_KEY") || message.includes("NEXT_PUBLIC_SUPABASE_URL")) {
+      console.error("[auth/account] missing server auth env", message);
+    } else {
+      console.error("[auth/account]", err);
+    }
     return NextResponse.json({ ok: false, error: "הפעולה נכשלה. נסו שוב." }, { status: 500 });
   }
 }

@@ -274,8 +274,13 @@ export function DocumentsDialog({
   const [selectedTenantId, setSelectedTenantId] = useState<FolderId | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<DocumentFolder | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const openedFocus = useRef<string | null>(null);
   const signerUserId = storage.getSession()?.userId;
+
+  useEffect(() => {
+    rootRef.current?.scrollIntoView({ block: "start" });
+  }, []);
 
   /* eslint-disable react-hooks/set-state-in-effect -- open the focused doc after vault data lands */
   useEffect(() => {
@@ -960,12 +965,12 @@ export function DocumentsDialog({
   );
 
   const body = (
-    <>
+    <div ref={rootRef}>
       {header}
       {filters}
       {uploadBox}
       {list}
-    </>
+    </div>
   );
 
   return (

@@ -36,6 +36,7 @@ import {
   type LeasePeriod,
 } from "@/lib/lease-periods";
 import { resolveCheckSchedule, type CheckDraft } from "@/lib/check-schedule";
+import { totalKeysReceived } from "@/lib/property-keys";
 import type { AirDirection, DocumentFolder, DocumentType } from "@/types";
 
 interface AddClientModalProps {
@@ -124,7 +125,9 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
   const [buildingFee, setBuildingFee] = useState("");
   const [municipalTax, setMunicipalTax] = useState("");
   const [entryDate, setEntryDate] = useState("");
-  const [keysReceived, setKeysReceived] = useState("");
+  const [keysApartment, setKeysApartment] = useState("");
+  const [keysStorage, setKeysStorage] = useState("");
+  const [keysMailbox, setKeysMailbox] = useState("");
   const [subcontractorPhones, setSubcontractorPhones] = useState("");
   const [managementCompanyPhone, setManagementCompanyPhone] = useState("");
   const [municipalPropertyNumber, setMunicipalPropertyNumber] = useState("");
@@ -184,7 +187,9 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
     setBuildingFee("");
     setMunicipalTax("");
     setEntryDate("");
-    setKeysReceived("");
+    setKeysApartment("");
+    setKeysStorage("");
+    setKeysMailbox("");
     setSubcontractorPhones("");
     setManagementCompanyPhone("");
     setMunicipalPropertyNumber("");
@@ -398,7 +403,14 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
       storageNumber: hasStorage === "yes" ? storageNumber.trim() || undefined : undefined,
       listedRent: (includeTenant ? startingMonthlyRent : listedRentAmount) || undefined,
       entryDate: entryDate || undefined,
-      keysReceived: num(keysReceived) || undefined,
+      keysReceived: totalKeysReceived({
+        apartment: num(keysApartment),
+        storage: num(keysStorage),
+        mailbox: num(keysMailbox),
+      }),
+      keysApartment: num(keysApartment) || undefined,
+      keysStorage: num(keysStorage) || undefined,
+      keysMailbox: num(keysMailbox) || undefined,
       subcontractorPhones: subcontractorPhones.trim() || undefined,
       managementCompanyPhone: managementCompanyPhone.trim() || undefined,
       gasMeter: gasMeter.trim() || undefined,
@@ -856,8 +868,16 @@ export function AddClientModal({ open, onClose, onCreated, existingLandlordId }:
               inputProps={{ type: "date", value: entryDate, onChange: (e) => setEntryDate(e.target.value) }}
             />
             <FormField
-              label="מספר המפתחות שהתקבלו"
-              inputProps={{ value: keysReceived, onChange: (e) => setKeysReceived(e.target.value), inputMode: "numeric" }}
+              label="מפתחות לדירה"
+              inputProps={{ value: keysApartment, onChange: (e) => setKeysApartment(e.target.value), inputMode: "numeric" }}
+            />
+            <FormField
+              label="מפתחות למחסן"
+              inputProps={{ value: keysStorage, onChange: (e) => setKeysStorage(e.target.value), inputMode: "numeric" }}
+            />
+            <FormField
+              label="מפתחות לדואר"
+              inputProps={{ value: keysMailbox, onChange: (e) => setKeysMailbox(e.target.value), inputMode: "numeric" }}
             />
           </div>
 

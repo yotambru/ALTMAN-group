@@ -29,6 +29,8 @@ interface AnnualReportDialogProps {
   landlordId?: string;
   /** Allow uploading expense invoices (landlord / manager). */
   canAddExpenses?: boolean;
+  /** Show implied asset values / yield. Landlord annual report is income vs expenses only. */
+  showAssetValues?: boolean;
 }
 
 /** Annual portfolio summary: value, income growth, yield, net of expenses. */
@@ -38,6 +40,7 @@ export function AnnualReportDialog({
   inline = false,
   landlordId,
   canAddExpenses = false,
+  showAssetValues = true,
 }: AnnualReportDialogProps) {
   const { properties, leases, landlords, expenses, addExpense, addDocument } = useData();
   const [filterLandlordId, setFilterLandlordId] = useState("");
@@ -118,7 +121,7 @@ export function AnnualReportDialog({
     })),
   ];
   const portfolioValue = impliedPortfolioValue(totalIncome / 12);
-  const yieldHistory = buildPortfolioYieldHistory(activeLeases);
+  const yieldHistory = buildPortfolioYieldHistory(activeLeases, new Date(), owned);
   const portfolioYield = totalIncome > 0 ? PORTFOLIO_YIELD_RATE * 100 : 0;
   const occupancy = occupancyPercent(owned);
 
@@ -131,6 +134,7 @@ export function AnnualReportDialog({
         totalIncome,
         totalExpenses,
         netIncome,
+        showAssetValues,
         portfolioValue,
         portfolioYield,
         occupancy,
@@ -253,38 +257,42 @@ export function AnnualReportDialog({
           הכנסה שנתית צפויה ({year})
         </p>
         <p className="mt-1 text-3xl font-extrabold">{formatCurrency(totalIncome)}</p>
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/75">
-          <span className="inline-flex items-center gap-1">
-            <Landmark className="h-3.5 w-3.5" />
-            שווי נכסים {formatCurrency(portfolioValue)}
-          </span>
-          <span>תפוסה {occupancy}%</span>
-          <span>תשואה {formatPercent(portfolioYield)}</span>
-        </div>
+        {showAssetValues && (
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/75">
+            <span className="inline-flex items-center gap-1">
+              <Landmark className="h-3.5 w-3.5" />
+              שווי נכסים {formatCurrency(portfolioValue)}
+            </span>
+            <span>תפוסה {occupancy}%</span>
+            <span>תשואה {formatPercent(portfolioYield)}</span>
+          </div>
+        )}
         <div className="mt-3 grid grid-cols-2 gap-2 border-t border-white/15 pt-3 text-sm">
           <div>
             <p className="text-white/65">הוצאות</p>
             <p className="font-bold">{formatCurrency(totalExpenses)}</p>
           </div>
           <div>
-            <p className="text-white/65">נטו</p>
+            <p className="text-white/65">רווח נקי</p>
             <p className="font-bold text-orange">{formatCurrency(netIncome)}</p>
           </div>
         </div>
       </div>
 
       <IncomeGrowthChart points={yieldHistory} />
-      <YieldGrowthChart points={yieldHistory} />
+      {showAssetValues && <YieldGrowthChart points={yieldHistory} />}
 
       <div className="space-y-2">
         {rows.map(({ property, yearly, yieldPct, marketValue }) => (
           <div key={property.id} className="flex items-center justify-between rounded-xl border border-border p-3">
             <div className="min-w-0">
               <p className="truncate font-semibold text-navy">{property.address}</p>
-              <p className="text-xs text-text-muted">
-                שווי {formatCurrency(yearly > 0 ? marketValue : property.value)}
-                {yearly > 0 ? ` · תשואה ${formatPercent(yieldPct)}` : " · ללא שכירות פעילה"}
-              </p>
+              {showAssetValues && (
+                <p className="text-xs text-text-muted">
+                  שווי {formatCurrency(yearly > 0 ? marketValue : property.value)}
+                  {yearly > 0 ? ` · תשואה ${formatPercent(yieldPct)}` : " · ללא שכירות פעילה"}
+                </p>
+              )}
             </div>
             <span className="font-bold text-orange">{formatCurrency(yearly)}</span>
           </div>

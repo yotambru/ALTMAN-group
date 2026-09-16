@@ -8,6 +8,7 @@ import {
   activateAccount,
   checkFirstLoginEmail,
   loadSessionUser,
+  normalizeEmail,
   resolveLoginEmail,
   signInWithCredentials,
   upgradeLegacyPassword,
@@ -137,7 +138,7 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
       setError(result.error);
       return;
     }
-    setPendingEmail(identifier.trim());
+    setPendingEmail(normalizeEmail(identifier));
     setPassword("");
     setConfirmPassword("");
     setError("");

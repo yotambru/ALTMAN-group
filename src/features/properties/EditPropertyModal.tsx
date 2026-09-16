@@ -23,7 +23,7 @@ import {
   alignPeriodRents,
   resolveLeasePeriods,
   rescaleLeasePeriods,
-  rentOnDate,
+  rentsForLeasePeriods,
   rentScheduleFromPeriods,
   type LeasePeriod,
 } from "@/lib/lease-periods";
@@ -57,16 +57,11 @@ function rentsFromLease(
   end: string,
 ): string[] {
   const periods = start ? resolveLeasePeriods(start, end || undefined, lease.rentAdjustments) : [];
-  const fallback = String(currentMonthlyRent(lease) || lease.monthlyRent || "");
-  if (!periods.length) return [fallback];
-  return periods.map((period) => {
-    const rent = rentOnDate(
-      lease.startingMonthlyRent ?? lease.monthlyRent,
-      lease.rentAdjustments,
-      period.startDate,
-    );
-    return rent > 0 ? String(rent) : fallback;
-  });
+  if (!periods.length) {
+    const fallback = rentsForLeasePeriods(lease, [])[0] ?? lease.monthlyRent;
+    return [String(fallback || "")];
+  }
+  return rentsForLeasePeriods(lease, periods).map((rent) => (rent > 0 ? String(rent) : ""));
 }
 
 /** Edit an existing property (and its active lease's rent schedule). */

@@ -40,24 +40,9 @@ function placeholderRise(): number[] {
   });
 }
 
-/**
- * Display series that never falls: running max, plus a small lift when
- * the history is flat so the hero always reads as growth.
- */
-function risingDisplaySeries(data: number[]): number[] {
-  const source = data.length >= 2 ? data : placeholderRise();
-  const out: number[] = [];
-  let peak = source[0];
-  for (const value of source) {
-    peak = Math.max(peak, value);
-    out.push(peak);
-  }
-  const first = out[0];
-  const last = out[out.length - 1];
-  if (last > first) return out;
-  const lift = Math.max(Math.abs(first) * 0.12, 1);
-  const n = out.length - 1;
-  return out.map((value, i) => value + (n === 0 ? lift : (i / n) * lift));
+/** Keep the drawable series honest — same numbers the hover labels show. */
+function displaySeries(data: number[]): number[] {
+  return data.length >= 2 ? data : placeholderRise();
 }
 
 function nearestIndex(x: number, points: { x: number }[]): number {
@@ -122,7 +107,7 @@ export function Sparkline({
 }: SparklineProps) {
   const uid = useId().replace(/:/g, "");
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const series = smoothSeries(risingDisplaySeries(data));
+  const series = smoothSeries(displaySeries(data));
   const w = 320;
   const h = 48;
   const padY = 6;

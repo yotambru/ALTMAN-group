@@ -62,8 +62,13 @@ export function paymentStatusForDate(
 }
 
 export function livePaymentStatus(payment: Payment, today: string = localTodayIso()): PaymentStatus {
+  if (payment.checkReturned) return "overdue";
   if (payment.clearanceConfirmed || payment.status === "paid") return "paid";
-  return paymentStatusForDate(paymentClearanceDate(payment), false, today);
+  const day = paymentClearanceDate(payment);
+  if (!day) return "upcoming";
+  if (day > today) return "upcoming";
+  if (day === today) return "due";
+  return "paid";
 }
 
 /**
@@ -230,6 +235,45 @@ export function upcomingCheckPayments(
   const allowed = new Set(leaseIds);
   return payments
     .filter((payment) => allowed.has(payment.leaseId) && isCheckPayment(payment))
-    .filter((payment) => livePaymentStatus(payment, today) !== "paid")
+    .filter((payment) => !payment.checkReturned && livePaymentStatus(payment, today) !== "paid")
     .sort((a, b) => paymentClearanceDate(a).localeCompare(paymentClearanceDate(b)));
+}
+
+function addDaysIso(iso: string, days: number): string {
+  const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
+  const date = new Date(year, (month ?? 1) - 1, (day ?? 1) + days);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Recently auto-cleared checks that can be reported as bounced. */
+export function reportableClearedCheckPayments(
+  payments: Payment[],
+  leaseIds: Iterable<string>,
+  today: string = localTodayIso(),
+  withinDays = 90,
+): Payment[] {
+  const allowed = new Set(leaseIds);
+  const from = addDaysIso(today, -withinDays);
+  return payments
+    .filter((payment) => allowed.has(payment.leaseId) && isCheckPayment(payment))
+    .filter((payment) => !payment.checkReturned && livePaymentStatus(payment, today) === "paid")
+    .filter((payment) => {
+      const day = paymentClearanceDate(payment);
+      return day && day <= today && day >= from;
+    })
+    .sort((a, b) => paymentClearanceDate(b).localeCompare(paymentClearanceDate(a)));
+}
+
+/** Checks the landlord already reported as bounced. */
+export function returnedCheckPayments(
+  payments: Payment[],
+  leaseIds: Iterable<string>,
+): Payment[] {
+  const allowed = new Set(leaseIds);
+  return payments
+    .filter((payment) => allowed.has(payment.leaseId) && isCheckPayment(payment) && payment.checkReturned)
+    .sort((a, b) => paymentClearanceDate(b).localeCompare(paymentClearanceDate(a)));
 }

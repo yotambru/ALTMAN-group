@@ -88,6 +88,39 @@ export function rentOnDate(
   return rent;
 }
 
+/**
+ * Rent for each lease period from the stored schedule — not today's rent
+ * copied onto every row.
+ */
+export function rentsForLeasePeriods(
+  lease: {
+    monthlyRent: number;
+    startingMonthlyRent?: number;
+    rentAdjustments?: RentAdjustment[];
+  },
+  periods: LeasePeriod[],
+): number[] {
+  const sorted = [...(lease.rentAdjustments ?? [])].sort((a, b) => a.date.localeCompare(b.date));
+  const starting =
+    lease.startingMonthlyRent != null && lease.startingMonthlyRent > 0
+      ? lease.startingMonthlyRent
+      : undefined;
+
+  return periods.map((period, index) => {
+    const start = period.startDate.slice(0, 10);
+    const exact = sorted.find((adj) => adj.date.slice(0, 10) === start);
+    if (index === 0) {
+      if (starting != null) return starting;
+      if (exact) return exact.monthlyRent;
+      if (!sorted.length) return lease.monthlyRent;
+      return sorted[0].date.slice(0, 10) <= start ? sorted[0].monthlyRent : 0;
+    }
+    if (exact) return exact.monthlyRent;
+    if (sorted[index - 1]) return sorted[index - 1].monthlyRent;
+    return rentOnDate(starting ?? 0, sorted, start);
+  });
+}
+
 /** Keep period-rent inputs aligned with the current number of yearly periods. */
 export function alignPeriodRents(prev: string[], count: number, fill = ""): string[] {
   if (count <= 0) return [""];

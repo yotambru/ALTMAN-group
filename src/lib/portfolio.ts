@@ -212,7 +212,24 @@ function monthlyRentOnDate(lease: Lease, at: Date, asOf: Date): number {
   );
 }
 
-function portfolioMonthlyOn(leases: Lease[], at: Date, asOf: Date): number {
+function isSameCalendarDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function portfolioMonthlyOn(
+  leases: Lease[],
+  at: Date,
+  asOf: Date,
+  properties?: Property[],
+): number {
+  if (properties?.length && isSameCalendarDay(at, asOf)) {
+    return Math.round(
+      summarizePortfolio(
+        properties,
+        leases.filter((lease) => lease.active),
+      ).monthlyIncome,
+    );
+  }
   return Math.round(leases.reduce((sum, l) => sum + monthlyRentOnDate(l, at, asOf), 0));
 }
 
@@ -246,8 +263,9 @@ export function portfolioJoinDate(leases: Lease[]): string | undefined {
 export function buildPortfolioYieldHistory(
   leases: Lease[],
   asOf: Date = new Date(),
+  properties?: Property[],
 ): YieldPoint[] {
-  const series = buildPortfolioYieldSeries(leases, asOf);
+  const series = buildPortfolioYieldSeries(leases, asOf, properties);
   if (series.length === 0) return [];
 
   const selected: YieldPoint[] = [];
@@ -285,6 +303,7 @@ export function buildPortfolioYieldHistory(
 export function buildPortfolioYieldSeries(
   leases: Lease[],
   asOf: Date = new Date(),
+  properties?: Property[],
 ): YieldPoint[] {
   const joinIso = portfolioJoinDate(leases);
   if (!joinIso) return [];
@@ -309,9 +328,20 @@ export function buildPortfolioYieldSeries(
       year,
       month: monthIndex + 1,
       date: isFirst ? joinIso : isoDate(year, monthIndex, at.getDate()),
-      monthlyIncome: portfolioMonthlyOn(leases, at, asOf),
+      monthlyIncome: portfolioMonthlyOn(leases, at, asOf, properties),
     });
     cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  if (properties?.length && seeds.length) {
+    const current = Math.round(
+      summarizePortfolio(
+        properties,
+        leases.filter((lease) => lease.active),
+      ).monthlyIncome,
+    );
+    const last = seeds[seeds.length - 1];
+    seeds[seeds.length - 1] = { ...last, monthlyIncome: current };
   }
 
   return annotateIncome(seeds);

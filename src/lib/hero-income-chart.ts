@@ -1,4 +1,4 @@
-import type { Lease } from "@/types";
+import type { Lease, Property } from "@/types";
 import {
   buildPortfolioYieldSeries,
   formatPercent,
@@ -35,10 +35,10 @@ export interface HeroIncomeChartProps {
  */
 export function heroIncomeChartProps(
   leases: Lease[],
-  opts?: { startCaption?: "הצטרפות" | "התחלה" },
+  opts?: { startCaption?: "הצטרפות" | "התחלה"; properties?: Property[] },
   asOf: Date = new Date(),
 ): HeroIncomeChartProps {
-  const series = buildPortfolioYieldSeries(leases, asOf);
+  const series = buildPortfolioYieldSeries(leases, asOf, opts?.properties);
   const joinDate = portfolioJoinDate(leases);
   const startCaption = opts?.startCaption ?? "הצטרפות";
   const sincePhrase =
@@ -66,7 +66,7 @@ export function heroIncomeChartProps(
   return {
     data,
     points,
-    progress: series.length < 4 ? 0.55 : 1,
+    progress: 1,
     chartStartLabel: joinDate
       ? `${startCaption} ${joinLabel} · ${formatCurrency(first.monthlyIncome)}`
       : undefined,

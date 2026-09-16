@@ -103,6 +103,9 @@ export interface NewClientInput {
   listedRent?: number;
   entryDate?: string;
   keysReceived?: number;
+  keysApartment?: number;
+  keysStorage?: number;
+  keysMailbox?: number;
   subcontractorPhones?: string;
   managementCompanyPhone?: string;
   gasMeter?: string;
@@ -197,16 +200,19 @@ function paymentsFromChecks(leaseId: string, checks: CheckScheduleEntry[] | unde
   const today = localTodayIso();
   return (checks ?? [])
     .filter((check) => check.clearanceDate && check.amount > 0)
-    .map((check) => ({
-      id: generateId("pay"),
-      leaseId,
-      amount: check.amount,
-      dueDate: check.clearanceDate,
-      depositDate: check.clearanceDate,
-      status: paymentStatusForDate(check.clearanceDate, false, today),
-      method: "check" as const,
-      checkNumber: check.checkNumber,
-    }));
+    .map((check) => {
+      const status = paymentStatusForDate(check.clearanceDate, false, today);
+      return {
+        id: generateId("pay"),
+        leaseId,
+        amount: check.amount,
+        dueDate: check.clearanceDate,
+        depositDate: check.clearanceDate,
+        status: status === "overdue" ? "paid" : status,
+        method: "check" as const,
+        checkNumber: check.checkNumber,
+      };
+    });
 }
 
 function tenantLoginUsers(users: User[], tenantId: string): User[] {
@@ -342,6 +348,8 @@ interface DataContextValue extends DataState {
 
   // payments / expenses
   confirmPaymentClearance: (paymentId: string) => void;
+  reportCheckReturned: (paymentId: string) => void;
+  clearCheckReturned: (paymentId: string) => void;
   updatePayment: (id: string, patch: Partial<Payment>) => void;
   /** Replace uncleared check rows for a lease (keeps confirmed / paid rows). */
   replaceLeaseChecks: (leaseId: string, checks: CheckScheduleEntry[]) => void;
@@ -667,6 +675,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         listedRent: input.listedRent ?? (input.monthlyRent || undefined),
         entryDate: input.entryDate || input.startDate || undefined,
         keysReceived: input.keysReceived,
+        keysApartment: input.keysApartment,
+        keysStorage: input.keysStorage,
+        keysMailbox: input.keysMailbox,
         subcontractorPhones: input.subcontractorPhones,
         managementCompanyPhone: input.managementCompanyPhone,
         gasMeter: input.gasMeter,
@@ -1110,6 +1121,37 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             : pay,
         ),
         activityLog: [makeLog("אישור פרעון צ׳ק", "payment", paymentId), ...p.activityLog],
+      }));
+    },
+    [makeLog],
+  );
+
+  const reportCheckReturned = useCallback<DataContextValue["reportCheckReturned"]>(
+    (paymentId) => {
+      const now = new Date().toISOString();
+      setState((p) => ({
+        ...p,
+        payments: p.payments.map((pay) =>
+          pay.id === paymentId
+            ? { ...pay, checkReturned: true, checkReturnedAt: now, status: "overdue" }
+            : pay,
+        ),
+        activityLog: [makeLog("דיווח צ׳ק שחזר", "payment", paymentId), ...p.activityLog],
+      }));
+    },
+    [makeLog],
+  );
+
+  const clearCheckReturned = useCallback<DataContextValue["clearCheckReturned"]>(
+    (paymentId) => {
+      setState((p) => ({
+        ...p,
+        payments: p.payments.map((pay) =>
+          pay.id === paymentId
+            ? { ...pay, checkReturned: false, checkReturnedAt: undefined, status: "paid" }
+            : pay,
+        ),
+        activityLog: [makeLog("ביטול דיווח צ׳ק שחזר", "payment", paymentId), ...p.activityLog],
       }));
     },
     [makeLog],
@@ -2154,6 +2196,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     deleteTenant,
     deleteOwnAccount,
     confirmPaymentClearance,
+    reportCheckReturned,
+    clearCheckReturned,
     updatePayment,
     replaceLeaseChecks,
     addExpense,

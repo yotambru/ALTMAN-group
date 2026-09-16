@@ -89,6 +89,10 @@ export interface Property {
   /** Planned / actual move-in date from intake (תאריך כניסה) */
   entryDate?: string;
   keysReceived?: number;
+  /** Keys handed over by type (דירה / מחסן / דואר). */
+  keysApartment?: number;
+  keysStorage?: number;
+  keysMailbox?: number;
   /** Subcontractor phones for new apartments */
   subcontractorPhones?: string;
   managementCompanyPhone?: string;
@@ -187,6 +191,9 @@ export interface Payment {
   /** Landlord confirmed the check cleared (client_confirm / company modes). */
   clearanceConfirmed?: boolean;
   clearanceConfirmedAt?: string; // ISO
+  /** Landlord reported this check bounced (צ׳ק שחזר). */
+  checkReturned?: boolean;
+  checkReturnedAt?: string; // ISO
 }
 
 /** One post-dated rent check entered when opening a tenant. */

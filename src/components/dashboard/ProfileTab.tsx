@@ -24,6 +24,8 @@ interface ProfileTabProps {
   children?: React.ReactNode;
   onLogout: () => void;
   onBack?: () => void;
+  /** Hide the account-deletion block (e.g. landlord profiles). */
+  allowDeleteAccount?: boolean;
 }
 
 /** Shared profile screen for the unified bottom-nav "פרופיל" tab. */
@@ -35,6 +37,7 @@ export function ProfileTab({
   children,
   onLogout,
   onBack,
+  allowDeleteAccount = true,
 }: ProfileTabProps) {
   const { users, updateUser, deleteOwnAccount } = useData();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -140,6 +143,7 @@ export function ProfileTab({
         <LogOut className="h-5 w-5" />
         התנתקות
       </Button>
+      {allowDeleteAccount && (
       <div className="rounded-[var(--radius)] bg-surface p-4 ring-1 ring-border">
         <p className="text-sm font-bold text-navy">מחיקת חשבון</p>
         <p className="mt-1 text-sm leading-relaxed text-text-muted">
@@ -156,6 +160,7 @@ export function ProfileTab({
           מחיקת חשבון
         </Button>
       </div>
+      )}
       <p className="text-center text-sm text-text-muted">
         <Link href="/privacy" className="font-semibold text-navy underline-offset-2 hover:underline">
           מדיניות פרטיות

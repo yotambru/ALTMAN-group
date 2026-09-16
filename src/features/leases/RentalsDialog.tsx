@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useData } from "@/lib/store";
 import { nextPaymentDate } from "@/lib/payment-dates";
 import { paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
-import { currentMonthlyRent } from "@/lib/portfolio";
+import { currentMonthlyRent, propertyAddressLabel } from "@/lib/portfolio";
 import { formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
 
 interface RentalsDialogProps {
@@ -40,7 +40,7 @@ export function RentalsDialog({ open, onClose, landlordId }: RentalsDialogProps)
               )}
               <div className="min-w-0 flex-1">
                 <p className="truncate font-bold text-navy">
-                  {property ? `${property.address}, ${property.city}` : "נכס"}
+                  {property ? propertyAddressLabel(property) : "נכס"}
                 </p>
                 <p className="truncate text-xs text-text-muted">שוכר: {tenant?.fullName ?? "—"}</p>
               </div>

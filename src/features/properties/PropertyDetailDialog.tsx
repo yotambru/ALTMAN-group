@@ -38,7 +38,8 @@ import { can } from "@/lib/permissions";
 import { normalizeEmail } from "@/lib/auth";
 import { cn, fileToDataUrl, formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
 import { currentMonthlyRent, PROPERTY_STATUS_LABELS, propertyAddressLabel, propertyDisplayValue } from "@/lib/portfolio";
-import { resolveLeasePeriods, rentOnDate } from "@/lib/lease-periods";
+import { resolveLeasePeriods, rentsForLeasePeriods } from "@/lib/lease-periods";
+import { formatPropertyKeys } from "@/lib/property-keys";
 import { livePaymentStatus, paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
 import type { CheckDepositMode, Payment, PaymentStatus, Property } from "@/types";
 
@@ -202,8 +203,9 @@ function PropertyFullDetails({ property }: { property: Property }) {
         <DetailRow icon={Building2} label="מס׳ נכס בארנונה" value={text(property.municipalPropertyNumber)} />
         <DetailRow icon={Building2} label="סטטוס" value={statusLabels[property.status]} />
         <DetailRow icon={CalendarDays} label="תאריך כניסה" value={property.entryDate ? formatDateDots(property.entryDate) : "לא הוזן"} />
-        <DetailRow icon={KeyRound} label="מפתחות שהתקבלו" value={text(property.keysReceived)} />
+        <DetailRow icon={KeyRound} label="מפתחות שהתקבלו" value={formatPropertyKeys(property)} />
         <DetailRow icon={Ruler} label="מס׳ שירותים" value={text(property.toilets)} />
+        <DetailRow icon={Bath} label="חדרי רחצה" value={text(property.bathrooms)} />
         <DetailRow icon={Car} label="חניה" value={parking} />
         <DetailRow icon={Archive} label="מחסן" value={storage} />
         <DetailRow icon={Building2} label="מרפסת" value={balcony} />
@@ -214,7 +216,7 @@ function PropertyFullDetails({ property }: { property: Property }) {
         <DetailRow icon={FileText} label="דוח בדק" value={yesNo(property.hasInspectionReport)} />
         <DetailRow icon={Phone} label="טלפון חברת ניהול" value={text(property.managementCompanyPhone)} />
         <DetailRow icon={Phone} label="טלפוני קבלנים" value={text(property.subcontractorPhones)} />
-        <DetailRow icon={Ruler} label="שכ״ד מבוקש" value={property.listedRent ? formatCurrency(property.listedRent) : "לא הוזן"} />
+        <DetailRow icon={Ruler} label="שכ״ד" value={property.listedRent ? formatCurrency(property.listedRent) : "לא הוזן"} />
         <DetailRow icon={FileText} label="מונה חשמל" value={text(property.electricityMeter)} />
         <DetailRow icon={FileText} label="מונה מים" value={text(property.waterMeter)} />
         <DetailRow icon={FileText} label="מונה גז" value={text(property.gasMeter)} />
@@ -236,6 +238,8 @@ interface PropertyDetailDialogProps {
   canConfirmClearance?: boolean;
   /** Show a compact preview first, with the rest behind a "ראה עוד" action. */
   collapsible?: boolean;
+  /** Show a "צור קשר" tel link on tenant cards. Off for landlord. */
+  showTenantCallAction?: boolean;
 }
 
 export function PropertyDetailDialog({
@@ -246,6 +250,7 @@ export function PropertyDetailDialog({
   onEditPhoto,
   canConfirmClearance = false,
   collapsible = false,
+  showTenantCallAction = true,
 }: PropertyDetailDialogProps) {
   const {
     leases,
@@ -343,13 +348,9 @@ export function PropertyDetailDialog({
     ? resolveLeasePeriods(lease.startDate, lease.endDate || undefined, lease.rentAdjustments)
     : [];
   const periodRows = lease
-    ? periods.map((period) => ({
-        ...period,
-        rent: rentOnDate(
-          lease.startingMonthlyRent ?? lease.monthlyRent,
-          lease.rentAdjustments,
-          period.startDate,
-        ),
+    ? rentsForLeasePeriods(lease, periods).map((rent, index) => ({
+        ...periods[index],
+        rent,
       }))
     : [];
   const showSchedule = periodRows.length > 1;
@@ -393,8 +394,6 @@ export function PropertyDetailDialog({
               <Spec icon={Ruler} value={`${property.sizeSqm} מ״ר`} />
               <span className="h-8 w-px bg-border" />
               <Spec icon={BedDouble} value={`${property.rooms} חדרים`} />
-              <span className="h-8 w-px bg-border" />
-              <Spec icon={Bath} value={`${property.bathrooms} רחצה`} />
             </div>
           </section>
         )}
@@ -430,7 +429,7 @@ export function PropertyDetailDialog({
                       <p className="text-[0.7rem] text-text-muted">נכנס: {formatDateDots(lease.startDate)}</p>
                     )}
                   </div>
-                  {tenant.phone && (
+                  {showTenantCallAction && tenant.phone && (
                     <a
                       href={`tel:${tenant.phone}`}
                       className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-orange px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-orange-dark"
@@ -469,7 +468,7 @@ export function PropertyDetailDialog({
                         {tenant.secondaryFullName || "—"}
                       </p>
                     </div>
-                    {tenant.secondaryPhone && (
+                    {showTenantCallAction && tenant.secondaryPhone && (
                       <a
                         href={`tel:${tenant.secondaryPhone}`}
                         className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-orange px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-orange-dark"
