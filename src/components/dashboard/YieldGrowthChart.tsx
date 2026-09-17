@@ -1,5 +1,5 @@
 import { cn, formatCurrency } from "@/lib/utils";
-import { formatPercent, PORTFOLIO_YIELD_RATE, type YieldPoint } from "@/lib/portfolio";
+import { formatPercent, PORTFOLIO_YIELD_RATE, yearlyChartPoints, type YieldPoint } from "@/lib/portfolio";
 import { smoothLinePath, smoothSeries } from "./smooth-path";
 
 interface YieldGrowthChartProps {
@@ -25,13 +25,14 @@ export function YieldGrowthChart({ points, className }: YieldGrowthChartProps) {
   const padX = 8;
   const padTop = 16;
   const padBottom = 28;
-  const values = smoothSeries(points.map((p) => p.monthlyIncome));
+  const series = points.length > 12 ? yearlyChartPoints(points) : points;
+  const values = smoothSeries(series.map((p) => p.monthlyIncome));
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
 
-  const coords = points.map((p, i) => {
-    const x = padX + (i / (points.length - 1)) * (w - padX * 2);
+  const coords = series.map((p, i) => {
+    const x = padX + (i / (series.length - 1)) * (w - padX * 2);
     const y = padTop + (1 - (values[i] - min) / range) * (h - padTop - padBottom);
     return { ...p, x, y };
   });
@@ -74,7 +75,13 @@ export function YieldGrowthChart({ points, className }: YieldGrowthChartProps) {
           <circle cx={first.x} cy={first.y} r={3.5} fill="var(--navy)" />
           <circle cx={last.x} cy={last.y} r={4} fill="var(--orange)" />
           {coords.map((c, i) => {
-            const showTick = i === 0 || i === coords.length - 1 || (i % Math.max(1, Math.ceil(coords.length / 4)) === 0 && i !== coords.length - 1);
+            const isLast = i === coords.length - 1;
+            const isFirst = i === 0;
+            const firstOfYear = coords.findIndex((p) => p.year === c.year) === i;
+            const showTick =
+              isFirst ||
+              isLast ||
+              (firstOfYear && c.year !== coords[0].year && c.year !== coords.at(-1)!.year);
             if (!showTick) return null;
             return (
               <text
@@ -83,9 +90,9 @@ export function YieldGrowthChart({ points, className }: YieldGrowthChartProps) {
                 y={h - 8}
                 textAnchor="middle"
                 className="fill-[var(--text-muted)]"
-                fontSize="10"
+                fontSize="11"
               >
-                {i === 0 ? "הצטרפות" : i === coords.length - 1 ? "היום" : String(c.year)}
+                {isLast ? "היום" : String(c.year)}
               </text>
             );
           })}

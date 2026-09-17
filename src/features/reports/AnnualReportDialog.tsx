@@ -5,7 +5,6 @@ import { Download, Landmark, Receipt, TrendingUp, Upload } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Toast } from "@/components/ui/Toast";
-import { YieldGrowthChart } from "@/components/dashboard/YieldGrowthChart";
 import { IncomeGrowthChart } from "@/components/dashboard/IncomeGrowthChart";
 import { downloadAnnualReportPdf } from "@/lib/annual-report-pdf";
 import { useData } from "@/lib/store";
@@ -280,7 +279,6 @@ export function AnnualReportDialog({
       </div>
 
       <IncomeGrowthChart points={yieldHistory} />
-      {showAssetValues && <YieldGrowthChart points={yieldHistory} />}
 
       <div className="space-y-2">
         {rows.map(({ property, yearly, yieldPct, marketValue }) => (

@@ -296,6 +296,34 @@ export function buildPortfolioYieldHistory(
 }
 
 /**
+ * Collapse a dense history to one bar per calendar year (join → today).
+ * Keeps charts readable on a phone instead of labeling every rent change.
+ */
+export function yearlyChartPoints(points: YieldPoint[]): YieldPoint[] {
+  if (points.length <= 2) return points;
+  const first = points[0];
+  const last = points[points.length - 1];
+  const lastByYear = new Map<number, YieldPoint>();
+  for (const point of points) lastByYear.set(point.year, point);
+
+  const picked: YieldPoint[] = [];
+  const seen = new Set<string>();
+  const take = (point: YieldPoint | undefined) => {
+    if (!point || seen.has(point.date)) return;
+    seen.add(point.date);
+    picked.push(point);
+  };
+
+  take(first);
+  for (const year of [...lastByYear.keys()].sort((a, b) => a - b)) {
+    if (year === first.year) continue;
+    take(lastByYear.get(year));
+  }
+  take(last);
+  return picked.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
  * Monthly income from the join date through `asOf`.
  * First point = rent the properties generated the day the client joined;
  * later points rise only when a lease starts or rent is updated.
