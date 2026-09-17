@@ -1626,7 +1626,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         id: generateId("doc"),
         name: file.name.trim() || `חשבונית — ${ticket.title}`,
         type: "invoice",
-        folder: "appendices",
+        folder: "expenses",
         propertyId: ticket.propertyId,
         landlordId: property?.landlordId,
         fileDataUrl: file.dataUrl,

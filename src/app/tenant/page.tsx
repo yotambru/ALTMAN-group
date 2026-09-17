@@ -468,7 +468,7 @@ export default function TenantDashboard() {
                     canSign
                     signerName={session.fullName}
                     properties={tenantProperties}
-                    hiddenFolders={["id_photos", "landlord_id", "management"]}
+                    hiddenFolders={["id_photos", "landlord_id", "management", "expenses"]}
                     awaitingSignatureOnly
                     focusDocumentId={focusDocId}
                   />
@@ -641,7 +641,7 @@ export default function TenantDashboard() {
               canSign
               signerName={session.fullName}
               properties={tenantProperties}
-              hiddenFolders={["id_photos", "landlord_id", "management"]}
+              hiddenFolders={["id_photos", "landlord_id", "management", "expenses"]}
               focusDocumentId={tab === "documents" ? focusDocId : null}
             />
           </div>

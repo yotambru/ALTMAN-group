@@ -269,6 +269,7 @@ export type DocumentFolder =
   | "guarantor_id"
   | "meter_photos"
   | "appendices"
+  | "expenses"
   | "entry_protocol";
 
 export interface AppDocument {

@@ -168,7 +168,7 @@ export function AnnualReportDialog({
       const doc = addDocument({
         name: `חשבונית — ${expenseDesc.trim()}`,
         type: "invoice",
-        folder: "appendices",
+        folder: "expenses",
         propertyId: expensePropertyId || undefined,
         landlordId,
         fileDataUrl: dataUrl,

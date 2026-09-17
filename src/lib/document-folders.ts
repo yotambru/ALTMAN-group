@@ -8,6 +8,7 @@ export const ROOT_DOCUMENT_FOLDERS: DocumentFolder[] = [
   "id_photos",
   "meter_photos",
   "appendices",
+  "expenses",
   "entry_protocol",
 ];
 
@@ -20,6 +21,7 @@ export const DOCUMENT_FOLDER_LABEL: Record<DocumentFolder, string> = {
   guarantor_id: "צילומי ת״ז ערבים",
   meter_photos: "צילומי מונים",
   appendices: "נספחים",
+  expenses: "הוצאות",
   entry_protocol: "פרוטוקול כניסה",
 };
 
@@ -55,6 +57,7 @@ const FOLDER_TYPE: Record<DocumentFolder, DocumentType> = {
   guarantor_id: "id",
   meter_photos: "id",
   appendices: "approval",
+  expenses: "invoice",
   entry_protocol: "protocol",
 };
 
@@ -86,6 +89,7 @@ export function inferDocumentFolder(
   // Legacy management agreements had no tenant link or folder.
   if (doc.type === "contract" && !doc.tenantId && !doc.folder) return "management";
   if (doc.folder) return doc.folder;
+  if (doc.type === "invoice" || /חשבונית|הוצאה/.test(name)) return "expenses";
   if (doc.type === "contract") return "lease";
   if (doc.type === "id") return "id_photos";
   if (doc.type === "protocol") return "entry_protocol";

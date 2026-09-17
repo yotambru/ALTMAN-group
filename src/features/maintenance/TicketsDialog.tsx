@@ -207,7 +207,7 @@ function TicketRow({
   const [expenseDesc, setExpenseDesc] = useState(ticket.title);
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseSaved, setExpenseSaved] = useState(false);
-  const { addProfessional, addExpense, properties, tenants } = useData();
+  const { addProfessional, addExpense, properties, tenants, expenses } = useData();
   const ref = useRef<HTMLDivElement>(null);
   const invoiceInputRef = useRef<HTMLInputElement>(null);
   const photoUrl = useSignedUrl(ticket.photoDataUrl);
@@ -220,6 +220,11 @@ function TicketRow({
     });
     return () => cancelAnimationFrame(id);
   }, [highlighted]);
+
+  const invoiceAlreadyExpensed = Boolean(
+    invoice && expenses.some((e) => e.invoiceDocId === invoice.id),
+  );
+  const expenseLinked = expenseSaved || invoiceAlreadyExpensed;
 
   const handleInvoicePick = async (file: File | undefined) => {
     if (!file) return;
@@ -352,6 +357,55 @@ function TicketRow({
                   onChange={(e) => void handleInvoicePick(e.target.files?.[0])}
                 />
               )}
+              {invoice && !readOnly && (
+                <div className="mt-3 rounded-xl border border-dashed border-orange/40 bg-orange-soft/30 p-3">
+                  <p className="mb-1.5 text-xs font-semibold text-navy">שיוך להוצאות המשכיר</p>
+                  <p className="mb-2 text-[0.7rem] text-text-muted">
+                    התיאור והסכום נכנסים להוצאות החודשיות, לתיקיית הוצאות בנכס, ולדוח השנתי
+                  </p>
+                  {expenseLinked ? (
+                    <p className="text-xs font-semibold text-success">ההוצאה נשמרה בדוח השנתי ובתיקיית הוצאות של הנכס</p>
+                  ) : (
+                    <>
+                      <input
+                        value={expenseDesc}
+                        onChange={(e) => setExpenseDesc(e.target.value)}
+                        placeholder="תיאור ההוצאה"
+                        className="mb-2 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
+                      />
+                      <input
+                        value={expenseAmount}
+                        onChange={(e) => setExpenseAmount(e.target.value)}
+                        placeholder="סכום (₪)"
+                        inputMode="decimal"
+                        className="mb-2 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        fullWidth
+                        onClick={() => {
+                          const amount = parseMoneyInput(expenseAmount);
+                          if (amount <= 0) return;
+                          const property = properties.find((p) => p.id === ticket.propertyId);
+                          if (!property?.landlordId) return;
+                          addExpense({
+                            landlordId: property.landlordId,
+                            propertyId: ticket.propertyId,
+                            amount,
+                            date: localTodayIso(),
+                            description: expenseDesc.trim() || ticket.title,
+                            invoiceDocId: invoice.id,
+                          });
+                          setExpenseSaved(true);
+                        }}
+                      >
+                        שמירת הוצאה
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -451,53 +505,6 @@ function TicketRow({
                   הוספת איש מקצוע חד-פעמי
                 </button>
               </div>
-
-              {invoice && (
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold text-navy">שיוך להוצאות המשכיר</p>
-                  {expenseSaved ? (
-                    <p className="text-xs font-semibold text-success">ההוצאה נשמרה בדוח השנתי ובתיק הנכס</p>
-                  ) : (
-                    <>
-                      <input
-                        value={expenseDesc}
-                        onChange={(e) => setExpenseDesc(e.target.value)}
-                        placeholder="תיאור ההוצאה"
-                        className="mb-2 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
-                      />
-                      <input
-                        value={expenseAmount}
-                        onChange={(e) => setExpenseAmount(e.target.value)}
-                        placeholder="סכום (₪)"
-                        inputMode="decimal"
-                        className="mb-2 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        fullWidth
-                        onClick={() => {
-                          const amount = parseMoneyInput(expenseAmount);
-                          if (amount <= 0) return;
-                          const property = properties.find((p) => p.id === ticket.propertyId);
-                          if (!property?.landlordId) return;
-                          addExpense({
-                            landlordId: property.landlordId,
-                            propertyId: ticket.propertyId,
-                            amount,
-                            date: localTodayIso(),
-                            description: expenseDesc.trim() || ticket.title,
-                            invoiceDocId: invoice.id,
-                          });
-                          setExpenseSaved(true);
-                        }}
-                      >
-                        שמירת הוצאה
-                      </Button>
-                    </>
-                  )}
-                </div>
-              )}
             </>
           )}
         </div>

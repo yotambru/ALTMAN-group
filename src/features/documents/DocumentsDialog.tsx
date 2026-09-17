@@ -15,6 +15,7 @@ import {
   IdCard,
   Paperclip,
   PenLine,
+  Receipt,
   Upload,
   Users,
   type LucideIcon,
@@ -101,6 +102,7 @@ const folderIcon: Record<DocumentFolder, LucideIcon> = {
   guarantor_id: Users,
   meter_photos: Gauge,
   appendices: Paperclip,
+  expenses: Receipt,
   entry_protocol: ClipboardList,
 };
 
