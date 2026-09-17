@@ -54,7 +54,7 @@ function loginUserIds(
   );
 }
 
-/** Remove a tenant, their login, lease/payments, and vacate the current property. */
+/** Disconnect a tenant's login and vacate the property, keeping files and history. */
 export function removeTenant(
   state: DataState,
   tenantId: string,
@@ -71,20 +71,13 @@ export function removeTenant(
   if (secondaryEmail) emails.add(secondaryEmail);
 
   const userIds = loginUserIds(state.users, { tenantIds, emails });
-  const leaseIds = new Set(
-    state.leases.filter((l) => l.tenantId === tenantId).map((l) => l.id),
-  );
   const social = stripUsers(state, userIds);
 
   return {
     ...state,
     ...social,
     users: state.users.filter((u) => !userIds.has(u.id)),
-    tenants: state.tenants.filter((t) => t.id !== tenantId),
-    leases: state.leases.filter((l) => l.tenantId !== tenantId),
-    payments: state.payments.filter((p) => !leaseIds.has(p.leaseId)),
-    onboardings: state.onboardings.filter((o) => o.tenantId !== tenantId),
-    documents: state.documents.filter((d) => d.tenantId !== tenantId),
+    leases: state.leases.map((l) => (l.tenantId === tenantId ? { ...l, active: false } : l)),
     properties: state.properties.map((p) => {
       if (p.tenantId !== tenantId) return p;
       return {

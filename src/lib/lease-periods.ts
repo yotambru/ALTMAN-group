@@ -106,18 +106,18 @@ export function rentsForLeasePeriods(
       ? lease.startingMonthlyRent
       : undefined;
 
+  const today = localTodayIso();
   return periods.map((period, index) => {
     const start = period.startDate.slice(0, 10);
+    const end = period.endDate.slice(0, 10);
     const exact = sorted.find((adj) => adj.date.slice(0, 10) === start);
-    if (index === 0) {
-      if (starting != null) return starting;
-      if (exact) return exact.monthlyRent;
-      if (!sorted.length) return lease.monthlyRent;
-      return sorted[0].date.slice(0, 10) <= start ? sorted[0].monthlyRent : 0;
-    }
     if (exact) return exact.monthlyRent;
-    if (sorted[index - 1]) return sorted[index - 1].monthlyRent;
-    return rentOnDate(starting ?? 0, sorted, start);
+    if (index === 0 && starting != null) return starting;
+    if (sorted.length) return rentOnDate(starting ?? 0, sorted, start);
+    // Live rent belongs only to the period that contains today — never copied onto period 1.
+    const isCurrent =
+      start <= today && (!end || today <= end || (index === periods.length - 1 && today >= start));
+    return isCurrent ? lease.monthlyRent : 0;
   });
 }
 
@@ -127,8 +127,8 @@ export function alignPeriodRents(prev: string[], count: number, fill = ""): stri
   // Always return a new array so callers can assign indexes without mutating React state.
   if (prev.length === count) return [...prev];
   if (prev.length < count) {
-    const last = prev[prev.length - 1] ?? fill;
-    return [...prev, ...Array.from({ length: count - prev.length }, () => last || fill)];
+    // New periods stay empty (or use `fill`) — never copy the last rent onto every row.
+    return [...prev, ...Array.from({ length: count - prev.length }, () => fill)];
   }
   return prev.slice(0, count);
 }

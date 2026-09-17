@@ -73,18 +73,22 @@ export function YieldGrowthChart({ points, className }: YieldGrowthChartProps) {
           />
           <circle cx={first.x} cy={first.y} r={3.5} fill="var(--navy)" />
           <circle cx={last.x} cy={last.y} r={4} fill="var(--orange)" />
-          {coords.map((c, i) => (
-            <text
-              key={c.date}
-              x={c.x}
-              y={h - 8}
-              textAnchor="middle"
-              className="fill-[var(--text-muted)]"
-              fontSize="10"
-            >
-              {i === 0 ? "הצטרפות" : c.year}
-            </text>
-          ))}
+          {coords.map((c, i) => {
+            const showTick = i === 0 || i === coords.length - 1 || (i % Math.max(1, Math.ceil(coords.length / 4)) === 0 && i !== coords.length - 1);
+            if (!showTick) return null;
+            return (
+              <text
+                key={c.date}
+                x={c.x}
+                y={h - 8}
+                textAnchor="middle"
+                className="fill-[var(--text-muted)]"
+                fontSize="10"
+              >
+                {i === 0 ? "הצטרפות" : i === coords.length - 1 ? "היום" : String(c.year)}
+              </text>
+            );
+          })}
         </svg>
 
         <div className="mt-1 flex justify-between text-[0.7rem] text-text-muted">

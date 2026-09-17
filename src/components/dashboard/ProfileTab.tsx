@@ -24,7 +24,7 @@ interface ProfileTabProps {
   children?: React.ReactNode;
   onLogout: () => void;
   onBack?: () => void;
-  /** Hide the account-deletion block (e.g. landlord profiles). */
+  /** Account deletion is manager-only. Hidden on every profile by default. */
   allowDeleteAccount?: boolean;
 }
 
@@ -37,7 +37,7 @@ export function ProfileTab({
   children,
   onLogout,
   onBack,
-  allowDeleteAccount = true,
+  allowDeleteAccount = false,
 }: ProfileTabProps) {
   const { users, updateUser, deleteOwnAccount } = useData();
   const fileRef = useRef<HTMLInputElement>(null);

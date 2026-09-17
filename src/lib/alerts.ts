@@ -117,6 +117,30 @@ export function isOnboardingLocked(ob: TenantOnboarding | undefined): boolean {
   return !ob || !ob.completed;
 }
 
+/** Latest upload / move-in timestamp, for newest-first lists. */
+export function onboardingLastActivityIso(ob: TenantOnboarding): string {
+  let latest = ob.moveInDate || "";
+  for (const item of ob.utilities) {
+    if (item.updatedAt && item.updatedAt > latest) latest = item.updatedAt;
+  }
+  if (ob.insurance.updatedAt && ob.insurance.updatedAt > latest) {
+    latest = ob.insurance.updatedAt;
+  }
+  return latest;
+}
+
+/** Awaiting approval first, then pending uploads, then released — newest first in each group. */
+export function compareOnboardingsForTracker(a: TenantOnboarding, b: TenantOnboarding): number {
+  const rank = (ob: TenantOnboarding) => {
+    if (ob.completed) return 2;
+    if (awaitingManagementApproval(ob)) return 0;
+    return 1;
+  };
+  const byStatus = rank(a) - rank(b);
+  if (byStatus !== 0) return byStatus;
+  return onboardingLastActivityIso(b).localeCompare(onboardingLastActivityIso(a));
+}
+
 /**
  * Reminder cadence for onboarding: every 3 days in the first two weeks after
  * move-in, then daily until complete. Returns whether a reminder is "due today".
@@ -125,7 +149,8 @@ export function onboardingReminderDue(
   ob: TenantOnboarding | undefined,
   from: Date = new Date(),
 ): { due: boolean; cadence: "none" | "every3" | "daily" } {
-  if (!ob || ob.completed) return { due: false, cadence: "none" };
+  if (ob?.completed || awaitingManagementApproval(ob)) return { due: false, cadence: "none" };
+  if (!ob) return { due: true, cadence: "daily" };
   const daysSinceMoveIn = Math.max(0, -daysUntil(ob.moveInDate, from));
   if (daysSinceMoveIn <= 14) {
     return { due: daysSinceMoveIn % 3 === 0, cadence: "every3" };

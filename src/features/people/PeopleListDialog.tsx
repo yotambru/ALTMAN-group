@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Building2, ChevronDown, KeyRound, Mail, Phone, Trash2, User } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
+import { SearchField } from "@/components/dashboard/ClientRow";
 import { ChangePasswordDialog } from "@/features/auth/ChangePasswordDialog";
 import { can, roleLabels } from "@/lib/permissions";
 import { propertyAddressLabel, sortPropertiesByLocation } from "@/lib/portfolio";
@@ -31,6 +32,7 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
   const [pending, setPending] = useState<PendingDelete | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [passwordTarget, setPasswordTarget] = useState<{ userId: string; name: string } | null>(null);
+  const [query, setQuery] = useState("");
   const isLandlords = mode === "landlords";
   const isAccounts = mode === "accounts";
   const canDelete = can(actor.role, "clients.delete");
@@ -66,10 +68,77 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
       setToast("המשכיר נמחק");
     } else {
       deleteTenant(pending.id);
-      setToast("השוכר נמחק");
+      setToast("הגישה של השוכר נותקה. המסמכים נשמרו בנכס.");
     }
     setPending(null);
   };
+
+  const q = query.trim().toLowerCase();
+  const filteredUsers = useMemo(() => {
+    const list = [...users].sort((a, b) => {
+      const order = { manager: 0, assistant: 1, landlord: 2, tenant: 3 };
+      const roleDiff = order[a.role] - order[b.role];
+      if (roleDiff !== 0) return roleDiff;
+      return a.fullName.localeCompare(b.fullName, "he");
+    });
+    if (!q) return list;
+    return list.filter((u) => {
+      const landlord = landlords.find((l) => l.id === u.landlordId);
+      const tenant = tenants.find((t) => t.id === u.tenantId);
+      const owned = properties.filter((p) => p.landlordId === u.landlordId || p.tenantId === u.tenantId);
+      const hay = [
+        u.fullName,
+        u.email,
+        roleLabels[u.role],
+        landlord?.fullName,
+        tenant?.fullName,
+        ...owned.map((p) => `${p.address} ${p.city} ${p.apartmentNumber}`),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [users, landlords, tenants, properties, q]);
+
+  const filteredLandlords = useMemo(() => {
+    if (!q) return landlords;
+    return landlords.filter((l) => {
+      const owned = properties.filter((p) => p.landlordId === l.id);
+      const hay = [
+        l.fullName,
+        l.phone,
+        l.email,
+        ...owned.map((p) => `${p.address} ${p.city} ${p.apartmentNumber}`),
+        ...tenants.filter((t) => owned.some((p) => p.tenantId === t.id)).map((t) => t.fullName),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [landlords, properties, tenants, q]);
+
+  const filteredTenants = useMemo(() => {
+    if (!q) return tenants;
+    return tenants.filter((t) => {
+      const property = properties.find((p) => p.id === t.propertyId);
+      const landlord = landlords.find((l) => l.id === property?.landlordId);
+      const hay = [
+        t.fullName,
+        t.secondaryFullName,
+        t.phone,
+        t.email,
+        t.idNumber,
+        property ? `${property.address} ${property.city} ${property.apartmentNumber}` : "",
+        landlord?.fullName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [tenants, properties, landlords, q]);
 
   return (
     <>
@@ -80,15 +149,13 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
         description={description}
       >
         <div className="space-y-2">
+          <SearchField
+            value={query}
+            onChange={setQuery}
+            placeholder="חיפוש לפי שם, כתובת, מייל או טלפון…"
+          />
           {isAccounts
-            ? [...users]
-                .sort((a, b) => {
-                  const order = { manager: 0, assistant: 1, landlord: 2, tenant: 3 };
-                  const roleDiff = order[a.role] - order[b.role];
-                  if (roleDiff !== 0) return roleDiff;
-                  return a.fullName.localeCompare(b.fullName, "he");
-                })
-                .map((u) => (
+            ? filteredUsers.map((u) => (
                   <div key={u.id} className="flex items-center gap-2 rounded-xl border border-border p-3">
                     <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-navy text-base font-bold text-white">
                       {(u.fullName || u.email || "?").charAt(0)}
@@ -115,7 +182,7 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
                   </div>
                 ))
             : isLandlords
-            ? landlords.map((l) => {
+            ? filteredLandlords.map((l) => {
                 const owned = properties.filter((p) => p.landlordId === l.id);
                 const isOpen = expanded === l.id;
                 return (
@@ -191,7 +258,7 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
                   </div>
                 );
               })
-            : tenants.map((t) => {
+            : filteredTenants.map((t) => {
                 const property = properties.find((p) => p.id === t.propertyId);
                 const landlord = landlords.find((l) => l.id === property?.landlordId);
                 const tenantLogins = loginsForTenant(t.id);
@@ -304,15 +371,15 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
         open={pending != null}
         onClose={() => setPending(null)}
         onConfirm={confirmDelete}
-        title={pending?.kind === "landlord" ? "מחיקת משכיר" : "מחיקת שוכר"}
+        title={pending?.kind === "landlord" ? "מחיקת משכיר" : "ניתוק שוכר"}
         description={
           pending?.kind === "landlord"
             ? `למחוק את ${pending.name}? יימחקו גם הנכסים, השוכרים והשכירויות הקשורים. לא ניתן לשחזר.`
             : pending
-              ? `למחוק את ${pending.name}? חשבון הכניסה, השכירות והתשלומים יימחקו, והנכס יסומן כפנוי.`
+              ? `לנתק את הגישה של ${pending.name}? חשבון הכניסה ייחסם והנכס יסומן כפנוי. המסמכים והנתונים יישמרו אצל המנהל.`
               : ""
         }
-        confirmLabel="מחיקה"
+        confirmLabel={pending?.kind === "landlord" ? "מחיקה" : "ניתוק"}
       />
       <ChangePasswordDialog
         open={passwordTarget != null}

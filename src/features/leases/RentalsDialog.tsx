@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useData } from "@/lib/store";
 import { nextPaymentDate } from "@/lib/payment-dates";
 import { paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
-import { currentMonthlyRent, propertyAddressLabel } from "@/lib/portfolio";
+import { comparePropertiesByLocation, currentMonthlyRent, propertyAddressLabel } from "@/lib/portfolio";
 import { formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
 
 interface RentalsDialogProps {
@@ -27,7 +27,13 @@ export function RentalsDialog({ open, onClose, landlordId }: RentalsDialogProps)
       property: properties.find((p) => p.id === lease.propertyId),
       tenant: tenants.find((t) => t.id === lease.tenantId),
       nextCheck: upcomingCheckPayments(payments, [lease.id])[0],
-    }));
+    }))
+    .sort((a, b) => {
+      if (!a.property && !b.property) return 0;
+      if (!a.property) return 1;
+      if (!b.property) return -1;
+      return comparePropertiesByLocation(a.property, b.property);
+    });
 
   return (
     <Modal open={open} onClose={onClose} title="ניהול שכירויות" description={`${rows.length} שכירויות פעילות`}>

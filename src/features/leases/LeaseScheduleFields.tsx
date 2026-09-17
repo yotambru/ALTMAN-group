@@ -72,7 +72,7 @@ export function LeaseScheduleFields({
 
   return (
     <div className={className ?? "space-y-4"}>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid min-w-0 grid-cols-2 gap-3">
         <FormField
           label="תאריך תחילת שכירות"
           inputProps={{
@@ -115,7 +115,7 @@ export function LeaseScheduleFields({
                     </span>
                   ) : null}
                 </p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid min-w-0 grid-cols-2 gap-3">
                   <FormField
                     label="התחלה"
                     inputProps={{

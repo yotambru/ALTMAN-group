@@ -33,14 +33,16 @@ export function FormField({
 }: FormFieldProps) {
   const id = useId();
   const base =
-    "w-full rounded-xl border bg-surface px-3.5 py-3 text-sm text-text placeholder:text-text-muted/70 transition-colors focus:border-orange focus:outline-none";
+    "w-full min-w-0 max-w-full rounded-xl border bg-surface px-3.5 py-3 text-sm text-text placeholder:text-text-muted/70 transition-colors focus:border-orange focus:outline-none";
+  const { className: textareaClassName, ...restTextarea } = textareaProps ?? {};
+  const { className: inputClassName, ...restInput } = inputProps ?? {};
 
   return (
-    <div className={cn("w-full", className)}>
+    <div className={cn("w-full min-w-0", className)}>
       <label htmlFor={id} className="mb-1.5 block text-sm font-semibold text-navy">
         {label}
       </label>
-      <div className="relative">
+      <div className="relative min-w-0">
         {icon && (
           <span className="pointer-events-none absolute inset-y-0 end-3.5 flex items-center text-text-muted">
             {icon}
@@ -51,14 +53,14 @@ export function FormField({
         ) : as === "textarea" ? (
           <textarea
             id={id}
-            className={cn(base, !!icon && "pe-10", "min-h-24 resize-none")}
-            {...textareaProps}
+            className={cn(base, !!icon && "pe-10", "min-h-24 resize-none whitespace-pre-wrap break-words", textareaClassName)}
+            {...restTextarea}
           />
         ) : (
           <input
             id={id}
-            className={cn(base, !!icon && "pe-10", !!trailing && "ps-10")}
-            {...inputProps}
+            className={cn(base, !!icon && "pe-10", !!trailing && "ps-10", inputClassName)}
+            {...restInput}
           />
         )}
         {trailing && (

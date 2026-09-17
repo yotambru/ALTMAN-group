@@ -2,7 +2,7 @@
 
 import { Bell, ChevronLeft } from "lucide-react";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { isNotificationForAudience } from "@/lib/notifications";
+import { isNotificationForAudience, sortNotificationsNewestFirst } from "@/lib/notifications";
 import { useData } from "@/lib/store";
 import type { AppNotification, Role } from "@/types";
 
@@ -17,8 +17,8 @@ interface NotificationsTabProps {
 export function NotificationsTab({ forUserId, forRole, onOpen, onBack }: NotificationsTabProps) {
   const { notifications, markNotificationRead, markAllNotificationsRead } = useData();
 
-  const mine = notifications.filter(
-    (n) => !n.read && isNotificationForAudience(n, forUserId, forRole),
+  const mine = sortNotificationsNewestFirst(
+    notifications.filter((n) => !n.read && isNotificationForAudience(n, forUserId, forRole)),
   );
 
   return (

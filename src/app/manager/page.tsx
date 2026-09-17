@@ -112,6 +112,7 @@ export default function ManagerDashboard() {
   const [chatPeerId, setChatPeerId] = useState<string | null>(null);
   const [focusTicketId, setFocusTicketId] = useState<string | null>(null);
   const [focusWithdrawalId, setFocusWithdrawalId] = useState<string | null>(null);
+  const [focusDocId, setFocusDocId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<PropertyStatus | "all">("all");
   const [clientQuery, setClientQuery] = useState("");
   const [propertyQuery, setPropertyQuery] = useState("");
@@ -120,7 +121,7 @@ export default function ManagerDashboard() {
   const [pendingLandlord, setPendingLandlord] = useState<{ id: string; name: string } | null>(null);
   const [pendingProperty, setPendingProperty] = useState<{ id: string; name: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [scrollToClients, setScrollToClients] = useState(false);
+  const skipPanelScroll = useRef(true);
   const clientsSectionRef = useRef<HTMLElement | null>(null);
 
   const self = { id: session.userId, name: session.fullName, role };
@@ -209,17 +210,20 @@ export default function ManagerDashboard() {
     setPropertyQuery("");
     setStatusFilter("all");
     openPanel("clients");
-    setScrollToClients(true);
   };
 
   useEffect(() => {
-    if (!scrollToClients || tab !== "dashboard" || homePanel !== "clients") return;
-    const frame = window.requestAnimationFrame(() => {
-      clientsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      setScrollToClients(false);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [homePanel, scrollToClients, tab]);
+    if (skipPanelScroll.current) {
+      skipPanelScroll.current = false;
+      return;
+    }
+    if (tab !== "dashboard") return;
+    if (homePanel === "clients") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    clientsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [homePanel, tab]);
 
   const openTickets = (ticketId: string | null = null) => {
     setFocusTicketId(ticketId);
@@ -239,7 +243,24 @@ export default function ManagerDashboard() {
     return byTitle?.id ?? null;
   };
 
+  const openNotifications = () => {
+    setDialog(null);
+    setTab("notifications");
+  };
+
   const openNotification = (n: AppNotification) => {
+    const onboardingRelated =
+      n.kind === "utility" ||
+      n.kind === "insurance" ||
+      n.kind === "reminder" ||
+      n.title.includes("אישור הנהלה") ||
+      n.title.includes("פעולות נדרשות");
+
+    if (onboardingRelated) {
+      setDialog("utilities");
+      return;
+    }
+
     switch (n.kind) {
       case "chat": {
         const thread = n.relatedId
@@ -254,14 +275,10 @@ export default function ManagerDashboard() {
         openTickets(resolveTicketId(n));
         break;
       case "signature":
+        setFocusDocId(n.relatedId ?? null);
         setTab("documents");
         break;
-      case "utility":
-      case "insurance":
-        setDialog("utilities");
-        break;
       case "critical":
-      case "reminder":
         setDialog("critical");
         break;
       case "withdrawal":
@@ -270,7 +287,6 @@ export default function ManagerDashboard() {
       case "payment":
       case "info":
       default:
-        setDialog(null);
         break;
     }
   };
@@ -306,7 +322,8 @@ export default function ManagerDashboard() {
     { icon: MessagesSquare, label: "צ׳אט", onClick: () => openChat(null) },
     { icon: Wrench, label: "בעלי מקצוע", onClick: () => setDialog("professionals") },
     { icon: ListChecks, label: "יומן משימות", onClick: () => setDialog("tasks") },
-    { icon: ClipboardList, label: "פרוטוקול", onClick: () => setDialog("protocol") },
+    { icon: ClipboardList, label: "פרוטוקול כניסה", onClick: () => setDialog("protocol") },
+    { icon: Bell, label: "הודעות", onClick: openNotifications },
     { icon: CalendarCheck, label: "התראות קריטיות", onClick: () => setDialog("critical") },
     { icon: History, label: "יומן פעילות", onClick: () => setDialog("activity") },
   ].filter((item) => {
@@ -326,7 +343,8 @@ export default function ManagerDashboard() {
       "צ׳אט": true,
       "בעלי מקצוע": can(role, "professionals.assign"),
       "יומן משימות": can(role, "tasks.manage"),
-      "פרוטוקול": can(role, "protocol.manage"),
+      "פרוטוקול כניסה": can(role, "protocol.manage"),
+      "הודעות": true,
       "התראות קריטיות": true,
       "יומן פעילות": can(role, "activityLog.view"),
     };
@@ -340,6 +358,9 @@ export default function ManagerDashboard() {
       setFocusTicketId(null);
       setFocusWithdrawalId(null);
       setHomePanel("clients");
+    }
+    if (next === "notifications") {
+      setDialog(null);
     }
     setTab(next);
   };
@@ -370,7 +391,7 @@ export default function ManagerDashboard() {
             greeting={`שלום, ${firstName}`}
             subtitle="כאן מרכז הניהול שלך"
             onMenu={() => setMenuOpen(true)}
-            onBell={() => setTab("notifications")}
+            onBell={openNotifications}
             notificationCount={unread}
           />
           <div className="dash-wide-hero px-4 pb-6 pt-1">
@@ -615,6 +636,9 @@ export default function ManagerDashboard() {
                       landlords={landlords}
                       tenants={tenants}
                       properties={properties}
+                      canSign
+                      signerName={session.fullName}
+                      focusDocumentId={focusDocId}
                       upload={can(role, "documents.viewAll") ? {} : undefined}
                     />
                   )}
@@ -666,6 +690,9 @@ export default function ManagerDashboard() {
               landlords={landlords}
               tenants={tenants}
               properties={properties}
+              canSign
+              signerName={session.fullName}
+              focusDocumentId={focusDocId}
               upload={can(role, "documents.viewAll") ? {} : undefined}
             />
           </div>
@@ -677,10 +704,7 @@ export default function ManagerDashboard() {
               forUserId={user.id}
               forRole="manager"
               onBack={() => onNav("dashboard")}
-              onOpen={(n) => {
-                setTab("dashboard");
-                openNotification(n);
-              }}
+              onOpen={openNotification}
             />
           </div>
         )}

@@ -187,7 +187,26 @@ export async function downloadAnnualReportPdf(data: AnnualReportPdfInput): Promi
       heightLeft -= pageHeight;
     }
 
-    pdf.save(`דוח-שנתי-${data.year}.pdf`);
+    const filename = `דוח-שנתי-${data.year}.pdf`;
+    const blob = pdf.output("blob");
+    const file = new File([blob], filename, { type: "application/pdf" });
+    const canShare =
+      typeof navigator.share === "function" &&
+      typeof navigator.canShare === "function" &&
+      navigator.canShare({ files: [file] });
+    if (canShare) {
+      await navigator.share({ files: [file], title: filename });
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
   } finally {
     host.remove();
   }

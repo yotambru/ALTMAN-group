@@ -121,11 +121,11 @@ export function MobileMenu({
           ))}
         </nav>
 
-        <div className="border-t border-border p-2">
+        <div className="border-t border-border p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <button
             onClick={handleLogout}
             className={cn(
-              "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-bold text-danger transition-colors hover:bg-danger/10",
+              "relative z-10 flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-bold text-danger transition-colors hover:bg-danger/10",
             )}
           >
             <LogOut className="h-5 w-5" />

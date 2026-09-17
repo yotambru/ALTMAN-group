@@ -122,7 +122,7 @@ export function CheckClearanceFields({
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid min-w-0 grid-cols-2 gap-3">
         <FormField
           label="תאריך פרעון ראשון"
           inputProps={{
@@ -151,7 +151,7 @@ export function CheckClearanceFields({
 
       {rows.length > 0 && (
         <div className="space-y-2">
-          <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_5.5rem_auto] gap-2 px-0.5 text-[0.7rem] font-semibold text-text-muted">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(3.25rem,4.75rem)_auto] gap-2 px-0.5 text-[0.7rem] font-semibold text-text-muted">
             <span>תאריך פרעון</span>
             <span>סכום</span>
             <span>מס׳ צ׳ק</span>
@@ -160,14 +160,14 @@ export function CheckClearanceFields({
           {rows.map((row, index) => (
             <div
               key={`${row.clearanceDate}-${index}`}
-              className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_5.5rem_auto] items-center gap-2"
+              className="grid min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(3.25rem,4.75rem)_auto] items-center gap-2"
             >
               <input
                 type="date"
                 aria-label={`תאריך פרעון ${index + 1}`}
                 value={row.clearanceDate}
                 onChange={(e) => updateRow(index, { clearanceDate: e.target.value })}
-                className="w-full rounded-xl border bg-surface px-2.5 py-2.5 text-sm text-text focus:border-orange focus:outline-none"
+                className="w-full min-w-0 max-w-full rounded-xl border bg-surface px-2.5 py-2.5 text-sm text-text focus:border-orange focus:outline-none"
               />
               <input
                 inputMode="numeric"
@@ -175,7 +175,7 @@ export function CheckClearanceFields({
                 value={row.amount}
                 dir="ltr"
                 onChange={(e) => updateRow(index, { amount: maskMoneyInput(e.target.value) })}
-                className="w-full rounded-xl border bg-surface px-2.5 py-2.5 text-sm text-text focus:border-orange focus:outline-none"
+                className="w-full min-w-0 max-w-full rounded-xl border bg-surface px-2.5 py-2.5 text-sm text-text focus:border-orange focus:outline-none"
               />
               <input
                 dir="ltr"
@@ -183,7 +183,7 @@ export function CheckClearanceFields({
                 aria-label={`מספר צ׳ק ${index + 1}`}
                 value={row.checkNumber}
                 onChange={(e) => updateRow(index, { checkNumber: e.target.value })}
-                className="w-full rounded-xl border bg-surface px-2 py-2.5 text-sm text-text focus:border-orange focus:outline-none"
+                className="w-full min-w-0 max-w-full rounded-xl border bg-surface px-2 py-2.5 text-sm text-text focus:border-orange focus:outline-none"
               />
               <button
                 type="button"

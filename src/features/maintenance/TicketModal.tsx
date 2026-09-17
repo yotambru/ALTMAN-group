@@ -84,11 +84,15 @@ export function TicketModal({ open, onClose, propertyId, createdById }: TicketMo
         <form onSubmit={handleSubmit} className="space-y-4">
           <FormField
             label="נושא התקלה"
-            inputProps={{
+            as="textarea"
+            textareaProps={{
               value: title,
               onChange: (e) => setTitle(e.target.value),
               placeholder: "לדוגמה: נזילה במטבח",
               required: true,
+              rows: 2,
+              enterKeyHint: "enter",
+              className: "min-h-[3.5rem] resize-none whitespace-pre-wrap break-words",
             }}
           />
 
@@ -134,6 +138,8 @@ export function TicketModal({ open, onClose, propertyId, createdById }: TicketMo
               value: description,
               onChange: (e) => setDescription(e.target.value),
               placeholder: "פרט את התקלה כדי שנוכל לטפל מהר יותר",
+              enterKeyHint: "enter",
+              className: "whitespace-pre-wrap break-words",
             }}
           />
 

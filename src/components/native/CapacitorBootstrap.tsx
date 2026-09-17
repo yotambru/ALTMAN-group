@@ -41,7 +41,12 @@ export function CapacitorBootstrap() {
       }
 
       try {
-        await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
+        await Keyboard.setResizeMode({
+          mode:
+            Capacitor.getPlatform() === "ios"
+              ? KeyboardResize.Native
+              : KeyboardResize.Body,
+        });
       } catch {
         /* optional on iOS */
       }

@@ -237,10 +237,11 @@ function releaseNotificationsForTenants(
 }
 
 function recomputeCompleted(ob: TenantOnboarding): TenantOnboarding {
+  const allApproved =
+    ob.utilities.every((u) => u.status === "approved") && ob.insurance.status === "approved";
   return {
     ...ob,
-    completed:
-      ob.utilities.every((u) => u.status === "approved") && ob.insurance.status === "approved",
+    completed: allApproved || ob.completed,
   };
 }
 
@@ -385,7 +386,7 @@ interface DataContextValue extends DataState {
   markAllNotificationsRead: (forUserId?: string, forRole?: Role) => void;
 
   // professionals
-  addProfessional: (p: Omit<Professional, "id" | "active"> & { active?: boolean }) => void;
+  addProfessional: (p: Omit<Professional, "id" | "active"> & { active?: boolean }) => Professional;
 
   // tasks
   addTask: (t: Omit<Task, "id" | "createdAt" | "status"> & { status?: TaskStatus }) => void;
@@ -400,6 +401,8 @@ interface DataContextValue extends DataState {
   setInsuranceStatus: (tenantId: string, status: OnboardingItemStatus, docId?: string) => void;
   /** Manager/assistant: approve all submitted items and release the tenant account. */
   approveOnboarding: (tenantId: string) => void;
+  /** Manager/assistant: unlock (or re-lock) a tenant without waiting for every upload. */
+  setOnboardingReleased: (tenantId: string, released: boolean) => void;
   markAcFilterCleaned: (tenantId: string) => void;
 
   // protocols
@@ -1551,7 +1554,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                   id: generateId("n"),
                   kind: "maintenance",
                   title: "עדכון בקריאת שירות",
-                  body: `${ticket.title} — ${statusLabelHe(status)}`,
+                  body: note?.trim() || `${ticket.title} — ${statusLabelHe(status)}`,
                   createdAt: at,
                   read: false,
                   forUserId: ticket.createdById.startsWith("u_") ? ticket.createdById : undefined,
@@ -1571,23 +1574,34 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     (id, professionalId, scheduledAt) => {
       setState((p) => {
         const ticket = p.tickets.find((t) => t.id === id);
+        const professional = p.professionals.find((pro) => pro.id === professionalId);
         const recipientId = p.users.find((u) => u.professionalId === professionalId)?.id;
-        // Notify the assigned professional so they see the new job.
-        const notifications = recipientId
-          ? [
-              {
-                id: generateId("n"),
-                kind: "maintenance" as const,
-                title: "קריאה חדשה שויכה אליך",
-                body: `${ticket?.title ?? "קריאת שירות"} שויכה לטיפולך.`,
-                createdAt: new Date().toISOString(),
-                read: false,
-                forUserId: recipientId,
-                relatedId: id,
-              },
-              ...p.notifications,
-            ]
-          : p.notifications;
+        const extra: AppNotification[] = [];
+        const at = new Date().toISOString();
+        if (recipientId) {
+          extra.push({
+            id: generateId("n"),
+            kind: "maintenance",
+            title: "קריאה חדשה שויכה אליך",
+            body: `${ticket?.title ?? "קריאת שירות"} שויכה לטיפולך.`,
+            createdAt: at,
+            read: false,
+            forUserId: recipientId,
+            relatedId: id,
+          });
+        }
+        if (ticket?.createdById && professional) {
+          extra.push({
+            id: generateId("n"),
+            kind: "maintenance",
+            title: "עדכון בתקלה",
+            body: `שלום, איש המקצוע ייצור איתך קשר, אלו הפרטים שלו: ${professional.fullName} ${professional.phone}`,
+            createdAt: at,
+            read: false,
+            forUserId: ticket.createdById,
+            relatedId: id,
+          });
+        }
         return {
           ...p,
           tickets: p.tickets.map((t) =>
@@ -1595,7 +1609,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               ? { ...t, assignedProfessionalId: professionalId, scheduledAt, status: t.status === "open" ? "in_progress" : t.status }
               : t,
           ),
-          notifications,
+          notifications: extra.length ? [...extra, ...p.notifications] : p.notifications,
           activityLog: [makeLog("שיוך בעל מקצוע לתקלה", "ticket", id), ...p.activityLog],
         };
       });
@@ -1723,9 +1737,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             };
           });
         }
+        const signer = signerId ? p.users.find((u) => u.id === signerId) : undefined;
+        const isProtocolDoc =
+          doc.type === "protocol" || inferDocumentFolder(doc) === "entry_protocol";
+        const protocols = isProtocolDoc
+          ? p.protocols.map((pr) => {
+              if (!pr.notes?.includes(id)) return pr;
+              if (signer?.role === "tenant") return { ...pr, signedByTenant: true };
+              if (signer?.role === "manager" || signer?.role === "assistant") {
+                return { ...pr, signedByManager: true };
+              }
+              return pr;
+            })
+          : p.protocols;
         return {
           ...p,
           leases,
+          protocols,
           documents: p.documents.map((d) =>
             d.id === id
               ? {
@@ -1784,11 +1812,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const addProfessional = useCallback<DataContextValue["addProfessional"]>(
     (pInput) => {
+      const row: Professional = { ...pInput, id: generateId("pr"), active: pInput.active ?? true };
       setState((p) => ({
         ...p,
-        professionals: [{ ...pInput, id: generateId("pr"), active: pInput.active ?? true }, ...p.professionals],
+        professionals: [row, ...p.professionals],
         activityLog: [makeLog("הוספת בעל מקצוע", "professional", undefined, pInput.fullName), ...p.activityLog],
       }));
+      return row;
     },
     [makeLog],
   );
@@ -2034,6 +2064,40 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [makeLog],
   );
 
+  const setOnboardingReleased = useCallback<DataContextValue["setOnboardingReleased"]>(
+    (tenantId, released) => {
+      setState((p) => {
+        const now = new Date().toISOString();
+        const base = ensureOnboardingRecord(p, tenantId);
+        if (base.completed === released) return p;
+        const next = { ...base, completed: released };
+        const onboardings = p.onboardings.some((o) => o.tenantId === tenantId)
+          ? p.onboardings.map((ob) => (ob.tenantId === tenantId ? next : ob))
+          : [next, ...p.onboardings];
+        const releasedNotes = released
+          ? releaseNotificationsForTenants(p.users, tenantId, now)
+          : [];
+        return {
+          ...p,
+          onboardings,
+          notifications: releasedNotes.length
+            ? [...releasedNotes, ...p.notifications]
+            : p.notifications,
+          activityLog: [
+            makeLog(
+              released ? "שחרור ידני של שוכר" : "חסימת שוכר מחדש",
+              "onboarding",
+              tenantId,
+              released ? "שחרור ללא השלמת כל המסמכים" : "החשבון נחסם עד להעלאת המסמכים",
+            ),
+            ...p.activityLog,
+          ],
+        };
+      });
+    },
+    [makeLog],
+  );
+
   const markAcFilterCleaned = useCallback<DataContextValue["markAcFilterCleaned"]>((tenantId) => {
     setState((p) => ({
       ...p,
@@ -2219,6 +2283,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setUtilityStatus,
     setInsuranceStatus,
     approveOnboarding,
+    setOnboardingReleased,
     markAcFilterCleaned,
     addProtocol,
     addWithdrawalRequest,

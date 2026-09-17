@@ -58,6 +58,7 @@ import {
 } from "@/lib/alerts";
 import { currentMonthlyRent } from "@/lib/portfolio";
 import { nextPaymentDate } from "@/lib/payment-dates";
+import { paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
 import { uploadBinaryFile } from "@/lib/supabase/files";
 import {
   daysUntil,
@@ -91,6 +92,7 @@ export default function TenantDashboard() {
     onboardings,
     notifications,
     documents,
+    payments,
     setUtilityStatus,
     setInsuranceStatus,
     markAcFilterCleaned,
@@ -146,7 +148,7 @@ export default function TenantDashboard() {
   }
 
   useEffect(() => {
-    if (!onboarding || onboarding.completed || !reminder.due) return;
+    if (!ready || onboarding?.completed || !reminder.due) return;
     const key = `altman.reminder.${tenantId}.${new Date().toISOString().slice(0, 10)}`;
     if (storage.getItem<boolean>(key, false)) return;
     storage.setItem(key, true);
@@ -158,10 +160,10 @@ export default function TenantDashboard() {
           ? "עברו שבועיים מהמעבר — יש להשלים את הפעולות הנדרשות (החלפת חשבונות ופוליסת ביטוח)."
           : "נא להשלים את החלפת החשבונות והעלאת פוליסת הביטוח.",
       forUserId: user.id,
+      relatedId: tenantId,
       actionRequired: true,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ready, tenantId, user.id, onboarding?.completed, reminder.due, reminder.cadence, addNotification]);
 
   const startUpload = (target: UtilityKind | "insurance") => {
     pendingUpload.current = target;
@@ -204,6 +206,7 @@ export default function TenantDashboard() {
       title: "עודכן ע״י שוכר",
       body: target === "insurance" ? "פוליסת ביטוח הועלתה." : `אישור החלפת ${utilityLabelHe(target)} הועלה.`,
       forRole: "manager",
+      relatedId: tenantId,
     });
     pendingUpload.current = null;
     if (fileRef.current) fileRef.current.value = "";
@@ -211,7 +214,12 @@ export default function TenantDashboard() {
 
   if (!property) return null;
 
-  const nextPayment = lease ? nextPaymentDate(lease) : undefined;
+  const nextCheck = lease ? upcomingCheckPayments(payments, [lease.id])[0] : undefined;
+  const nextPayment = nextCheck
+    ? paymentClearanceDate(nextCheck)
+    : lease
+      ? nextPaymentDate(lease)
+      : undefined;
   const paymentDays = nextPayment
     ? daysUntil(nextPayment)
     : Number.POSITIVE_INFINITY;
@@ -424,9 +432,9 @@ export default function TenantDashboard() {
                 },
                 {
                   icon: locked ? Lock : PenLine,
-                  label: "מסמכים",
+                  label: "חתימה",
                   active: homePanel === "docs",
-                  onClick: guard("לגשת למסמכים לחתימה", () => setTab("documents")),
+                  onClick: guard("לחתום על מסמך", () => openPanel("docs")),
                 },
               ]}
             />
@@ -448,6 +456,7 @@ export default function TenantDashboard() {
                       propertyIds={[property.id]}
                       readOnly
                       canViewInvoices={false}
+                      hideResolved
                       title="מעקב תקלות"
                     />
                 )}
@@ -462,13 +471,6 @@ export default function TenantDashboard() {
                     hiddenFolders={["id_photos", "landlord_id", "management"]}
                     awaitingSignatureOnly
                     focusDocumentId={focusDocId}
-                    upload={{
-                      ownerUserId: user.id,
-                      propertyId: property.id,
-                      tenantId: tenantId,
-                      landlordId: property.landlordId,
-                      defaultType: "approval",
-                    }}
                   />
                 )}
               </section>
@@ -641,13 +643,6 @@ export default function TenantDashboard() {
               properties={tenantProperties}
               hiddenFolders={["id_photos", "landlord_id", "management"]}
               focusDocumentId={tab === "documents" ? focusDocId : null}
-              upload={{
-                ownerUserId: user.id,
-                propertyId: property.id,
-                tenantId: tenantId,
-                landlordId: property.landlordId,
-                defaultType: "approval",
-              }}
             />
           </div>
         )}
@@ -674,20 +669,7 @@ export default function TenantDashboard() {
             detail={`${property.address}, ${property.city}`}
             onLogout={logout}
             onBack={() => onNav("dashboard")}
-          >
-            <div className="flex items-center gap-3 border-y border-border py-3">
-              <Wallet className="h-5 w-5 text-navy" />
-              <div className="flex-1 text-start">
-                <p className="text-xs text-text-muted">שכירות חודשית</p>
-                <p className="font-bold text-navy">{formatCurrency(monthlyRent)}</p>
-              </div>
-            </div>
-            <UtilityAccountDetails
-              property={property}
-              tenant={tenant}
-              heading="פרטים להעברת חשבונות"
-            />
-          </ProfileTab>
+          />
           </div>
         )}
           </div>

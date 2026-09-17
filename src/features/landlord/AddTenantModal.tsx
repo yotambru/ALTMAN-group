@@ -429,11 +429,11 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
       ) : (
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 pe-1"
+          className="min-w-0 max-w-full space-y-4 overflow-x-hidden"
         >
           {draftRestored && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-orange/30 bg-orange-soft/40 px-3 py-2">
-              <p className="text-xs font-medium text-navy">נמצאה טיוטה שמורה של התהליך</p>
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-orange/30 bg-orange-soft/40 px-3 py-2">
+              <p className="min-w-0 text-xs font-medium text-navy">נמצאה טיוטה שמורה של התהליך</p>
               <Button type="button" variant="ghost" onClick={discardDraft}>
                 מחיקת טיוטה
               </Button>
@@ -454,7 +454,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
                 }
               }}
               required
-              className="w-full rounded-xl border bg-surface px-3.5 py-3 text-sm focus:border-orange focus:outline-none"
+              className="w-full min-w-0 max-w-full rounded-xl border bg-surface px-3.5 py-3 text-sm focus:border-orange focus:outline-none"
             >
               {properties.map((p) => (
                 <option key={p.id} value={p.id}>

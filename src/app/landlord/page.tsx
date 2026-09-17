@@ -5,6 +5,7 @@ import {
   Building2,
   CalendarCheck,
   CalendarDays,
+  ClipboardList,
   FileText,
   Home,
   MessagesSquare,
@@ -34,6 +35,7 @@ import { ChecksDialog } from "@/features/leases/ChecksDialog";
 import { AnnualReportDialog } from "@/features/reports/AnnualReportDialog";
 import { TicketsDialog } from "@/features/maintenance/TicketsDialog";
 import { CriticalDatesDialog } from "@/features/alerts/CriticalDatesDialog";
+import { ProtocolDialog } from "@/features/protocol/ProtocolDialog";
 import { WithdrawalsDialog } from "@/features/withdrawals/WithdrawalsDialog";
 import { Toast } from "@/components/ui/Toast";
 import { useSession } from "@/lib/useSession";
@@ -56,7 +58,7 @@ import { localTodayIso } from "@/lib/lease-periods";
 import { nextPaymentDate } from "@/lib/payment-dates";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
-type Dialog = "list" | "rentals" | "critical" | "checks" | null;
+type Dialog = "list" | "rentals" | "critical" | "checks" | "protocol" | null;
 type HomePanel = "properties" | "docs" | "report" | "chat" | "tickets" | "withdrawals";
 
 export default function LandlordDashboard() {
@@ -137,6 +139,10 @@ export default function LandlordDashboard() {
       return;
     }
     if (tab !== "dashboard") return;
+    if (homePanel === "properties") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [homePanel, tab]);
 
@@ -201,6 +207,7 @@ export default function LandlordDashboard() {
     { icon: FileText, label: "שכירויות", onClick: () => setDialog("rentals") },
     { icon: Banknote, label: "פרעון צ׳קים", onClick: () => setDialog("checks") },
     { icon: Vault, label: "כספת מסמכים", onClick: () => setTab("documents") },
+    { icon: ClipboardList, label: "פרוטוקול כניסה", onClick: () => setDialog("protocol") },
     { icon: FileText, label: "דוח שנתי", onClick: () => openPanel("report") },
     { icon: PenLine, label: "מסמכים לחתימה", onClick: () => openDocs(true) },
     { icon: MessagesSquare, label: "צ׳אט עם מנהל", onClick: () => openPanel("chat") },
@@ -518,7 +525,6 @@ export default function LandlordDashboard() {
                   userId={user.id}
                   fullName={session.fullName}
                   role="landlord"
-                  allowDeleteAccount={false}
                   onLogout={logout}
                   onBack={() => onNav("dashboard")}
                 />
@@ -554,6 +560,11 @@ export default function LandlordDashboard() {
         canReportReturned
       />
       <CriticalDatesDialog open={dialog === "critical"} onClose={() => setDialog(null)} landlordId={landlordId} />
+      <ProtocolDialog
+        open={dialog === "protocol"}
+        onClose={() => setDialog(null)}
+        landlordId={landlordId}
+      />
       <PropertyDetailDialog
         property={detailProperty}
         onClose={() => setDetailProperty(null)}

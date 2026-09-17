@@ -77,6 +77,8 @@ export function ChangePasswordDialog({
           ? `סיסמה חדשה עבור ${target?.name ?? "המשתמש"}`
           : "הזינו את הסיסמה הנוכחית ואת הסיסמה החדשה"
       }
+      placement="center"
+      nested={adminMode}
     >
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
         {!adminMode && (

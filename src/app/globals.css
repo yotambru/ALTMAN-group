@@ -106,6 +106,14 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Native inputs have an implicit min-width that overflows 2-col RTL sheets on iPhone. */
+input,
+select,
+textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+
 /*
  * Native iOS: the WKWebView document must be the scroller for rubber-band bounce.
  * html.h-full from layout.tsx would lock height to the viewport and kill bounce.
@@ -343,21 +351,6 @@ html.plt-capacitor .app-shell {
       rgb(255 255 255 / 0.08) 34%,
       transparent 58%
     );
-}
-
-/* Floating action button */
-.fab {
-  position: absolute;
-  inset-inline-start: 1.25rem;
-  bottom: 1.25rem;
-  display: grid;
-  place-items: center;
-  height: 3.5rem;
-  width: 3.5rem;
-  border-radius: 9999px;
-  background: var(--orange);
-  color: #fff;
-  box-shadow: 0 12px 24px -8px rgba(242, 106, 33, 0.6);
 }
 
 /* Hide scrollbars on horizontal scrollers */

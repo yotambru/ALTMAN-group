@@ -18,7 +18,6 @@ import {
   MapPin,
   Pencil,
   Phone,
-  Plus,
   Ruler,
   Trash2,
   Users,
@@ -166,7 +165,7 @@ function DetailRow({ icon: Icon, label, value }: { icon: typeof Bath; label: str
       </span>
       <div className="min-w-0">
         <p className="text-[0.7rem] leading-tight text-text-muted">{label}</p>
-        <p className="truncate text-sm font-bold leading-tight text-navy">{value}</p>
+        <p className="text-sm font-bold leading-snug text-navy break-words">{value}</p>
       </div>
     </div>
   );
@@ -214,7 +213,6 @@ function PropertyFullDetails({ property }: { property: Property }) {
         <DetailRow icon={Building2} label="נגישות לנכים" value={yesNo(property.accessible)} />
         <DetailRow icon={MapPin} label="כיווני אוויר" value={directions} />
         <DetailRow icon={FileText} label="דוח בדק" value={yesNo(property.hasInspectionReport)} />
-        <DetailRow icon={Phone} label="טלפון חברת ניהול" value={text(property.managementCompanyPhone)} />
         <DetailRow icon={Phone} label="טלפוני קבלנים" value={text(property.subcontractorPhones)} />
         <DetailRow icon={Ruler} label="שכ״ד" value={property.listedRent ? formatCurrency(property.listedRent) : "לא הוזן"} />
         <DetailRow icon={FileText} label="מונה חשמל" value={text(property.electricityMeter)} />
@@ -377,7 +375,7 @@ export function PropertyDetailDialog({
       title="פרטי נכס"
       description={undefined}
     >
-      <div className="relative space-y-5 pb-14">
+      <div className="space-y-5">
         {/* Hero — address only */}
         <PropertyHero
           key={property.id}
@@ -594,6 +592,13 @@ export function PropertyDetailDialog({
               משכיר: <span className="font-semibold text-navy">{landlord.fullName}</span>
             </p>
           )}
+          {property.managementCompanyPhone && (
+            <Line
+              icon={<Phone className="h-4 w-4" />}
+              label="טלפון חברת ניהול"
+              value={property.managementCompanyPhone}
+            />
+          )}
           {lease && (
             <div className="rounded-2xl bg-surface-muted p-3">
               <div className="space-y-1.5 text-sm">
@@ -621,7 +626,7 @@ export function PropertyDetailDialog({
                       <Line
                         key={period.startDate}
                         label={period.label}
-                        value={formatCurrency(period.rent)}
+                        value={period.rent > 0 ? formatCurrency(period.rent) : "—"}
                       />
                     ))}
                   </div>
@@ -661,20 +666,10 @@ export function PropertyDetailDialog({
         </section>
 
             {onEdit && (
-              <>
-                <Button variant="outline" fullWidth onClick={() => onEdit(property)}>
-                  <Pencil className="h-5 w-5" />
-                  עריכת פרטי הנכס
-                </Button>
-                <button
-                  type="button"
-                  onClick={() => onEdit(property)}
-                  aria-label="עריכת נכס"
-                  className="fab"
-                >
-                  <Plus className="h-7 w-7" strokeWidth={2.2} />
-                </button>
-              </>
+              <Button variant="outline" fullWidth onClick={() => onEdit(property)}>
+                <Pencil className="h-5 w-5" />
+                עריכת פרטי הנכס
+              </Button>
             )}
           </>
         )}
@@ -808,12 +803,12 @@ function Line({
   valueClass?: string;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="flex items-center gap-1.5 text-text-muted">
+    <div className="flex items-start justify-between gap-3">
+      <span className="flex min-w-0 items-start gap-1.5 text-text-muted">
         {icon}
         {label}
       </span>
-      <span className={"font-semibold " + valueClass}>{value}</span>
+      <span className={"shrink-0 font-semibold " + valueClass}>{value}</span>
     </div>
   );
 }

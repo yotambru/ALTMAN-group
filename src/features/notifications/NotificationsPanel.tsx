@@ -13,7 +13,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
-import { isNotificationForAudience } from "@/lib/notifications";
+import { isNotificationForAudience, sortNotificationsNewestFirst } from "@/lib/notifications";
 import { useData } from "@/lib/store";
 import { formatDateDots } from "@/lib/utils";
 import type { AppNotification, NotificationKind, Role } from "@/types";
@@ -44,8 +44,8 @@ interface NotificationsPanelProps {
 export function NotificationsPanel({ open, onClose, forUserId, forRole, onOpen }: NotificationsPanelProps) {
   const { notifications, markNotificationRead, markAllNotificationsRead } = useData();
 
-  const mine = notifications.filter(
-    (n) => !n.read && isNotificationForAudience(n, forUserId, forRole),
+  const mine = sortNotificationsNewestFirst(
+    notifications.filter((n) => !n.read && isNotificationForAudience(n, forUserId, forRole)),
   );
 
   return (

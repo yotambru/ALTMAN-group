@@ -1,5 +1,6 @@
 import type { DataState } from "@/lib/data-state";
 import { inferDocumentFolder, isDocumentFolder } from "@/lib/document-folders";
+import { parseProtocolNotes } from "@/lib/protocol-notes";
 import { localTodayIso, rentOnDate } from "@/lib/lease-periods";
 import { isLoginRole } from "@/types";
 import type {
@@ -669,6 +670,8 @@ function protocolToRow(p: ProtocolRecord): Row {
 }
 
 function protocolFromRow(row: Row): ProtocolRecord {
+  const notes = opt(row.notes as string | null);
+  const extras = parseProtocolNotes(notes);
   return {
     id: str(row.id),
     propertyId: str(row.property_id),
@@ -678,12 +681,19 @@ function protocolFromRow(row: Row): ProtocolRecord {
     meterElectricity: opt(row.meter_electricity as string | null),
     meterWater: opt(row.meter_water as string | null),
     meterGas: opt(row.meter_gas as string | null),
+    meterElectricityReading: extras.meterElectricityReading,
+    meterWaterReading: extras.meterWaterReading,
+    meterGasReading: extras.meterGasReading,
     items: Array.isArray(row.items) ? (row.items as ProtocolChecklistItem[]) : [],
     photoDataUrls: strArr(row.photo_data_urls),
     keysHandedOver: bool(row.keys_handed_over),
+    keysApartment: extras.keysApartment,
+    keysStorage: extras.keysStorage,
+    keysMailbox: extras.keysMailbox,
+    keysNote: extras.keysNote,
     signedByTenant: bool(row.signed_by_tenant),
     signedByManager: bool(row.signed_by_manager),
-    notes: opt(row.notes as string | null),
+    notes,
   };
 }
 

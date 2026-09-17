@@ -462,9 +462,17 @@ export interface ProtocolRecord {
   meterElectricity?: string;
   meterWater?: string;
   meterGas?: string;
+  /** Reading registered with the utility authority (קריאת מונה). */
+  meterElectricityReading?: string;
+  meterWaterReading?: string;
+  meterGasReading?: string;
   items: ProtocolChecklistItem[];
   photoDataUrls: string[];
   keysHandedOver: boolean;
+  keysApartment?: number;
+  keysStorage?: number;
+  keysMailbox?: number;
+  keysNote?: string;
   signedByTenant: boolean;
   signedByManager: boolean;
   notes?: string;

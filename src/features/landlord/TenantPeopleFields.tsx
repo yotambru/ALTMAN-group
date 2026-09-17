@@ -67,7 +67,7 @@ function PersonBlock({
   const patch = (partial: Partial<TenantPersonForm>) => onChange({ ...person, ...partial });
 
   return (
-    <div className="space-y-3 rounded-xl border border-border bg-surface-muted/40 p-3">
+    <div className="min-w-0 space-y-3 overflow-x-hidden rounded-xl border border-border bg-surface-muted/40 p-3">
       <div>
         <p className="text-sm font-semibold text-navy">{title}</p>
         <p className="mt-0.5 text-[0.7rem] text-text-muted">{hint}</p>
@@ -93,7 +93,7 @@ function PersonBlock({
           onChange: (e) => patch({ name: e.target.value }),
         }}
       />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid min-w-0 grid-cols-2 gap-3">
         <FormField
           label="טלפון"
           hint="אופציונלי"

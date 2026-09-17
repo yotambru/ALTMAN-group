@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useData } from "@/lib/store";
-import { cn, fileToDataUrl, formatDateDots } from "@/lib/utils";
+import { cn, fileToDataUrl, formatDateDots, parseMoneyInput } from "@/lib/utils";
+import { localTodayIso } from "@/lib/lease-periods";
 import type { AppDocument, MaintenanceTicket, TicketPriority, TicketStatus } from "@/types";
 
 const statusMeta: Record<TicketStatus, { label: string; tone: "success" | "warning" | "navy" }> = {
@@ -43,6 +44,8 @@ interface TicketsDialogProps {
   title?: string;
   /** Ticket to emphasize after navigating from a notification. */
   highlightTicketId?: string | null;
+  /** Hide resolved tickets (tenant view). */
+  hideResolved?: boolean;
 }
 
 export function TicketsDialog({
@@ -54,6 +57,7 @@ export function TicketsDialog({
   canViewInvoices = true,
   title = "ניהול קריאות ותקלות",
   highlightTicketId = null,
+  hideResolved = false,
 }: TicketsDialogProps) {
   const { tickets, properties, professionals, documents, setTicketStatus, assignTicket, attachTicketInvoice } =
     useData();
@@ -65,6 +69,7 @@ export function TicketsDialog({
     const q = query.trim().toLowerCase();
     let list = tickets;
     if (propertyIds) list = list.filter((t) => propertyIds.includes(t.propertyId));
+    if (hideResolved) list = list.filter((t) => t.status !== "resolved");
     if (effectiveFilter !== "all") list = list.filter((t) => t.status === effectiveFilter);
     if (q) {
       list = list.filter((t) => {
@@ -94,7 +99,7 @@ export function TicketsDialog({
       }
     }
     return list;
-  }, [tickets, propertyIds, effectiveFilter, highlightTicketId, query, properties, professionals]);
+  }, [tickets, propertyIds, hideResolved, effectiveFilter, highlightTicketId, query, properties, professionals]);
 
   const propertyById = (id: string) => properties.find((p) => p.id === id);
   const emptyMessage = query.trim()
@@ -110,7 +115,7 @@ export function TicketsDialog({
           placeholder="חיפוש לפי כותרת, כתובת, קטגוריה או בעל מקצוע…"
         />
         <div className="flex gap-1.5">
-          {filters.map((f) => (
+          {(hideResolved ? filters.filter((f) => f.id !== "resolved") : filters).map((f) => (
             <button
               key={f.id}
               type="button"
@@ -145,7 +150,7 @@ export function TicketsDialog({
             }
             canViewInvoices={canViewInvoices}
             readOnly={readOnly}
-            onStatus={(s) => setTicketStatus(t.id, s)}
+            onStatus={(s, note) => setTicketStatus(t.id, s, note)}
             onAssign={(pid, when) => assignTicket(t.id, pid, when)}
             onAttachInvoice={async (file) => {
               const dataUrl = await fileToDataUrl(file);
@@ -186,16 +191,23 @@ function TicketRow({
   highlighted?: boolean;
   propertyLabel?: string;
   professionalName?: string;
-  professionals: { id: string; fullName: string; trade: string }[];
+  professionals: { id: string; fullName: string; trade: string; phone: string }[];
   invoice?: AppDocument;
   canViewInvoices: boolean;
   readOnly: boolean;
-  onStatus: (s: TicketStatus) => void;
+  onStatus: (s: TicketStatus, note?: string) => void;
   onAssign: (professionalId: string, scheduledAt?: string) => void;
   onAttachInvoice: (file: File) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(Boolean(highlighted));
   const [uploading, setUploading] = useState(false);
+  const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
+  const [tenantNote, setTenantNote] = useState("");
+  const [expenseDesc, setExpenseDesc] = useState(ticket.title);
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseSaved, setExpenseSaved] = useState(false);
+  const { addProfessional, addExpense, properties, tenants } = useData();
   const ref = useRef<HTMLDivElement>(null);
   const invoiceInputRef = useRef<HTMLInputElement>(null);
   const photoUrl = useSignedUrl(ticket.photoDataUrl);
@@ -364,6 +376,32 @@ function TicketRow({
                     </button>
                   ))}
                 </div>
+                <textarea
+                  value={tenantNote}
+                  onChange={(e) => setTenantNote(e.target.value)}
+                  rows={2}
+                  placeholder="הודעה לדייר (לא חובה)"
+                  className="mt-2 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted focus:border-orange focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const assigned = professionals.find((p) => p.id === ticket.assignedProfessionalId);
+                    const tenant = tenants.find((item) => {
+                      const property = properties.find((p) => p.id === ticket.propertyId);
+                      return item.id === property?.tenantId;
+                    });
+                    const greeting = tenant?.fullName?.split(/\s+/)[0] || "דייר";
+                    const template = assigned
+                      ? `שלום ${greeting}, איש המקצוע ייצור איתך קשר, אלו הפרטים שלו: ${assigned.fullName} ${assigned.phone}`
+                      : tenantNote.trim();
+                    onStatus(ticket.status === "open" ? "in_progress" : ticket.status, tenantNote.trim() || template);
+                    setTenantNote("");
+                  }}
+                  className="mt-1.5 text-xs font-semibold text-orange"
+                >
+                  שליחת עדכון לדייר
+                </button>
               </div>
 
               <div>
@@ -380,7 +418,86 @@ function TicketRow({
                     </option>
                   ))}
                 </select>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <input
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    placeholder="שם"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
+                  />
+                  <input
+                    value={guestPhone}
+                    onChange={(e) => setGuestPhone(e.target.value)}
+                    placeholder="טלפון"
+                    dir="ltr"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!guestName.trim() || !guestPhone.trim()) return;
+                    const created = addProfessional({
+                      fullName: guestName.trim(),
+                      trade: ticket.category,
+                      phone: guestPhone.trim(),
+                    });
+                    onAssign(created.id);
+                    setGuestName("");
+                    setGuestPhone("");
+                  }}
+                  className="mt-1.5 text-xs font-semibold text-orange"
+                >
+                  הוספת איש מקצוע חד-פעמי
+                </button>
               </div>
+
+              {invoice && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-navy">שיוך להוצאות המשכיר</p>
+                  {expenseSaved ? (
+                    <p className="text-xs font-semibold text-success">ההוצאה נשמרה בדוח השנתי ובתיק הנכס</p>
+                  ) : (
+                    <>
+                      <input
+                        value={expenseDesc}
+                        onChange={(e) => setExpenseDesc(e.target.value)}
+                        placeholder="תיאור ההוצאה"
+                        className="mb-2 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
+                      />
+                      <input
+                        value={expenseAmount}
+                        onChange={(e) => setExpenseAmount(e.target.value)}
+                        placeholder="סכום (₪)"
+                        inputMode="decimal"
+                        className="mb-2 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        fullWidth
+                        onClick={() => {
+                          const amount = parseMoneyInput(expenseAmount);
+                          if (amount <= 0) return;
+                          const property = properties.find((p) => p.id === ticket.propertyId);
+                          if (!property?.landlordId) return;
+                          addExpense({
+                            landlordId: property.landlordId,
+                            propertyId: ticket.propertyId,
+                            amount,
+                            date: localTodayIso(),
+                            description: expenseDesc.trim() || ticket.title,
+                            invoiceDocId: invoice.id,
+                          });
+                          setExpenseSaved(true);
+                        }}
+                      >
+                        שמירת הוצאה
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

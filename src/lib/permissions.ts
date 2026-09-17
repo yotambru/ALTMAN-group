@@ -42,6 +42,7 @@ const MANAGER: Capability[] = [
   "tasks.manage",
   "documents.viewAll",
   "documents.sendForSignature",
+  "documents.sign",
   "reports.view",
   "utilities.track",
   "protocol.manage",
@@ -65,6 +66,7 @@ const ASSISTANT: Capability[] = [
   "tasks.manage",
   "documents.viewAll",
   "documents.sendForSignature",
+  "documents.sign",
   "reports.view",
   "utilities.track",
   "protocol.manage",
@@ -77,6 +79,7 @@ const LANDLORD: Capability[] = [
   "documents.sign",
   "tickets.viewOwn",
   "payments.confirm",
+  "protocol.manage",
 ];
 
 const TENANT: Capability[] = [
