@@ -24,13 +24,15 @@ const priorities: { id: TicketPriority; label: string }[] = [
 ];
 
 export function TicketModal({ open, onClose, propertyId, createdById }: TicketModalProps) {
-  const { addTicket } = useData();
+  const { addTicket, flushPersist } = useData();
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState(categories[0]);
   const [priority, setPriority] = useState<TicketPriority>("medium");
   const [description, setDescription] = useState("");
   const [photo, setPhoto] = useState<string | undefined>();
   const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
@@ -40,6 +42,8 @@ export function TicketModal({ open, onClose, propertyId, createdById }: TicketMo
     setDescription("");
     setPhoto(undefined);
     setSubmitted(false);
+    setSaving(false);
+    setError(null);
   };
 
   const handleClose = () => {
@@ -47,9 +51,11 @@ export function TicketModal({ open, onClose, propertyId, createdById }: TicketMo
     setTimeout(reset, 200);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || saving) return;
+    setSaving(true);
+    setError(null);
     addTicket({
       propertyId,
       createdById,
@@ -59,6 +65,12 @@ export function TicketModal({ open, onClose, propertyId, createdById }: TicketMo
       priority,
       photoDataUrl: photo,
     });
+    const persistError = await flushPersist();
+    setSaving(false);
+    if (persistError) {
+      setError("הקריאה לא נשמרה בשרת. בדקו את החיבור ונסו שוב.");
+      return;
+    }
     setSubmitted(true);
   };
 
@@ -177,8 +189,14 @@ export function TicketModal({ open, onClose, propertyId, createdById }: TicketMo
             )}
           </div>
 
-          <Button type="submit" fullWidth size="lg">
-            שליחת הקריאה
+          {error && (
+            <p role="alert" className="text-sm font-semibold text-danger">
+              {error}
+            </p>
+          )}
+
+          <Button type="submit" fullWidth size="lg" disabled={saving}>
+            {saving ? "שומרים…" : "שליחת הקריאה"}
           </Button>
         </form>
       )}

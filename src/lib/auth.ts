@@ -1,4 +1,5 @@
 import { currentUsers } from "@/lib/mock-data";
+import { flushPersistedWrites } from "@/lib/persist-flush";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import { isLoginRole, type Role, type User } from "@/types";
 
@@ -224,6 +225,11 @@ export async function syncAuthLoginEmail(
 }
 
 export async function signOutSession(): Promise<void> {
+  try {
+    await flushPersistedWrites();
+  } catch (err) {
+    console.error("[supabase] flush before sign-out", err);
+  }
   const supabase = getSupabase();
   if (supabase) await supabase.auth.signOut();
 }

@@ -18,6 +18,7 @@ import {
   subscribeToData,
 } from "@/lib/supabase/sync";
 import { accountDisplayName, normalizeEmail } from "@/lib/auth";
+import { registerPersistFlush } from "@/lib/persist-flush";
 import { generateId, formatCurrency } from "@/lib/utils";
 import { localTodayIso } from "@/lib/lease-periods";
 import { paymentClearanceDate, paymentStatusForDate, resolveCheckSchedule } from "@/lib/check-schedule";
@@ -313,6 +314,8 @@ interface DataContextValue extends DataState {
   /** Last Supabase write error, if a mutation did not persist. */
   persistError: string | null;
   retryPersist: () => void;
+  /** Wait until the current snapshot has been written. Returns the first error, if any. */
+  flushPersist: () => Promise<string | null>;
 
   // audit
   log: (action: string, entity?: string, entityId?: string, details?: string) => void;
@@ -465,11 +468,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [actor, setActorState] = useState<Actor>(DEFAULT_ACTOR);
   const [persistError, setPersistError] = useState<string | null>(null);
   const [persistNonce, setPersistNonce] = useState(0);
+  const [flushTick, setFlushTick] = useState(0);
   const actorRef = useRef<Actor>(DEFAULT_ACTOR);
   const prevRef = useRef<DataState | null>(null);
   const persistChainRef = useRef(Promise.resolve());
   const persistInFlightRef = useRef(false);
   const persistEnabledRef = useRef(false);
+  const persistEpochRef = useRef(0);
+  const flushWaitersRef = useRef<Array<(error: string | null) => void>>([]);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -487,7 +493,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const applySession = async (hasSession: boolean) => {
       const mine = ++generation;
       if (cancelled) return;
+      // Invalidate queued writes before swapping the baseline. A persist that
+      // started under the previous login must not diff that snapshot against
+      // the next user's fetch — that path was deleting rows the new session
+      // simply had not loaded yet.
       persistEnabledRef.current = false;
+      persistEpochRef.current += 1;
       if (!hasSession) {
         const empty = emptyState();
         setState(empty);
@@ -542,33 +553,53 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
-    if (!persistEnabledRef.current) return;
-    if (!prevRef.current) return;
+    const epoch = persistEpochRef.current;
     const next = state;
+    const waiters = flushWaitersRef.current.splice(0);
+    const finish = (error: string | null) => {
+      for (const waiter of waiters) waiter(error);
+    };
+    if (!ready || !persistEnabledRef.current || !prevRef.current) {
+      finish(waiters.length > 0 ? "השמירה בוטלה כי המשתמש התחלף" : null);
+      return;
+    }
     persistChainRef.current = persistChainRef.current
       .catch(() => undefined)
       .then(async () => {
+        if (persistEpochRef.current !== epoch) {
+          finish("השמירה בוטלה כי המשתמש התחלף");
+          return;
+        }
         const prev = prevRef.current;
-        if (!prev) return;
+        if (!prev) {
+          finish(null);
+          return;
+        }
         persistInFlightRef.current = true;
         try {
           const { errors, applied } = await persistDiff(prev, next);
+          if (persistEpochRef.current !== epoch) {
+            finish(errors[0] ?? "השמירה בוטלה כי המשתמש התחלף");
+            return;
+          }
           prevRef.current = applied;
           if (errors.length === 0) {
             setPersistError(null);
+            finish(null);
             return;
           }
           setPersistError(errors[0] ?? "שמירה לשרת נכשלה");
           setState((current) => dropUnpersisted(current, next, applied));
+          finish(errors[0] ?? "שמירה לשרת נכשלה");
         } catch (err) {
           console.error("[supabase] persist", err);
-          setPersistError("שמירה לשרת נכשלה");
+          if (persistEpochRef.current === epoch) setPersistError("שמירה לשרת נכשלה");
+          finish("שמירה לשרת נכשלה");
         } finally {
           persistInFlightRef.current = false;
         }
       });
-  }, [state, ready, persistNonce]);
+  }, [state, ready, persistNonce, flushTick]);
 
   useEffect(() => {
     if (!ready) return;
@@ -591,6 +622,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const retryPersist = useCallback(() => {
     setPersistNonce((n) => n + 1);
   }, []);
+
+  const flushPersist = useCallback(() => {
+    if (!persistEnabledRef.current || !prevRef.current) return Promise.resolve(null);
+    return new Promise<string | null>((resolve) => {
+      const timer = window.setTimeout(() => resolve("שמירה לשרת נכשלה"), 20000);
+      flushWaitersRef.current.push((error) => {
+        window.clearTimeout(timer);
+        resolve(error);
+      });
+      setFlushTick((n) => n + 1);
+    });
+  }, []);
+
+  useEffect(() => registerPersistFlush(flushPersist), [flushPersist]);
 
   const makeLog = useCallback(
     (action: string, entity?: string, entityId?: string, details?: string): ActivityLogEntry => ({
@@ -2246,6 +2291,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setActor,
     persistError,
     retryPersist,
+    flushPersist,
     log,
     addClient,
     addTenant,

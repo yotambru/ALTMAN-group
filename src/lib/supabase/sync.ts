@@ -292,7 +292,17 @@ export async function persistDiff(
       const old = prevMap.get(id);
       if (old && JSON.stringify(old) === JSON.stringify(item)) continue;
       const prepared = await hydrateFileFields(col.key, item as Record<string, unknown>);
-      if (stillEmbedded(prepared)) {
+      let payload = prepared;
+      if (
+        col.key === "tickets" &&
+        stillEmbedded(prepared) &&
+        typeof prepared.photoDataUrl === "string" &&
+        prepared.photoDataUrl.startsWith("data:")
+      ) {
+        console.warn(`[supabase] ticket ${id} photo upload failed — saving the ticket without the photo`);
+        payload = { ...prepared, photoDataUrl: undefined };
+      }
+      if (stillEmbedded(payload)) {
         const full = `${col.table}/${id}: העלאת קובץ לשרת נכשלה — המסמך לא נשמר`;
         console.error(`[supabase] write ${full}`);
         errors.push(full);
@@ -303,7 +313,7 @@ export async function persistDiff(
       const message = await writeRow(
         supabase,
         col.table,
-        col.toRow(prepared as never),
+        col.toRow(payload as never),
         old ? "update" : "insert",
         col.idColumn,
         id,
