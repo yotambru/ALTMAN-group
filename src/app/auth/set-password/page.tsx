@@ -11,6 +11,7 @@ import {
   MIN_PASSWORD_LENGTH,
   validateNewPassword,
 } from "@/lib/auth";
+import { claimManagerDevice } from "@/lib/manager-devices";
 import { routeByRole } from "@/lib/permissions";
 import { getSupabase } from "@/lib/supabase/client";
 import { storage } from "@/lib/storage";
@@ -75,6 +76,15 @@ export default function AuthSetPasswordPage() {
       setSubmitting(false);
       setError("הסיסמה נשמרה, אך לא נמצא פרופיל. פנו למשרד.");
       return;
+    }
+    if (profile.role === "manager") {
+      const gate = await claimManagerDevice(profile.id);
+      if (!gate.ok) {
+        await getSupabase()?.auth.signOut();
+        setSubmitting(false);
+        setError(gate.error);
+        return;
+      }
     }
     storage.setSession({
       role: profile.role,

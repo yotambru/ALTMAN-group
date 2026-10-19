@@ -160,7 +160,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
         ? rescaleLeasePeriods(prev, nextStart, nextEnd)
         : [];
       setPeriodRents((rents) =>
-        alignPeriodRents(rents, Math.max(nextPeriods.length, 1), listedRentHint),
+        alignPeriodRents(rents, Math.max(nextPeriods.length, 1)),
       );
       setLeaseFiles((files) => alignPeriodSlots(files, Math.max(nextPeriods.length, 1)));
       return nextPeriods;
@@ -225,11 +225,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
   const submitTenant = () => {
     if (!selectedProperty) return;
     const activePeriods = activeLeasePeriods(leasePeriods, startDate, endDate || undefined);
-    const rentFields = alignPeriodRents(
-      periodRents,
-      Math.max(activePeriods.length, 1),
-      listedRentHint,
-    );
+    const rentFields = alignPeriodRents(periodRents, Math.max(activePeriods.length, 1));
     const rents = activePeriods.map((_, i) => parseMoney(rentFields[i] ?? ""));
     const schedule = rentScheduleFromPeriods(activePeriods, rents);
     const documents: Array<{
@@ -370,11 +366,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
     }
 
     const activePeriods = activeLeasePeriods(leasePeriods, startDate, endDate || undefined);
-    const rentFields = alignPeriodRents(
-      periodRents,
-      Math.max(activePeriods.length, 1),
-      listedRentHint,
-    );
+    const rentFields = alignPeriodRents(periodRents, Math.max(activePeriods.length, 1));
     const rents = activePeriods.map((_, i) => parseMoney(rentFields[i] ?? ""));
     if (rents.some((r) => r <= 0)) {
       setError(
@@ -442,17 +434,7 @@ export function AddTenantModal({ open, onClose, properties }: AddTenantModalProp
           <FormField label="נכס">
             <select
               value={selectedPropertyId}
-              onChange={(e) => {
-                const id = e.target.value;
-                setPropertyId(id);
-                const prop = properties.find((p) => p.id === id);
-                if (prop?.listedRent) {
-                  setPeriodRents((prev) => {
-                    if (prev.some((v) => v.trim())) return prev;
-                    return prev.map(() => String(prop.listedRent));
-                  });
-                }
-              }}
+              onChange={(e) => setPropertyId(e.target.value)}
               required
               className="w-full min-w-0 max-w-full rounded-xl border bg-surface px-3.5 py-3 text-sm focus:border-orange focus:outline-none"
             >

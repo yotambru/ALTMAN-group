@@ -1,12 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Download, Landmark, Receipt, TrendingUp, Upload } from "lucide-react";
+import { ChevronLeft, Download, Landmark, Receipt, Trash2, TrendingUp, Upload } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toast } from "@/components/ui/Toast";
 import { IncomeGrowthChart } from "@/components/dashboard/IncomeGrowthChart";
 import { downloadAnnualReportPdf } from "@/lib/annual-report-pdf";
+import { expensePlaceLabel, ticketForExpense } from "@/lib/invoice-place";
 import { useData } from "@/lib/store";
 import {
   buildPortfolioYieldHistory,
@@ -16,6 +18,7 @@ import {
   monthlyManagementFee,
   occupancyPercent,
   PORTFOLIO_YIELD_RATE,
+  propertyAddressLabel,
   propertyMonthlyIncome,
 } from "@/lib/portfolio";
 import { fileToDataUrl, formatCurrency, formatDateDots } from "@/lib/utils";
@@ -28,8 +31,14 @@ interface AnnualReportDialogProps {
   landlordId?: string;
   /** Allow uploading expense invoices (landlord / manager). */
   canAddExpenses?: boolean;
+  /** Manager only: delete an expense row. Landlords can upload, not delete. */
+  canDeleteExpenses?: boolean;
   /** Show implied asset values / yield. Landlord annual report is income vs expenses only. */
   showAssetValues?: boolean;
+  /** Open the linked maintenance ticket. */
+  onOpenTicket?: (ticketId: string) => void;
+  /** Open the invoices list. */
+  onOpenInvoices?: () => void;
 }
 
 /** Annual portfolio summary: value, income growth, yield, net of expenses. */
@@ -39,9 +48,12 @@ export function AnnualReportDialog({
   inline = false,
   landlordId,
   canAddExpenses = false,
+  canDeleteExpenses = false,
   showAssetValues = true,
+  onOpenTicket,
+  onOpenInvoices,
 }: AnnualReportDialogProps) {
-  const { properties, leases, landlords, expenses, addExpense, addDocument } = useData();
+  const { properties, leases, landlords, expenses, tickets, addExpense, addDocument, deleteExpense } = useData();
   const [filterLandlordId, setFilterLandlordId] = useState("");
   const [filterPropertyId, setFilterPropertyId] = useState("");
   const [expenseDesc, setExpenseDesc] = useState("");
@@ -49,6 +61,7 @@ export function AnnualReportDialog({
   const [expensePropertyId, setExpensePropertyId] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const managerProperties = properties.filter((p) => !landlordId || p.landlordId === landlordId);
@@ -100,6 +113,9 @@ export function AnnualReportDialog({
     amount: number;
     date: string;
     dateLabel?: string;
+    propertyLabel: string;
+    ticketId?: string;
+    deletable: boolean;
   }[] = [
     ...(totalManagementFees > 0
       ? [
@@ -109,6 +125,8 @@ export function AnnualReportDialog({
             amount: totalManagementFees,
             date: `${year}-01-01`,
             dateLabel: `שנתי · ${year}`,
+            propertyLabel: owned.length === 1 ? propertyAddressLabel(owned[0]) : "כל הנכסים",
+            deletable: false,
           },
         ]
       : []),
@@ -117,6 +135,9 @@ export function AnnualReportDialog({
       description: e.description,
       amount: e.amount,
       date: e.date,
+      propertyLabel: expensePlaceLabel(e, properties, tickets),
+      ticketId: ticketForExpense(e, tickets)?.id,
+      deletable: true,
     })),
   ];
   const portfolioValue = impliedPortfolioValue(totalIncome / 12);
@@ -138,7 +159,7 @@ export function AnnualReportDialog({
         portfolioYield,
         occupancy,
         properties: rows.map(({ property, yearly, marketValue, yieldPct }) => ({
-          address: property.address,
+          address: propertyAddressLabel(property),
           yearlyIncome: yearly,
           marketValue: yearly > 0 ? marketValue : property.value,
           yieldPct,
@@ -148,6 +169,7 @@ export function AnnualReportDialog({
           amount: e.amount,
           date: e.date,
           dateLabel: e.dateLabel,
+          propertyLabel: e.propertyLabel,
         })),
       });
       setToast("הדוח הורד בהצלחה");
@@ -161,7 +183,15 @@ export function AnnualReportDialog({
   const submitExpense = async (file?: File) => {
     if (!landlordId) return;
     const amount = Number(expenseAmount.replace(/[^0-9.]/g, "")) || 0;
-    if (!amount || !expenseDesc.trim()) return;
+    if (!amount || !expenseDesc.trim()) {
+      setToast("יש למלא תיאור וסכום");
+      return;
+    }
+    const propertyId = expensePropertyId || (owned.length === 1 ? owned[0]?.id : "");
+    if (!propertyId) {
+      setToast("יש לשייך את ההוצאה לדירה");
+      return;
+    }
     let invoiceDocId: string | undefined;
     if (file) {
       const dataUrl = await fileToDataUrl(file);
@@ -169,7 +199,7 @@ export function AnnualReportDialog({
         name: `חשבונית — ${expenseDesc.trim()}`,
         type: "invoice",
         folder: "expenses",
-        propertyId: expensePropertyId || undefined,
+        propertyId,
         landlordId,
         fileDataUrl: dataUrl,
       });
@@ -177,7 +207,7 @@ export function AnnualReportDialog({
     }
     addExpense({
       landlordId,
-      propertyId: expensePropertyId || undefined,
+      propertyId,
       amount,
       date: new Date().toISOString().slice(0, 10),
       description: expenseDesc.trim(),
@@ -284,7 +314,7 @@ export function AnnualReportDialog({
         {rows.map(({ property, yearly, yieldPct, marketValue }) => (
           <div key={property.id} className="flex items-center justify-between rounded-xl border border-border p-3">
             <div className="min-w-0">
-              <p className="truncate font-semibold text-navy">{property.address}</p>
+              <p className="text-pretty font-semibold text-navy">{propertyAddressLabel(property)}</p>
               {showAssetValues && (
                 <p className="text-xs text-text-muted">
                   שווי {formatCurrency(yearly > 0 ? marketValue : property.value)}
@@ -299,22 +329,59 @@ export function AnnualReportDialog({
 
       {expenseRows.length > 0 && (
         <section className="space-y-2">
-          <p className="flex items-center gap-1.5 text-sm font-bold text-navy">
-            <Receipt className="h-4 w-4 text-orange" />
-            הוצאות {year}
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-sm font-bold text-navy">
+              <Receipt className="h-4 w-4 text-orange" />
+              הוצאות {year}
+            </p>
+            {onOpenInvoices && (
+              <button
+                type="button"
+                onClick={onOpenInvoices}
+                className="text-xs font-semibold text-orange underline underline-offset-2"
+              >
+                חשבוניות
+              </button>
+            )}
+          </div>
           <div className="card divide-y divide-border">
-            {expenseRows.map((e) => (
-              <div key={e.id} className="flex items-center justify-between px-3 py-2.5 text-sm">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-navy">{e.description}</p>
-                  <p className="text-[0.7rem] text-text-muted">
-                    {e.dateLabel ?? formatDateDots(e.date)}
-                  </p>
+            {expenseRows.map((e) => {
+              const openTicket = e.ticketId && onOpenTicket ? () => onOpenTicket(e.ticketId!) : undefined;
+              return (
+                <div key={e.id} className="flex items-center gap-2 px-3 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    {openTicket ? (
+                      <button type="button" onClick={openTicket} className="block w-full text-start">
+                        <p className="truncate font-semibold text-navy">{e.description}</p>
+                        <p className="text-xs font-semibold text-navy">{e.propertyLabel}</p>
+                        <p className="text-[0.7rem] text-text-muted">{e.dateLabel ?? formatDateDots(e.date)}</p>
+                        <p className="mt-0.5 inline-flex items-center gap-0.5 text-[0.7rem] font-bold text-orange">
+                          לצפייה בתקלה
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </p>
+                      </button>
+                    ) : (
+                      <>
+                        <p className="truncate font-semibold text-navy">{e.description}</p>
+                        <p className="text-xs font-semibold text-navy">{e.propertyLabel}</p>
+                        <p className="text-[0.7rem] text-text-muted">{e.dateLabel ?? formatDateDots(e.date)}</p>
+                      </>
+                    )}
+                  </div>
+                  <span className="shrink-0 font-bold text-navy">{formatCurrency(e.amount)}</span>
+                  {canDeleteExpenses && e.deletable && (
+                    <button
+                      type="button"
+                      aria-label={`מחיקת ${e.description}`}
+                      onClick={() => setPendingDeleteId(e.id)}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-danger hover:bg-danger/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
-                <span className="font-bold text-navy">{formatCurrency(e.amount)}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -342,9 +409,9 @@ export function AnnualReportDialog({
               className="rounded-lg border bg-surface px-2 py-2 text-xs focus:border-orange focus:outline-none"
               aria-label="שיוך לנכס"
             >
-              <option value="">ללא שיוך לנכס</option>
+              <option value="">בחירת דירה</option>
               {owned.map((p) => (
-                <option key={p.id} value={p.id}>{p.address}</option>
+                <option key={p.id} value={p.id}>{propertyAddressLabel(p)}</option>
               ))}
             </select>
           </div>
@@ -362,7 +429,18 @@ export function AnnualReportDialog({
             <Button variant="outline" onClick={() => void submitExpense()}>
               שמירת הוצאה
             </Button>
-            <Button variant="outline" onClick={() => fileRef.current?.click()}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const amount = Number(expenseAmount.replace(/[^0-9.]/g, "")) || 0;
+                const propertyId = expensePropertyId || (owned.length === 1 ? owned[0]?.id : "");
+                if (!amount || !expenseDesc.trim() || !propertyId) {
+                  void submitExpense();
+                  return;
+                }
+                fileRef.current?.click();
+              }}
+            >
               <Upload className="h-4 w-4" />
               עם חשבונית
             </Button>
@@ -377,7 +455,27 @@ export function AnnualReportDialog({
     </div>
   );
 
-  const toastEl = <Toast message={toast} onDone={() => setToast(null)} />;
+  const pendingDelete = expenseRows.find((row) => row.id === pendingDeleteId);
+  const toastEl = (
+    <>
+      <Toast message={toast} onDone={() => setToast(null)} />
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        onClose={() => setPendingDeleteId(null)}
+        onConfirm={() => {
+          if (pendingDelete) deleteExpense(pendingDelete.id);
+          setPendingDeleteId(null);
+          setToast("ההוצאה נמחקה מהדוח");
+        }}
+        title="מחיקת הוצאה"
+        description={
+          pendingDelete
+            ? `למחוק את «${pendingDelete.description}»? ההוצאה והחשבונית ירדו מהדוח. התקלה עצמה תישאר בקריאות.`
+            : ""
+        }
+      />
+    </>
+  );
 
   if (inline) {
     return (

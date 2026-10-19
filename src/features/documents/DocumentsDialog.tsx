@@ -29,8 +29,9 @@ import { DocumentPreviewDialog } from "@/features/documents/DocumentPreviewDialo
 import { SignatureDialog } from "@/features/documents/SignatureDialog";
 import { useData } from "@/lib/store";
 import { propertyAddressLabel, sortPropertiesByLocation } from "@/lib/portfolio";
-import { canSignDocument } from "@/lib/document-signing";
+import { canSignDocument, unpackSignature } from "@/lib/document-signing";
 import { storage } from "@/lib/storage";
+import { useSignedUrl } from "@/lib/supabase/files";
 import {
   DOCUMENT_FOLDER_CHILD,
   DOCUMENT_FOLDER_LABEL,
@@ -81,6 +82,8 @@ interface DocumentsDialogProps {
   hiddenFolders?: DocumentFolder[];
   landlords?: Landlord[];
   tenants?: Tenant[];
+  /** Landlord vault: filter by tenant (name and apartment), not by the landlord. */
+  filterByTenants?: boolean;
   /** Prefocus signature-only view. */
   awaitingSignatureOnly?: boolean;
   /** Open the signature sheet for this document when the vault mounts. */
@@ -177,6 +180,24 @@ function FolderRow({
   );
 }
 
+function SignatureMark({ signedByName, signedAt }: { signedByName?: string; signedAt?: string }) {
+  const parsed = unpackSignature(signedByName);
+  const src = useSignedUrl(parsed.imageUrl);
+  if (!parsed.name && !src) return null;
+  return (
+    <span className="mt-1 flex items-center gap-2">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" className="h-8 max-w-24 rounded bg-white object-contain" />
+      ) : null}
+      <span>
+        נחתם ע״י {parsed.name || "חתימה"}
+        {signedAt ? ` · ${formatDateDots(signedAt)}` : ""}
+      </span>
+    </span>
+  );
+}
+
 function DocRow({
   doc,
   canSign,
@@ -210,11 +231,11 @@ function DocRow({
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-navy">{doc.name}</p>
-          <p className="text-[0.7rem] text-text-muted">
+          <div className="text-[0.7rem] text-text-muted">
             {location ? `${location} · ` : ""}
             {DOCUMENT_FOLDER_LABEL[inferDocumentFolder(doc)]} · {formatDateDots(doc.createdAt)}
-            {doc.signedByName ? ` • נחתם ע״י ${doc.signedByName}` : ""}
-          </p>
+            <SignatureMark signedByName={doc.signedByName} signedAt={doc.signedAt} />
+          </div>
         </div>
         <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-navy/5 text-navy">
@@ -262,6 +283,7 @@ export function DocumentsDialog({
   hiddenFolders = [],
   landlords = [],
   tenants = [],
+  filterByTenants = false,
   awaitingSignatureOnly = false,
   focusDocumentId = null,
 }: DocumentsDialogProps) {
@@ -271,6 +293,7 @@ export function DocumentsDialog({
   const [uploadName, setUploadName] = useState("");
   const [query, setQuery] = useState("");
   const [landlordFilter, setLandlordFilter] = useState<string>("all");
+  const [tenantFilter, setTenantFilter] = useState<string>("all");
   const [selectedLandlordId, setSelectedLandlordId] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState<FolderId | null>(null);
   const [selectedTenantId, setSelectedTenantId] = useState<FolderId | null>(null);
@@ -379,6 +402,11 @@ export function DocumentsDialog({
       if (landlordFirstMode) {
         return Boolean(activeLandlordId) && p.landlordId === activeLandlordId;
       }
+      if (filterByTenants && tenantFilter !== "all") {
+        const tenant = tenants.find((item) => item.id === tenantFilter);
+        if (!tenant) return false;
+        return p.id === tenant.propertyId || p.tenantId === tenant.id;
+      }
       return landlordFilter === "all" || p.landlordId === landlordFilter;
     });
 
@@ -415,6 +443,9 @@ export function DocumentsDialog({
   }, [
     properties,
     landlordFilter,
+    filterByTenants,
+    tenantFilter,
+    tenants,
     landlords,
     tenantLookup,
     vaultDocs,
@@ -783,7 +814,43 @@ export function DocumentsDialog({
   const filters = searchable && !awaitingSignatureOnly && (
     <div className="mb-3 space-y-2">
       <SearchField value={query} onChange={setQuery} placeholder={searchPlaceholder} />
-      {!landlordFirstMode && !activePropertyId && landlords.length > 0 && (
+      {filterByTenants && tenants.length > 0 && !awaitingSignatureOnly && (
+        <select
+          value={tenantFilter}
+          onChange={(e) => {
+            const id = e.target.value;
+            setTenantFilter(id);
+            if (id === "all") {
+              backToProperties();
+              return;
+            }
+            const tenant = tenants.find((item) => item.id === id);
+            if (!tenant?.propertyId) {
+              backToProperties();
+              return;
+            }
+            setQuery("");
+            setSelectedFolder(null);
+            setSelectedPropertyId(tenant.propertyId);
+            setSelectedTenantId(id);
+          }}
+          className="w-full rounded-lg border border-border bg-surface px-2 py-2 text-xs text-navy focus:border-orange focus:outline-none"
+          aria-label="סינון לפי שוכר"
+        >
+          <option value="all">כל השוכרים</option>
+          {tenants.map((tenant) => {
+            const property = properties.find((item) => item.id === tenant.propertyId);
+            const apartment = property?.apartmentNumber?.trim();
+            const label = apartment ? `${tenant.fullName} · דירה ${apartment}` : tenant.fullName;
+            return (
+              <option key={tenant.id} value={tenant.id}>
+                {label}
+              </option>
+            );
+          })}
+        </select>
+      )}
+      {!filterByTenants && !landlordFirstMode && !activePropertyId && landlords.length > 0 && (
         <select
           value={landlordFilter}
           onChange={(e) => {

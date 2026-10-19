@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Building2, ChevronDown, KeyRound, Mail, Phone, Trash2, User } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Modal } from "@/components/ui/Modal";
@@ -8,7 +8,7 @@ import { Toast } from "@/components/ui/Toast";
 import { SearchField } from "@/components/dashboard/ClientRow";
 import { ChangePasswordDialog } from "@/features/auth/ChangePasswordDialog";
 import { can, roleLabels } from "@/lib/permissions";
-import { propertyAddressLabel, sortPropertiesByLocation } from "@/lib/portfolio";
+import { comparePropertiesByLocation, propertyAddressLabel, sortPropertiesByLocation } from "@/lib/portfolio";
 import { useData } from "@/lib/store";
 import type { User as AppUser } from "@/types";
 
@@ -33,6 +33,13 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
   const [toast, setToast] = useState<string | null>(null);
   const [passwordTarget, setPasswordTarget] = useState<{ userId: string; name: string } | null>(null);
   const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (open) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- clear the search when the dialog closes */
+    setQuery("");
+    setExpanded(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [open]);
   const isLandlords = mode === "landlords";
   const isAccounts = mode === "accounts";
   const canDelete = can(actor.role, "clients.delete");
@@ -92,7 +99,7 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
         roleLabels[u.role],
         landlord?.fullName,
         tenant?.fullName,
-        ...owned.map((p) => `${p.address} ${p.city} ${p.apartmentNumber}`),
+        ...owned.map((p) => `${propertyAddressLabel(p)} דירה ${p.apartmentNumber}`),
       ]
         .filter(Boolean)
         .join(" ")
@@ -109,7 +116,7 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
         l.fullName,
         l.phone,
         l.email,
-        ...owned.map((p) => `${p.address} ${p.city} ${p.apartmentNumber}`),
+        ...owned.map((p) => `${propertyAddressLabel(p)} דירה ${p.apartmentNumber}`),
         ...tenants.filter((t) => owned.some((p) => p.tenantId === t.id)).map((t) => t.fullName),
       ]
         .filter(Boolean)
@@ -130,13 +137,20 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
         t.phone,
         t.email,
         t.idNumber,
-        property ? `${property.address} ${property.city} ${property.apartmentNumber}` : "",
+        property ? `${propertyAddressLabel(property)} דירה ${property.apartmentNumber}` : "",
         landlord?.fullName,
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
       return hay.includes(q);
+    }).sort((a, b) => {
+      const left = properties.find((p) => p.id === a.propertyId);
+      const right = properties.find((p) => p.id === b.propertyId);
+      if (!left && !right) return 0;
+      if (!left) return 1;
+      if (!right) return -1;
+      return comparePropertiesByLocation(left, right);
     });
   }, [tenants, properties, landlords, q]);
 
@@ -152,7 +166,7 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
           <SearchField
             value={query}
             onChange={setQuery}
-            placeholder="חיפוש לפי שם, כתובת, מייל או טלפון…"
+            placeholder="חיפוש לפי שם, רחוב, דירה, עיר, מייל או טלפון…"
           />
           {isAccounts
             ? filteredUsers.map((u) => (
@@ -288,16 +302,16 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
                           <p className="text-[0.65rem] font-semibold text-text-muted">שוכר 1</p>
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.7rem] text-text-muted">
                             {t.phone && (
-                              <span className="flex items-center gap-1" dir="ltr">
+                              <a href={`tel:${t.phone}`} className="flex items-center gap-1 text-orange" dir="ltr">
                                 <Phone className="h-3 w-3" />
                                 {t.phone}
-                              </span>
+                              </a>
                             )}
                             {t.email && (
-                              <span className="flex items-center gap-1 truncate" dir="ltr">
+                              <a href={`mailto:${t.email}`} className="flex items-center gap-1 text-orange" dir="ltr">
                                 <Mail className="h-3 w-3" />
                                 {t.email}
-                              </span>
+                              </a>
                             )}
                           </div>
                           {hasCouple && (
@@ -305,16 +319,16 @@ export function PeopleListDialog({ open, onClose, mode }: PeopleListDialogProps)
                               <p className="pt-1 text-[0.65rem] font-semibold text-text-muted">שוכר 2</p>
                               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.7rem] text-text-muted">
                                 {t.secondaryPhone && (
-                                  <span className="flex items-center gap-1" dir="ltr">
+                                  <a href={`tel:${t.secondaryPhone}`} className="flex items-center gap-1 text-orange" dir="ltr">
                                     <Phone className="h-3 w-3" />
                                     {t.secondaryPhone}
-                                  </span>
+                                  </a>
                                 )}
                                 {t.secondaryEmail && (
-                                  <span className="flex items-center gap-1 truncate" dir="ltr">
+                                  <a href={`mailto:${t.secondaryEmail}`} className="flex items-center gap-1 text-orange" dir="ltr">
                                     <Mail className="h-3 w-3" />
                                     {t.secondaryEmail}
-                                  </span>
+                                  </a>
                                 )}
                               </div>
                             </>

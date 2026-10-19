@@ -7,10 +7,11 @@ export function sortNotificationsNewestFirst<T extends { createdAt: string }>(it
 
 /** Whether a notification should appear in this user/role inbox. */
 export function isNotificationForAudience(
-  n: Pick<AppNotification, "forUserId" | "forRole">,
+  n: Pick<AppNotification, "forUserId" | "forRole" | "kind">,
   forUserId?: string,
   forRole?: Role,
 ): boolean {
+  if (n.kind === "session") return false;
   if (forUserId && n.forUserId === forUserId) return true;
   if (forRole && n.forRole === forRole) return true;
   if (!n.forUserId && !n.forRole) return true;

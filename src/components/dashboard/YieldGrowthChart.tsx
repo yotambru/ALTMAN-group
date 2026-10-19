@@ -7,6 +7,27 @@ interface YieldGrowthChartProps {
   className?: string;
 }
 
+/** Keep year labels from sitting on top of each other. First and last always stay. */
+function visibleYearTicks<T extends { x: number; year: number; date: string }>(coords: T[]): T[] {
+  if (coords.length === 0) return [];
+  const first = coords[0];
+  const last = coords[coords.length - 1];
+  const ticks: T[] = [first];
+  for (const point of coords.slice(1, -1)) {
+    const firstOfYear = coords.findIndex((item) => item.year === point.year) === coords.indexOf(point);
+    if (!firstOfYear || point.year === first.year || point.year === last.year) continue;
+    const prev = ticks[ticks.length - 1];
+    if (point.x - prev.x < 36) continue;
+    ticks.push(point);
+  }
+  if (last !== first) {
+    const prev = ticks[ticks.length - 1];
+    if (ticks.length > 1 && last.x - prev.x < 36) ticks.pop();
+    ticks.push(last);
+  }
+  return ticks;
+}
+
 /**
  * Line of monthly rental income from join date → today.
  * Asset value is implied at 2.8% of annual rent; the line itself is income.
@@ -74,28 +95,18 @@ export function YieldGrowthChart({ points, className }: YieldGrowthChartProps) {
           />
           <circle cx={first.x} cy={first.y} r={3.5} fill="var(--navy)" />
           <circle cx={last.x} cy={last.y} r={4} fill="var(--orange)" />
-          {coords.map((c, i) => {
-            const isLast = i === coords.length - 1;
-            const isFirst = i === 0;
-            const firstOfYear = coords.findIndex((p) => p.year === c.year) === i;
-            const showTick =
-              isFirst ||
-              isLast ||
-              (firstOfYear && c.year !== coords[0].year && c.year !== coords.at(-1)!.year);
-            if (!showTick) return null;
-            return (
-              <text
-                key={c.date}
-                x={c.x}
-                y={h - 8}
-                textAnchor="middle"
-                className="fill-[var(--text-muted)]"
-                fontSize="11"
-              >
-                {isLast ? "היום" : String(c.year)}
-              </text>
-            );
-          })}
+          {visibleYearTicks(coords).map((c) => (
+            <text
+              key={c.date}
+              x={c.x}
+              y={h - 8}
+              textAnchor="middle"
+              className="fill-[var(--text-muted)]"
+              fontSize="11"
+            >
+              {c.date === last.date ? "היום" : String(c.year)}
+            </text>
+          ))}
         </svg>
 
         <div className="mt-1 flex justify-between text-[0.7rem] text-text-muted">

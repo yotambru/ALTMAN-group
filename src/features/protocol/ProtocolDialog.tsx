@@ -9,7 +9,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useData } from "@/lib/store";
 import { PROTOCOL_FURNITURE_LABEL, protocolPdfDataUrl } from "@/lib/protocol-pdf";
 import { serializeProtocolNotes } from "@/lib/protocol-notes";
-import { propertyAddressLabel, sortPropertiesByLocation } from "@/lib/portfolio";
+import { matchesPlaceQuery, propertyAddressLabel, sortPropertiesByLocation } from "@/lib/portfolio";
+import { SearchField } from "@/components/dashboard/ClientRow";
 import { propertyKeyCounts, totalKeysReceived } from "@/lib/property-keys";
 import { fileToDataUrl, formatDateDots, generateId } from "@/lib/utils";
 import type { ProtocolChecklistItem, ProtocolType, Property } from "@/types";
@@ -39,8 +40,9 @@ function countInput(value: string): number {
 
 /** Digital entry/exit protocol: meters, checklist, photos, keys — then vault + dual signature. */
 export function ProtocolDialog({ open, onClose, landlordId }: ProtocolDialogProps) {
-  const { properties, leases, protocols, users, addProtocol, addDocument, updateProperty } = useData();
+  const { properties, leases, protocols, users, tenants, addProtocol, addDocument, updateProperty } = useData();
   const [mode, setMode] = useState<"list" | "create">("list");
+  const [query, setQuery] = useState("");
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -310,11 +312,18 @@ export function ProtocolDialog({ open, onClose, landlordId }: ProtocolDialogProp
             <ClipboardList className="h-5 w-5" />
             פרוטוקול חדש
           </Button>
+          <div className="mb-3">
+            <SearchField value={query} onChange={setQuery} placeholder="חיפוש לפי שם, רחוב, דירה או עיר…" />
+          </div>
           <div className="space-y-2">
             {scopedProtocols.length === 0 && (
               <p className="py-6 text-center text-sm text-text-muted">אין פרוטוקולים עדיין.</p>
             )}
-            {scopedProtocols.map((p) => {
+            {scopedProtocols.filter((p) => {
+              const property = properties.find((item) => item.id === p.propertyId);
+              const tenant = tenants.find((item) => item.id === property?.tenantId);
+              return matchesPlaceQuery(query, property, [tenant?.fullName]);
+            }).map((p) => {
               const property = properties.find((pr) => pr.id === p.propertyId);
               const fullySigned = p.signedByTenant && p.signedByManager;
               return (
@@ -440,7 +449,7 @@ export function ProtocolDialog({ open, onClose, landlordId }: ProtocolDialogProp
           </div>
 
           <div>
-            <p className="mb-1.5 text-sm font-semibold text-navy">תמונות</p>
+            <p className="mb-1.5 text-sm font-semibold text-navy">צילומי מונים</p>
             <input
               ref={fileRef}
               type="file"

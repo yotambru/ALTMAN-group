@@ -12,6 +12,11 @@ export default function LoginPage() {
   const [formOpen, setFormOpen] = useState(false);
 
   useEffect(() => {
+    const alertId = new URLSearchParams(window.location.search).get("alert");
+    if (alertId) sessionStorage.setItem("altman-pending-alert", alertId);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
       const profile = await loadSessionUser();

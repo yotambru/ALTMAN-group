@@ -12,6 +12,8 @@ export interface AnnualReportExpenseRow {
   description: string;
   amount: number;
   date: string;
+  /** Street, apartment and city, e.g. "ספיר 21, דירה 6, כפר סבא". */
+  propertyLabel?: string;
   /** Override the formatted date cell (e.g. "שנתי · 2026"). */
   dateLabel?: string;
 }
@@ -62,13 +64,14 @@ function buildReportHtml(data: AnnualReportPdfInput): string {
 
   const expenseRows =
     data.expenses.length === 0
-      ? `<tr><td colspan="3" style="padding:12px;color:#7c89a1;">לא נרשמו הוצאות בשנה זו</td></tr>`
+      ? `<tr><td colspan="4" style="padding:12px;color:#7c89a1;">לא נרשמו הוצאות בשנה זו</td></tr>`
       : data.expenses
           .map(
             (e) => `
       <tr>
         <td style="padding:10px 12px;border-bottom:1px solid #eaeef5;font-weight:600;color:#14285a;">${escapeHtml(e.description)}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #eaeef5;color:#7c89a1;font-size:12px;">${escapeHtml(e.dateLabel ?? formatDateDots(e.date))}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eaeef5;color:#14285a;font-size:12px;">${escapeHtml(e.propertyLabel || "ללא שיוך לדירה")}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eaeef5;color:#7c89a1;font-size:12px;white-space:nowrap;">${escapeHtml(e.dateLabel ?? formatDateDots(e.date))}</td>
         <td style="padding:10px 12px;border-bottom:1px solid #eaeef5;font-weight:700;color:#14285a;text-align:left;white-space:nowrap;">
           ${formatCurrency(e.amount)}
         </td>
@@ -130,6 +133,7 @@ function buildReportHtml(data: AnnualReportPdfInput): string {
         <thead>
           <tr style="background:#f5f7fb;text-align:right;">
             <th style="padding:10px 12px;font-size:12px;color:#7c89a1;font-weight:700;">תיאור</th>
+            <th style="padding:10px 12px;font-size:12px;color:#7c89a1;font-weight:700;">דירה</th>
             <th style="padding:10px 12px;font-size:12px;color:#7c89a1;font-weight:700;">תאריך</th>
             <th style="padding:10px 12px;font-size:12px;color:#7c89a1;font-weight:700;text-align:left;">סכום</th>
           </tr>

@@ -1,13 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { CalendarClock } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { PropertyImage } from "@/components/brand/PropertyImage";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { SearchField } from "@/components/dashboard/ClientRow";
 import { useData } from "@/lib/store";
 import { nextPaymentDate } from "@/lib/payment-dates";
 import { paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
-import { comparePropertiesByLocation, currentMonthlyRent, propertyAddressLabel } from "@/lib/portfolio";
+import { comparePropertiesByLocation, currentMonthlyRent, matchesPlaceQuery, propertyAddressLabel } from "@/lib/portfolio";
 import { formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
 
 interface RentalsDialogProps {
@@ -20,6 +22,7 @@ interface RentalsDialogProps {
 /** All active leases with property, tenant, rent and next payment. */
 export function RentalsDialog({ open, onClose, landlordId }: RentalsDialogProps) {
   const { leases, properties, tenants, payments } = useData();
+  const [query, setQuery] = useState("");
   const rows = leases
     .filter((l) => l.active && (!landlordId || l.landlordId === landlordId))
     .map((lease) => ({
@@ -33,10 +36,16 @@ export function RentalsDialog({ open, onClose, landlordId }: RentalsDialogProps)
       if (!a.property) return 1;
       if (!b.property) return -1;
       return comparePropertiesByLocation(a.property, b.property);
-    });
+    })
+    .filter(({ property, tenant }) =>
+      matchesPlaceQuery(query, property, [tenant?.fullName]),
+    );
 
   return (
     <Modal open={open} onClose={onClose} title="ניהול שכירויות" description={`${rows.length} שכירויות פעילות`}>
+      <div className="mb-3">
+        <SearchField value={query} onChange={setQuery} placeholder="חיפוש לפי שם, רחוב, דירה או עיר…" />
+      </div>
       <div className="space-y-2">
         {rows.map(({ lease, property, tenant, nextCheck }) => (
           <div key={lease.id} className="rounded-xl border border-border p-3">
@@ -45,7 +54,7 @@ export function RentalsDialog({ open, onClose, landlordId }: RentalsDialogProps)
                 <PropertyImage variant={property.imageId} src={property.photoUrls?.[0]} className="h-12 w-12 shrink-0" rounded="rounded-lg" />
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate font-bold text-navy">
+                <p className="text-pretty font-bold text-navy">
                   {property ? propertyAddressLabel(property) : "נכס"}
                 </p>
                 <p className="truncate text-xs text-text-muted">שוכר: {tenant?.fullName ?? "—"}</p>

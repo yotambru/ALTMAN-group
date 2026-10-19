@@ -5,9 +5,9 @@ import {
   Building2,
   CalendarCheck,
   CalendarDays,
-  ClipboardList,
   FileText,
   Home,
+  Receipt,
   MessagesSquare,
   PenLine,
   Banknote,
@@ -20,6 +20,7 @@ import { FocusActions } from "@/components/dashboard/FocusActions";
 import { PropertyRow } from "@/components/dashboard/PropertyCard";
 import { PropertyStatusFilter } from "@/components/dashboard/PropertyStatusFilter";
 import { DashboardFrame } from "@/components/dashboard/DashboardFrame";
+import { PinnedScreen } from "@/components/dashboard/PinnedScreen";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { MobileMenu, type MobileMenuItem } from "@/components/dashboard/MobileMenu";
 import { NotificationsTab } from "@/components/dashboard/NotificationsTab";
@@ -33,14 +34,15 @@ import { PropertyListDialog } from "@/features/properties/PropertyListDialog";
 import { RentalsDialog } from "@/features/leases/RentalsDialog";
 import { ChecksDialog } from "@/features/leases/ChecksDialog";
 import { AnnualReportDialog } from "@/features/reports/AnnualReportDialog";
+import { InvoicesPanel } from "@/features/reports/InvoicesPanel";
 import { TicketsDialog } from "@/features/maintenance/TicketsDialog";
 import { CriticalDatesDialog } from "@/features/alerts/CriticalDatesDialog";
-import { ProtocolDialog } from "@/features/protocol/ProtocolDialog";
 import { WithdrawalsDialog } from "@/features/withdrawals/WithdrawalsDialog";
 import { Toast } from "@/components/ui/Toast";
 import { useSession } from "@/lib/useSession";
 import { useData } from "@/lib/store";
 import { isNotificationForAudience } from "@/lib/notifications";
+import { usePendingAlert } from "@/lib/pending-alert";
 import { getCriticalDates } from "@/lib/alerts";
 import {
   occupancyPercent,
@@ -52,22 +54,24 @@ import {
   PORTFOLIO_YIELD_RATE,
 } from "@/lib/portfolio";
 import { heroIncomeChartProps } from "@/lib/hero-income-chart";
+import { unreadChatCount } from "@/lib/chat-unread";
 import { formatCurrency, formatDateDots } from "@/lib/utils";
 import { paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
 import { localTodayIso } from "@/lib/lease-periods";
 import { nextPaymentDate } from "@/lib/payment-dates";
 import type { AppNotification, Property, PropertyStatus } from "@/types";
 
-type Dialog = "list" | "rentals" | "critical" | "checks" | "protocol" | null;
-type HomePanel = "properties" | "docs" | "report" | "chat" | "tickets" | "withdrawals";
+type Dialog = "list" | "rentals" | "critical" | "checks" | null;
+type HomePanel = "properties" | "docs" | "report" | "invoices" | "chat" | "tickets" | "withdrawals";
 
 export default function LandlordDashboard() {
   const { session, user, ready, logout } = useSession("landlord");
-  const { properties, leases, documents, notifications, tenants, landlords, tickets, payments } = useData();
+  const { properties, leases, documents, notifications, tenants, landlords, tickets, payments, chatThreads, chatMessages } = useData();
   const landlordId = session.landlordId ?? user.landlordId ?? "l_1";
 
   const [tab, setTab] = useState<AppTab>("dashboard");
   const [homePanel, setHomePanel] = useState<HomePanel>("properties");
+  const [dashEpoch, setDashEpoch] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [docsCanSign, setDocsCanSign] = useState(false);
@@ -75,6 +79,7 @@ export default function LandlordDashboard() {
   const [detailProperty, setDetailProperty] = useState<Property | null>(null);
   const [statusFilter, setStatusFilter] = useState<PropertyStatus | "all">("all");
   const [focusWithdrawalId, setFocusWithdrawalId] = useState<string | null>(null);
+  const [focusTicketId, setFocusTicketId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [todayIso, setTodayIso] = useState(localTodayIso);
   const panelRef = useRef<HTMLElement>(null);
@@ -120,10 +125,15 @@ export default function LandlordDashboard() {
   const unread = notifications.filter(
     (n) => !n.read && isNotificationForAudience(n, user.id, "landlord"),
   ).length;
+  const chatUnread = unreadChatCount(session.userId, chatThreads, chatMessages);
 
-  const openPanel = (panel: HomePanel, opts?: { canSign?: boolean; withdrawalId?: string | null }) => {
+  const openPanel = (
+    panel: HomePanel,
+    opts?: { canSign?: boolean; withdrawalId?: string | null; ticketId?: string | null },
+  ) => {
     if (opts?.canSign !== undefined) setDocsCanSign(opts.canSign);
     setFocusWithdrawalId(panel === "withdrawals" ? (opts?.withdrawalId ?? null) : null);
+    setFocusTicketId(panel === "tickets" ? (opts?.ticketId ?? null) : null);
     setHomePanel(panel);
     setTab("dashboard");
   };
@@ -178,6 +188,8 @@ export default function LandlordDashboard() {
     }
   };
 
+  usePendingAlert(ready, notifications, openNotification);
+
   const myTenants = tenants.filter((t) => myPropertyIds.includes(t.propertyId));
   const myLandlordRecords = landlords.filter((l) => l.id === landlordId);
   const upcomingChecks = upcomingCheckPayments(
@@ -207,8 +219,8 @@ export default function LandlordDashboard() {
     { icon: FileText, label: "שכירויות", onClick: () => setDialog("rentals") },
     { icon: Banknote, label: "פרעון צ׳קים", onClick: () => setDialog("checks") },
     { icon: Vault, label: "כספת מסמכים", onClick: () => setTab("documents") },
-    { icon: ClipboardList, label: "פרוטוקול כניסה", onClick: () => setDialog("protocol") },
     { icon: FileText, label: "דוח שנתי", onClick: () => openPanel("report") },
+    { icon: Receipt, label: "חשבוניות", onClick: () => openPanel("invoices") },
     { icon: PenLine, label: "מסמכים לחתימה", onClick: () => openDocs(true) },
     { icon: MessagesSquare, label: "צ׳אט עם מנהל", onClick: () => openPanel("chat") },
     { icon: Banknote, label: "משיכה מיידית", onClick: () => openPanel("withdrawals") },
@@ -219,7 +231,7 @@ export default function LandlordDashboard() {
   const onNav = (id: string) => {
     const next = id as AppTab;
     if (next === "dashboard") {
-      if (tab === "dashboard") window.scrollTo({ top: 0, behavior: "smooth" });
+      setDashEpoch((n) => n + 1);
       setHomePanel("properties");
       setDocsCanSign(false);
       setFocusWithdrawalId(null);
@@ -231,6 +243,7 @@ export default function LandlordDashboard() {
   const panelTitles: Record<Exclude<HomePanel, "properties">, string> = {
     docs: docsCanSign ? "מסמכים לחתימה" : "מסמכים",
     report: `דוח שנתי ${new Date().getFullYear()}`,
+    invoices: "חשבוניות",
     chat: "צ׳אט עם מנהל",
     tickets: "סטטוס תקלות",
     withdrawals: "משיכה מיידית",
@@ -239,8 +252,89 @@ export default function LandlordDashboard() {
   if (!ready) return null;
 
   return (
-    <DashboardFrame items={appBottomNavItems(unread)} active={tab} onSelect={onNav} scrollResetKey={tab}>
-      {tab === "dashboard" ? (
+    <DashboardFrame
+      items={appBottomNavItems(unread)}
+      active={tab}
+      onSelect={onNav}
+      scrollResetKey={`${tab}:${homePanel}:${dashEpoch}`}
+      pinned={tab === "dashboard" && homePanel !== "properties"}
+    >
+      {tab === "dashboard" && homePanel !== "properties" ? (
+        <PinnedScreen
+          header={
+            <DashboardTopBar
+              tone="dusk"
+              greeting={`שלום, ${firstName}`}
+              subtitle="התיק שלך במבט אחד"
+              onMenu={() => setMenuOpen(true)}
+              onBell={() => setTab("notifications")}
+              notificationCount={unread}
+            />
+          }
+          title={panelTitles[homePanel]}
+          onBack={() => onNav("dashboard")}
+          scroll={homePanel !== "chat"}
+        >
+          {homePanel === "docs" && (
+            <DocumentsDialog
+              inline
+              searchable
+              documents={myDocs}
+              canSign={docsCanSign}
+              signerName={session.fullName}
+              properties={myProperties}
+              landlords={myLandlordRecords}
+              tenants={myTenants}
+              awaitingSignatureOnly={docsCanSign}
+              focusDocumentId={focusDocId}
+              hiddenFolders={["landlord_id"]}
+              filterByTenants
+            />
+          )}
+          {homePanel === "report" && (
+            <AnnualReportDialog
+              inline
+              landlordId={landlordId}
+              canAddExpenses
+              showAssetValues={false}
+              onOpenTicket={(ticketId) => openPanel("tickets", { ticketId })}
+              onOpenInvoices={() => openPanel("invoices")}
+            />
+          )}
+          {homePanel === "invoices" && (
+            <InvoicesPanel
+              landlordId={landlordId}
+              onOpenTicket={(ticketId) => openPanel("tickets", { ticketId })}
+            />
+          )}
+          {homePanel === "chat" && (
+            <ChatPanel
+              inline
+              self={{ id: session.userId, name: session.fullName, role: "landlord" }}
+              peers={[{ id: "u_manager", name: "מנהל הנכסים", subtitle: "ALTMAN Group" }]}
+              title="צ׳אט עם מנהל"
+            />
+          )}
+          {homePanel === "tickets" && (
+            <TicketsDialog
+              inline
+              propertyIds={myPropertyIds}
+              readOnly
+              title="סטטוס תקלות"
+              highlightTicketId={focusTicketId}
+            />
+          )}
+          {homePanel === "withdrawals" && (
+            <WithdrawalsDialog
+              inline
+              landlordId={landlordId}
+              createdByUserId={user.id}
+              highlightId={focusWithdrawalId}
+              onSubmitted={() => setToast("הבקשה נשלחה למנהל")}
+            />
+          )}
+        </PinnedScreen>
+      ) : tab === "dashboard" ? (
         <div className="dash-wide">
           <div className="dusk-header dash-wide-chrome">
             <DashboardTopBar
@@ -343,6 +437,7 @@ export default function LandlordDashboard() {
                   {
                     icon: MessagesSquare,
                     label: "צ׳אט",
+                    badge: chatUnread,
                     active: homePanel === "chat",
                     onClick: () => openPanel("chat"),
                   },
@@ -356,7 +451,6 @@ export default function LandlordDashboard() {
               />
 
               <section ref={panelRef} className="space-y-1 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
-                {homePanel === "properties" ? (
                   <>
                     <SectionHeader
                       title="פרעון צ׳קים"
@@ -430,50 +524,6 @@ export default function LandlordDashboard() {
                       )}
                     </div>
                   </>
-                ) : (
-                  <>
-                    <SectionHeader title={panelTitles[homePanel]} onBack={() => onNav("dashboard")} />
-                    {homePanel === "docs" && (
-                      <DocumentsDialog
-                        inline
-                        searchable
-                        documents={myDocs}
-                        canSign={docsCanSign}
-                        signerName={session.fullName}
-                        properties={myProperties}
-                        landlords={myLandlordRecords}
-                        tenants={myTenants}
-                        awaitingSignatureOnly={docsCanSign}
-                        focusDocumentId={focusDocId}
-                        hiddenFolders={["landlord_id"]}
-                        upload={{ ownerUserId: user.id, landlordId }}
-                      />
-                    )}
-                    {homePanel === "report" && (
-                      <AnnualReportDialog inline landlordId={landlordId} canAddExpenses showAssetValues={false} />
-                    )}
-                    {homePanel === "chat" && (
-                      <ChatPanel
-                        inline
-                        self={{ id: session.userId, name: session.fullName, role: "landlord" }}
-                        peers={[{ id: "u_manager", name: "מנהל הנכסים", subtitle: "ALTMAN Group" }]}
-                        title="צ׳אט עם מנהל"
-                      />
-                    )}
-                    {homePanel === "tickets" && (
-                      <TicketsDialog inline propertyIds={myPropertyIds} readOnly title="סטטוס תקלות" />
-                    )}
-                    {homePanel === "withdrawals" && (
-                      <WithdrawalsDialog
-                        inline
-                        landlordId={landlordId}
-                        createdByUserId={user.id}
-                        highlightId={focusWithdrawalId}
-                        onSubmitted={() => setToast("הבקשה נשלחה למנהל")}
-                      />
-                    )}
-                  </>
-                )}
               </section>
             </div>
           </div>
@@ -500,7 +550,7 @@ export default function LandlordDashboard() {
                   tenants={myTenants}
                   focusDocumentId={tab === "documents" ? focusDocId : null}
                   hiddenFolders={["landlord_id"]}
-                  upload={{ ownerUserId: user.id, landlordId }}
+                  filterByTenants
                 />
               </div>
             )}
@@ -560,11 +610,6 @@ export default function LandlordDashboard() {
         canReportReturned
       />
       <CriticalDatesDialog open={dialog === "critical"} onClose={() => setDialog(null)} landlordId={landlordId} />
-      <ProtocolDialog
-        open={dialog === "protocol"}
-        onClose={() => setDialog(null)}
-        landlordId={landlordId}
-      />
       <PropertyDetailDialog
         property={detailProperty}
         onClose={() => setDetailProperty(null)}

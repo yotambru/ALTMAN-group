@@ -1,5 +1,6 @@
-import { daysUntil } from "@/lib/utils";
-import type { Lease, Property, TenantOnboarding, UtilityKind } from "@/types";
+import { propertyAddressLabel } from "@/lib/portfolio";
+import { daysUntil, formatDateDots } from "@/lib/utils";
+import type { AppNotification, Lease, Property, Tenant, TenantOnboarding, User, UtilityKind } from "@/types";
 
 const utilityLabel: Record<UtilityKind, string> = {
   arnona: "ארנונה",
@@ -53,7 +54,7 @@ export function getCriticalDates(
       id: `${lease.id}_${kind}`,
       leaseId: lease.id,
       propertyId: lease.propertyId,
-      address: property ? `${property.address}, ${property.city}` : "נכס",
+      address: property ? propertyAddressLabel(property) : "נכס",
       kind,
       label: kindLabels[kind],
       date,
@@ -156,6 +157,54 @@ export function onboardingReminderDue(
     return { due: daysSinceMoveIn % 3 === 0, cadence: "every3" };
   }
   return { due: true, cadence: "daily" };
+}
+
+/**
+ * Real inbox rows for critical dates inside the 90-day window.
+ * Stable ids so the same date is not announced twice.
+ */
+export function criticalReminderNotifications(
+  state: {
+    leases: Lease[];
+    properties: Property[];
+    tenants: Tenant[];
+    users: User[];
+    notifications: AppNotification[];
+  },
+  from: Date = new Date(),
+): AppNotification[] {
+  const dates = getCriticalDates(state.leases, state.properties, 90, from);
+  const existing = new Set(state.notifications.map((n) => n.id));
+  const createdAt = from.toISOString();
+  const added: AppNotification[] = [];
+  const managers = state.users.filter((user) => user.role === "manager");
+
+  for (const date of dates) {
+    const property = state.properties.find((item) => item.id === date.propertyId);
+    const tenant = state.tenants.find((item) => item.id === property?.tenantId);
+    const place = property ? propertyAddressLabel(property) : date.address;
+    const who = tenant?.fullName ? ` · ${tenant.fullName}` : "";
+    const body = `${date.label} · ${place}${who} · ${formatDateDots(date.date)}`;
+    const recipientIds = new Set<string>(managers.map((user) => user.id));
+    for (const user of state.users) {
+      if (user.landlordId && user.landlordId === property?.landlordId) recipientIds.add(user.id);
+    }
+    for (const userId of recipientIds) {
+      const id = `crit_${date.id}_${userId}`;
+      if (existing.has(id)) continue;
+      added.push({
+        id,
+        kind: "critical",
+        title: "תזכורת מועד קריטי",
+        body,
+        createdAt,
+        read: false,
+        forUserId: userId,
+        relatedId: date.propertyId,
+      });
+    }
+  }
+  return added;
 }
 
 /** Whether AC filters are due for cleaning (every 3 months). */

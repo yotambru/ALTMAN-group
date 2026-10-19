@@ -28,6 +28,7 @@ import { HeroStatCard } from "@/components/dashboard/HeroStatCard";
 import { FocusActions } from "@/components/dashboard/FocusActions";
 import { AlertStrip } from "@/components/dashboard/AlertStrip";
 import { DashboardFrame } from "@/components/dashboard/DashboardFrame";
+import { PinnedScreen } from "@/components/dashboard/PinnedScreen";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { MobileMenu, type MobileMenuItem } from "@/components/dashboard/MobileMenu";
 import { NotificationsTab } from "@/components/dashboard/NotificationsTab";
@@ -40,12 +41,14 @@ import { PropertyImage } from "@/components/brand/PropertyImage";
 import { TicketModal } from "@/features/maintenance/TicketModal";
 import { TicketsDialog } from "@/features/maintenance/TicketsDialog";
 import { ChatPanel } from "@/features/chat/ChatPanel";
+import { unreadChatCount } from "@/lib/chat-unread";
 import { DocumentsDialog } from "@/features/documents/DocumentsDialog";
 import { PropertyDetailDialog } from "@/features/properties/PropertyDetailDialog";
 import { UtilityAccountDetails } from "@/features/utilities/UtilityAccountDetails";
 import { useSession } from "@/lib/useSession";
 import { useData, utilityLabelHe } from "@/lib/store";
 import { isNotificationForAudience } from "@/lib/notifications";
+import { usePendingAlert } from "@/lib/pending-alert";
 import { storage } from "@/lib/storage";
 import { inferDocumentFolder } from "@/lib/document-folders";
 import {
@@ -56,7 +59,7 @@ import {
   pendingOnboardingCount,
   pendingOnboardingLabels,
 } from "@/lib/alerts";
-import { currentMonthlyRent } from "@/lib/portfolio";
+import { currentMonthlyRent, propertyAddressLabel } from "@/lib/portfolio";
 import { nextPaymentDate } from "@/lib/payment-dates";
 import { paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
 import { uploadBinaryFile } from "@/lib/supabase/files";
@@ -83,6 +86,19 @@ const utilityIcon: Record<UtilityKind, LucideIcon> = {
 
 const utilityOrder: UtilityKind[] = ["vaad", "gas", "electricity", "water", "arnona"];
 
+function PendingAlertOpener({
+  ready,
+  notifications,
+  open,
+}: {
+  ready: boolean;
+  notifications: AppNotification[];
+  open: (notification: AppNotification) => void;
+}) {
+  usePendingAlert(ready, notifications, open);
+  return null;
+}
+
 export default function TenantDashboard() {
   const { session, user, ready, logout } = useSession("tenant");
   const {
@@ -98,6 +114,8 @@ export default function TenantDashboard() {
     markAcFilterCleaned,
     addDocument,
     addNotification,
+    chatThreads,
+    chatMessages,
   } = useData();
 
   const tenantId = session.tenantId ?? user.tenantId ?? "t_5";
@@ -118,6 +136,7 @@ export default function TenantDashboard() {
   const unread = notifications.filter(
     (n) => !n.read && isNotificationForAudience(n, user.id, "tenant"),
   ).length;
+  const chatUnread = unreadChatCount(session.userId, chatThreads, chatMessages);
   const myDocs = documents.filter((d) => {
     const belongsToTenant = d.ownerUserId === user.id || (d.propertyId && d.propertyId === property?.id);
     if (!belongsToTenant) return false;
@@ -130,6 +149,7 @@ export default function TenantDashboard() {
   const [tab, setTab] = useState<AppTab>("dashboard");
   /** Always start on home — first render uses a demo session, so `locked` is not yet trustworthy. */
   const [homePanel, setHomePanel] = useState<HomePanel>("home");
+  const [dashEpoch, setDashEpoch] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   /** Infinitive phrase for the lock sheet, e.g. "להשתמש בצ׳אט עם המנהל". */
@@ -138,13 +158,10 @@ export default function TenantDashboard() {
   const fileRef = useRef<HTMLInputElement>(null);
   const pendingUpload = useRef<UtilityKind | "insurance" | null>(null);
 
-  // Wait for the real session before choosing a panel — first render is the demo user.
-  if (ready) {
-    if (locked && homePanel !== "home") {
-      setHomePanel("home");
-    } else if (!locked && homePanel === "home") {
-      setHomePanel("chat");
-    }
+  // Lock keeps the tenant on home (required uploads). After release, stay on
+  // whatever panel they opened — do not force chat, or Back/home become unreachable.
+  if (ready && locked && homePanel !== "home") {
+    setHomePanel("home");
   }
 
   useEffect(() => {
@@ -271,7 +288,7 @@ export default function TenantDashboard() {
       case "critical":
       default:
         setTab("dashboard");
-        setHomePanel(locked ? "home" : "chat");
+        setHomePanel("home");
         break;
     }
   };
@@ -283,8 +300,8 @@ export default function TenantDashboard() {
       return;
     }
     if (next === "dashboard") {
-      if (tab === "dashboard") window.scrollTo({ top: 0, behavior: "smooth" });
-      setHomePanel(locked ? "home" : "chat");
+      setDashEpoch((n) => n + 1);
+      setHomePanel("home");
     }
     setTab(next);
   };
@@ -315,7 +332,14 @@ export default function TenantDashboard() {
   if (!ready) return null;
 
   return (
-    <DashboardFrame items={appBottomNavItems(unread)} active={tab} onSelect={onNav}>
+    <DashboardFrame
+      items={appBottomNavItems(unread)}
+      active={tab}
+      onSelect={onNav}
+      scrollResetKey={`${tab}:${homePanel}:${dashEpoch}`}
+      pinned={tab === "dashboard" && homePanel !== "home" && !locked}
+    >
+      <PendingAlertOpener ready={ready} notifications={notifications} open={openNotification} />
       <input
         ref={fileRef}
         type="file"
@@ -336,16 +360,65 @@ export default function TenantDashboard() {
         />
       )}
 
-      {tab === "dashboard" ? (
+      {tab === "dashboard" && homePanel !== "home" && !locked ? (
+        <PinnedScreen
+          header={
+            <DashboardTopBar
+              tone="dusk"
+              greeting={`שלום, ${firstName}`}
+              subtitle={
+                property ? propertyAddressLabel(property) : "הדירה שלך במבט אחד"
+              }
+              onMenu={() => setMenuOpen(true)}
+              onBell={() => setTab("notifications")}
+              notificationCount={unread}
+            />
+          }
+          title={panelTitles[homePanel]}
+          onBack={() => setHomePanel("home")}
+          scroll={homePanel !== "chat"}
+        >
+          {homePanel === "chat" && (
+            <ChatPanel
+              inline
+              self={{ id: session.userId, name: session.fullName, role: "tenant" }}
+              peers={[{ id: "u_manager", name: "מנהל הנכסים", subtitle: "ALTMAN Group" }]}
+              title="צ׳אט עם מנהל"
+            />
+          )}
+          {homePanel === "tickets" && (
+            <TicketsDialog
+              inline
+              propertyIds={[property.id]}
+              readOnly
+              canAddNote
+              canViewInvoices={false}
+              hideResolved
+              title="מעקב תקלות"
+            />
+          )}
+          {homePanel === "docs" && (
+            <DocumentsDialog
+              inline
+              searchable
+              documents={myDocs}
+              canSign
+              signerName={session.fullName}
+              properties={tenantProperties}
+              hiddenFolders={["id_photos", "landlord_id", "management", "expenses"]}
+              awaitingSignatureOnly
+              focusDocumentId={focusDocId}
+            />
+          )}
+        </PinnedScreen>
+      ) : tab === "dashboard" ? (
         <div className="dash-wide">
         <div className="dusk-header dash-wide-chrome">
           <DashboardTopBar
             tone="dusk"
             greeting={`שלום, ${firstName}`}
             subtitle={
-              property
-                ? `${property.address}, ${property.city}`
-                : "הדירה שלך במבט אחד"
+              property ? propertyAddressLabel(property) : "הדירה שלך במבט אחד"
             }
             onMenu={() => setMenuOpen(true)}
             onBell={() => setTab("notifications")}
@@ -421,6 +494,7 @@ export default function TenantDashboard() {
                 {
                   icon: locked ? Lock : MessagesSquare,
                   label: "צ׳אט",
+                  badge: locked ? undefined : chatUnread,
                   active: homePanel === "chat",
                   onClick: guard("להשתמש בצ׳אט עם המנהל", () => openPanel("chat")),
                 },
@@ -439,42 +513,6 @@ export default function TenantDashboard() {
               ]}
             />
 
-            {homePanel !== "home" && !locked ? (
-              <section className="space-y-3 rounded-2xl bg-surface p-3 shadow-sm ring-1 ring-border">
-                <SectionHeader title={panelTitles[homePanel]} onBack={() => setHomePanel("home")} />
-                {homePanel === "chat" && (
-                  <ChatPanel
-                    inline
-                    self={{ id: session.userId, name: session.fullName, role: "tenant" }}
-                    peers={[{ id: "u_manager", name: "מנהל הנכסים", subtitle: "ALTMAN Group" }]}
-                    title="צ׳אט עם מנהל"
-                  />
-                )}
-                {homePanel === "tickets" && (
-                    <TicketsDialog
-                      inline
-                      propertyIds={[property.id]}
-                      readOnly
-                      canViewInvoices={false}
-                      hideResolved
-                      title="מעקב תקלות"
-                    />
-                )}
-                {homePanel === "docs" && (
-                  <DocumentsDialog
-                    inline
-                    searchable
-                    documents={myDocs}
-                    canSign
-                    signerName={session.fullName}
-                    properties={tenantProperties}
-                    hiddenFolders={["id_photos", "landlord_id", "management", "expenses"]}
-                    awaitingSignatureOnly
-                    focusDocumentId={focusDocId}
-                  />
-                )}
-              </section>
-            ) : (
               <>
             {/* Active property — compact row */}
             <button
@@ -619,7 +657,6 @@ export default function TenantDashboard() {
               </div>
             )}
               </>
-            )}
             </div>
           </div>
         </div>
@@ -666,7 +703,6 @@ export default function TenantDashboard() {
             userId={user.id}
             fullName={session.fullName}
             role="tenant"
-            detail={`${property.address}, ${property.city}`}
             onLogout={logout}
             onBack={() => onNav("dashboard")}
           />

@@ -2,7 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Assistant } from "next/font/google";
 import "./globals.css";
 import { DataProvider } from "@/lib/store";
+import { AlertBridge } from "@/components/native/AlertBridge";
 import { CapacitorBootstrap } from "@/components/native/CapacitorBootstrap";
+import { SessionLock } from "@/components/native/SessionLock";
 import { OfflineBanner } from "@/components/native/OfflineBanner";
 import { PersistBanner } from "@/components/native/PersistBanner";
 
@@ -49,6 +51,8 @@ export default function RootLayout({
         />
         <DataProvider>
           <CapacitorBootstrap />
+          <SessionLock />
+          <AlertBridge />
           <OfflineBanner />
           <PersistBanner />
           {children}

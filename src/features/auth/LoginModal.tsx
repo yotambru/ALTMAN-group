@@ -15,6 +15,8 @@ import {
   validateNewPassword,
 } from "@/lib/auth";
 import { routeByRole } from "@/lib/permissions";
+import { claimManagerDevice } from "@/lib/manager-devices";
+import { getSupabase } from "@/lib/supabase/client";
 import { storage } from "@/lib/storage";
 import { useRouter } from "next/navigation";
 
@@ -91,6 +93,14 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
     if (!profile) {
       setError("ההתחברות הצליחה אך לא נמצא פרופיל. פנו למשרד.");
       return;
+    }
+    if (profile.role === "manager") {
+      const gate = await claimManagerDevice(profile.id);
+      if (!gate.ok) {
+        await getSupabase()?.auth.signOut();
+        setError(gate.error);
+        return;
+      }
     }
     storage.setSession({
       role: profile.role,

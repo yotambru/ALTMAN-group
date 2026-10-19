@@ -15,6 +15,8 @@ interface BottomNavigationProps {
   /** Currently active item id. */
   active: string;
   onSelect: (id: string) => void;
+  /** Keep content clear of the floating bar. Off while the keyboard covers the bar. */
+  inset?: boolean;
 }
 
 /**
@@ -24,13 +26,16 @@ export function BottomNavigation({
   items,
   active,
   onSelect,
+  inset = true,
 }: BottomNavigationProps) {
   return (
     <div className="lg:hidden">
-      <div
-        className="h-[calc(6.75rem+env(safe-area-inset-bottom))] shrink-0"
-        aria-hidden
-      />
+      {inset && (
+        <div
+          className="h-[calc(6.75rem+env(safe-area-inset-bottom))] shrink-0"
+          aria-hidden
+        />
+      )}
       <nav
         aria-label="ניווט ראשי"
         className="pointer-events-none fixed inset-x-0 bottom-0 z-[var(--z-nav)] mx-auto w-full max-w-[30rem] px-1.5 pb-0"

@@ -57,7 +57,7 @@ export function LeaseScheduleFields({
     : startDate
       ? buildLeasePeriods(startDate, endDate || undefined)
       : [];
-  const rentFields = alignPeriodRents(periodRents, Math.max(activePeriods.length, 1), listedRentHint);
+  const rentFields = alignPeriodRents(periodRents, Math.max(activePeriods.length, 1));
   const listedHint =
     listedRentHint && Number(listedRentHint) > 0
       ? `שכ״ד מבוקש בנכס: ${formatCurrency(Number(listedRentHint))}`
@@ -67,7 +67,7 @@ export function LeaseScheduleFields({
 
   const applyPeriods = (next: LeasePeriod[]) => {
     onPeriodsChange(next);
-    onPeriodRentsChange(alignPeriodRents(periodRents, Math.max(next.length, 1), listedRentHint));
+    onPeriodRentsChange(alignPeriodRents(periodRents, Math.max(next.length, 1)));
   };
 
   return (
@@ -153,7 +153,7 @@ export function LeaseScheduleFields({
                   inputProps={{
                     value: formatMoneyInput(rentFields[i] ?? "") || rentFields[i] || "",
                     onChange: (e) => {
-                      const next = alignPeriodRents(periodRents, activePeriods.length, listedRentHint);
+                      const next = alignPeriodRents(periodRents, activePeriods.length);
                       onPeriodRentsChange(
                         next.map((value, index) =>
                           index === i ? maskMoneyInput(e.target.value) : value,
@@ -162,7 +162,7 @@ export function LeaseScheduleFields({
                     },
                     inputMode: "numeric",
                     required: true,
-                    placeholder: listedRentHint ? formatMoneyInput(listedRentHint) || "₪" : "₪",
+                    placeholder: "₪",
                     dir: "ltr",
                   }}
                 />
@@ -200,7 +200,7 @@ export function LeaseScheduleFields({
             onChange: (e) => onPeriodRentsChange([maskMoneyInput(e.target.value)]),
             inputMode: "numeric",
             required: startRequired,
-            placeholder: listedRentHint ? formatMoneyInput(listedRentHint) || undefined : undefined,
+            placeholder: "₪",
             dir: "ltr",
           }}
         />

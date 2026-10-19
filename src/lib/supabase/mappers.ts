@@ -587,20 +587,52 @@ function taskFromRow(row: Row): Task {
   };
 }
 
+const THREAD_READ_MARK = "\u241e";
+
+function readAtFrom(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const readAt: Record<string, string> = {};
+  for (const [userId, at] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof at === "string" && at) readAt[userId] = at;
+  }
+  return Object.keys(readAt).length ? readAt : undefined;
+}
+
+/** The thread title is not shown. The read cursor is stored after a separator so it persists with the thread row. */
+function decodeThreadTitle(raw: string): { title: string; readAt?: Record<string, string> } {
+  const mark = raw.indexOf(THREAD_READ_MARK);
+  if (mark < 0) return { title: raw };
+  let readAt: Record<string, string> | undefined;
+  try {
+    readAt = readAtFrom(JSON.parse(raw.slice(mark + THREAD_READ_MARK.length)));
+  } catch {
+    readAt = undefined;
+  }
+  return { title: raw.slice(0, mark), readAt };
+}
+
+function encodeThreadTitle(title: string, readAt: ChatThread["readAt"]): string {
+  const human = title.split(THREAD_READ_MARK)[0];
+  if (!readAt || Object.keys(readAt).length === 0) return human;
+  return `${human}${THREAD_READ_MARK}${JSON.stringify(readAt)}`;
+}
+
 function threadToRow(t: ChatThread): Row {
   return {
     id: t.id,
     participant_ids: t.participantIds,
-    title: t.title,
+    title: encodeThreadTitle(t.title, t.readAt),
   };
 }
 
 function threadFromRow(row: Row): ChatThread {
   const ids = strArr(row.participant_ids);
+  const decoded = decodeThreadTitle(str(row.title));
   return {
     id: str(row.id),
     participantIds: [ids[0] ?? "", ids[1] ?? ""],
-    title: str(row.title),
+    title: decoded.title,
+    readAt: readAtFrom(row.read_at) ?? decoded.readAt,
   };
 }
 

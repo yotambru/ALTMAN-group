@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Camera, KeyRound, LogOut, Trash2, UserX } from "lucide-react";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -9,10 +9,62 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toast } from "@/components/ui/Toast";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { ChangePasswordDialog } from "@/features/auth/ChangePasswordDialog";
+import { localDeviceId } from "@/lib/manager-devices";
 import { roleLabels } from "@/lib/permissions";
 import { useData } from "@/lib/store";
+import { getSupabase } from "@/lib/supabase/client";
 import { uploadImageFile } from "@/lib/supabase/files";
 import type { Role } from "@/types";
+
+function ManagerDevices({
+  userId,
+  notifications,
+  hidden,
+  onHidden,
+}: {
+  userId: string;
+  notifications: { id: string; kind: string; title: string; forUserId?: string; relatedId?: string }[];
+  hidden: string[];
+  onHidden: (ids: string[]) => void;
+}) {
+  const [mine, setMine] = useState("");
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- device id lives in localStorage */
+    setMine(localDeviceId());
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+  const devices = notifications.filter(
+    (note) =>
+      note.kind === "session" &&
+      note.forUserId === userId &&
+      note.relatedId &&
+      note.relatedId !== "alert-token" &&
+      !hidden.includes(note.id),
+  );
+  if (devices.length === 0) return null;
+  const disconnect = async (id: string) => {
+    onHidden([...hidden, id]);
+    await getSupabase()?.from("notifications").delete().eq("id", id);
+  };
+  return (
+    <div className="mt-4 w-full space-y-2 text-start">
+      <p className="text-xs font-semibold text-text-muted">מכשירים מחוברים</p>
+      {devices.map((device) => (
+        <div key={device.id} className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2">
+          <span className="text-sm font-semibold text-navy">
+            {device.title}
+            {device.relatedId === mine ? " · המכשיר הזה" : ""}
+          </span>
+          {device.relatedId !== mine && (
+            <button type="button" onClick={() => void disconnect(device.id)} className="text-xs font-semibold text-danger">
+              ניתוק
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 interface ProfileTabProps {
   userId: string;
@@ -39,7 +91,8 @@ export function ProfileTab({
   onBack,
   allowDeleteAccount = false,
 }: ProfileTabProps) {
-  const { users, updateUser, deleteOwnAccount } = useData();
+  const { users, notifications, updateUser, deleteOwnAccount } = useData();
+  const [hiddenDevices, setHiddenDevices] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -111,6 +164,7 @@ export function ProfileTab({
         <p className="mt-2 text-lg font-bold text-navy">{fullName}</p>
         <p className="text-sm text-text-muted">{roleLabels[role]}</p>
         {detail && <p className="mt-1 text-sm text-text">{detail}</p>}
+        {role === "manager" && <ManagerDevices userId={userId} hidden={hiddenDevices} onHidden={setHiddenDevices} notifications={notifications} />}
         <div className="mt-3 flex w-full flex-col gap-2">
           <Button
             variant="outline"

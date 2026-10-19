@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useData } from "@/lib/store";
+import { ticketOpenerName, ticketSubjectLine } from "@/lib/ticket-subject";
 import { cn, fileToDataUrl, formatDateDots, parseMoneyInput } from "@/lib/utils";
 import { localTodayIso } from "@/lib/lease-periods";
 import type { AppDocument, MaintenanceTicket, TicketPriority, TicketStatus } from "@/types";
@@ -39,6 +40,8 @@ interface TicketsDialogProps {
   inline?: boolean;
   propertyIds?: string[];
   readOnly?: boolean;
+  /** Tenant may append a note. Status and the original description stay as they are. */
+  canAddNote?: boolean;
   /** Keep treatment invoices private from tenants when viewing tickets. */
   canViewInvoices?: boolean;
   title?: string;
@@ -54,12 +57,13 @@ export function TicketsDialog({
   inline = false,
   propertyIds,
   readOnly = false,
+  canAddNote = false,
   canViewInvoices = true,
   title = "ניהול קריאות ותקלות",
   highlightTicketId = null,
   hideResolved = false,
 }: TicketsDialogProps) {
-  const { tickets, properties, professionals, documents, setTicketStatus, assignTicket, attachTicketInvoice } =
+  const { tickets, properties, professionals, documents, tenants, users, attachTicketInvoice } =
     useData();
   const [filter, setFilter] = useState<TicketStatus | "all">("all");
   const [query, setQuery] = useState("");
@@ -81,8 +85,7 @@ export function TicketsDialog({
           t.category,
           statusMeta[t.status].label,
           priorityMeta[t.priority].label,
-          prop?.address,
-          prop?.city,
+          ticketSubjectLine(prop, ticketOpenerName(t.createdById, tenants, users)),
           pro?.fullName,
           pro?.trade,
         ]
@@ -99,7 +102,7 @@ export function TicketsDialog({
       }
     }
     return list;
-  }, [tickets, propertyIds, hideResolved, effectiveFilter, highlightTicketId, query, properties, professionals]);
+  }, [tickets, propertyIds, hideResolved, effectiveFilter, highlightTicketId, query, properties, professionals, tenants, users]);
 
   const propertyById = (id: string) => properties.find((p) => p.id === id);
   const emptyMessage = query.trim()
@@ -112,7 +115,7 @@ export function TicketsDialog({
         <SearchField
           value={query}
           onChange={setQuery}
-          placeholder="חיפוש לפי כותרת, כתובת, קטגוריה או בעל מקצוע…"
+          placeholder="חיפוש לפי כותרת, דייר, דירה, כתובת או בעל מקצוע…"
         />
         <div className="flex gap-1.5">
           {(hideResolved ? filters.filter((f) => f.id !== "resolved") : filters).map((f) => (
@@ -140,7 +143,10 @@ export function TicketsDialog({
             key={`${t.id}-${t.id === highlightTicketId ? "focus" : "row"}`}
             ticket={t}
             highlighted={t.id === highlightTicketId}
-            propertyLabel={propertyById(t.propertyId)?.address}
+            subjectLine={ticketSubjectLine(
+              propertyById(t.propertyId),
+              ticketOpenerName(t.createdById, tenants, users),
+            )}
             professionalName={professionals.find((p) => p.id === t.assignedProfessionalId)?.fullName}
             professionals={professionals}
             invoice={
@@ -150,8 +156,7 @@ export function TicketsDialog({
             }
             canViewInvoices={canViewInvoices}
             readOnly={readOnly}
-            onStatus={(s, note) => setTicketStatus(t.id, s, note)}
-            onAssign={(pid, when) => assignTicket(t.id, pid, when)}
+            canAddNote={canAddNote}
             onAttachInvoice={async (file) => {
               const dataUrl = await fileToDataUrl(file);
               attachTicketInvoice(t.id, {
@@ -174,40 +179,49 @@ export function TicketsDialog({
   );
 }
 
+function noteStamp(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "—";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${formatDateDots(iso)} ${hh}:${mm}`;
+}
+
 function TicketRow({
   ticket,
   highlighted,
-  propertyLabel,
+  subjectLine,
   professionalName,
   professionals,
   invoice,
   canViewInvoices,
   readOnly,
-  onStatus,
-  onAssign,
+  canAddNote,
   onAttachInvoice,
 }: {
   ticket: MaintenanceTicket;
   highlighted?: boolean;
-  propertyLabel?: string;
+  subjectLine?: string;
   professionalName?: string;
   professionals: { id: string; fullName: string; trade: string; phone: string }[];
   invoice?: AppDocument;
   canViewInvoices: boolean;
   readOnly: boolean;
-  onStatus: (s: TicketStatus, note?: string) => void;
-  onAssign: (professionalId: string, scheduledAt?: string) => void;
+  canAddNote: boolean;
   onAttachInvoice: (file: File) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(Boolean(highlighted));
   const [uploading, setUploading] = useState(false);
   const [guestName, setGuestName] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
+  const [draftStatus, setDraftStatus] = useState(ticket.status);
+  const [draftProfessionalId, setDraftProfessionalId] = useState(ticket.assignedProfessionalId ?? "");
+  const [note, setNote] = useState("");
   const [tenantNote, setTenantNote] = useState("");
   const [expenseDesc, setExpenseDesc] = useState(ticket.title);
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseSaved, setExpenseSaved] = useState(false);
-  const { addProfessional, addExpense, properties, tenants, expenses } = useData();
+  const { commitTicketUpdate, addExpense, properties, expenses } = useData();
   const ref = useRef<HTMLDivElement>(null);
   const invoiceInputRef = useRef<HTMLInputElement>(null);
   const photoUrl = useSignedUrl(ticket.photoDataUrl);
@@ -220,6 +234,34 @@ function TicketRow({
     });
     return () => cancelAnimationFrame(id);
   }, [highlighted]);
+
+  const savedKey = `${ticket.id}|${ticket.status}|${ticket.assignedProfessionalId ?? ""}`;
+  const [syncedKey, setSyncedKey] = useState(savedKey);
+  if (syncedKey !== savedKey) {
+    setSyncedKey(savedKey);
+    setDraftStatus(ticket.status);
+    setDraftProfessionalId(ticket.assignedProfessionalId ?? "");
+    setNote("");
+    setGuestName("");
+    setGuestPhone("");
+  }
+
+  const discardDraft = () => {
+    setDraftStatus(ticket.status);
+    setDraftProfessionalId(ticket.assignedProfessionalId ?? "");
+    setNote("");
+    setGuestName("");
+    setGuestPhone("");
+  };
+
+  const guestReady = Boolean(guestName.trim() && guestPhone.trim());
+  const dirty =
+    draftStatus !== ticket.status ||
+    note.trim().length > 0 ||
+    guestReady ||
+    draftProfessionalId !== (ticket.assignedProfessionalId ?? "");
+  const savedNotes = (ticket.updates ?? []).filter((update) => update.note?.trim());
+  const assigned = professionals.find((item) => item.id === ticket.assignedProfessionalId);
 
   const invoiceAlreadyExpensed = Boolean(
     invoice && expenses.some((e) => e.invoiceDocId === invoice.id),
@@ -247,7 +289,14 @@ function TicketRow({
           : "border-border",
       )}
     >
-      <button type="button" onClick={() => setExpanded((e) => !e)} className="flex w-full items-start gap-3 text-start">
+      <button
+        type="button"
+        onClick={() => {
+          if (expanded) discardDraft();
+          setExpanded((open) => !open);
+        }}
+        className="flex w-full items-start gap-3 text-start"
+      >
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-orange-soft text-orange">
           <Wrench className="h-5 w-5" />
         </span>
@@ -258,9 +307,9 @@ function TicketRow({
               {statusMeta[ticket.status].label}
             </StatusBadge>
           </div>
-          <p className="truncate text-xs text-text-muted">
-            {ticket.category}
-            {propertyLabel ? ` • ${propertyLabel}` : ""}
+          <p className="text-pretty text-xs text-text-muted">
+            {subjectLine || ticket.category}
+            {subjectLine ? ` · ${ticket.category}` : ""}
           </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <StatusBadge tone={priorityMeta[ticket.priority].tone}>
@@ -409,103 +458,152 @@ function TicketRow({
             </div>
           )}
 
-          {!readOnly && (
-            <>
-              <div>
-                <p className="mb-1.5 text-xs font-semibold text-navy">עדכון סטטוס</p>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {(Object.keys(statusMeta) as TicketStatus[]).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => onStatus(s)}
-                      className={
-                        "rounded-lg border py-1.5 text-xs font-semibold transition-colors " +
-                        (ticket.status === s
-                          ? "border-navy bg-navy text-white"
-                          : "border-border bg-surface text-text-muted hover:bg-surface-muted")
-                      }
-                    >
-                      {statusMeta[s].label}
-                    </button>
-                  ))}
-                </div>
-                <textarea
-                  value={tenantNote}
-                  onChange={(e) => setTenantNote(e.target.value)}
-                  rows={2}
-                  placeholder="הודעה לדייר (לא חובה)"
-                  className="mt-2 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted focus:border-orange focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const assigned = professionals.find((p) => p.id === ticket.assignedProfessionalId);
-                    const tenant = tenants.find((item) => {
-                      const property = properties.find((p) => p.id === ticket.propertyId);
-                      return item.id === property?.tenantId;
-                    });
-                    const greeting = tenant?.fullName?.split(/\s+/)[0] || "דייר";
-                    const template = assigned
-                      ? `שלום ${greeting}, איש המקצוע ייצור איתך קשר, אלו הפרטים שלו: ${assigned.fullName} ${assigned.phone}`
-                      : tenantNote.trim();
-                    onStatus(ticket.status === "open" ? "in_progress" : ticket.status, tenantNote.trim() || template);
-                    setTenantNote("");
-                  }}
-                  className="mt-1.5 text-xs font-semibold text-orange"
-                >
-                  שליחת עדכון לדייר
-                </button>
-              </div>
+          {(savedNotes.length > 0 || assigned) && (
+            <div className="rounded-xl border border-border bg-surface-muted/60 p-3">
+              <p className="mb-1.5 text-xs font-semibold text-navy">העדכון שנשמר</p>
+              {savedNotes.map((update) => (
+                <p key={`${update.at}-${update.note}`} className="text-sm text-text">
+                  <span className="text-text-muted">{noteStamp(update.at)} · </span>
+                  {update.note}
+                </p>
+              ))}
+              {assigned && (
+                <p className="mt-1.5 text-sm font-semibold text-navy">
+                  {assigned.fullName}
+                  {assigned.phone ? (
+                    <>
+                      {" · "}
+                      <span dir="ltr">{assigned.phone}</span>
+                    </>
+                  ) : null}
+                </p>
+              )}
+            </div>
+          )}
 
-              <div>
-                <p className="mb-1.5 text-xs font-semibold text-navy">שיוך בעל מקצוע</p>
-                <select
-                  value={ticket.assignedProfessionalId ?? ""}
-                  onChange={(e) => e.target.value && onAssign(e.target.value)}
-                  className="w-full rounded-lg border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
-                >
-                  <option value="">— בחר/י בעל מקצוע —</option>
-                  {professionals.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.fullName} · {p.trade}
-                    </option>
-                  ))}
-                </select>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <input
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    placeholder="שם"
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
-                  />
-                  <input
-                    value={guestPhone}
-                    onChange={(e) => setGuestPhone(e.target.value)}
-                    placeholder="טלפון"
-                    dir="ltr"
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!guestName.trim() || !guestPhone.trim()) return;
-                    const created = addProfessional({
-                      fullName: guestName.trim(),
-                      trade: ticket.category,
-                      phone: guestPhone.trim(),
-                    });
-                    onAssign(created.id);
-                    setGuestName("");
-                    setGuestPhone("");
-                  }}
-                  className="mt-1.5 text-xs font-semibold text-orange"
-                >
-                  הוספת איש מקצוע חד-פעמי
-                </button>
+          {readOnly && canAddNote && (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-navy">הוספת הערה</p>
+              <p className="mb-2 text-[0.7rem] text-text-muted">
+                ההערה נוספת לקריאה. התיאור המקורי והסטטוס נשארים כמו שהם.
+              </p>
+              <textarea
+                value={tenantNote}
+                onChange={(e) => setTenantNote(e.target.value)}
+                rows={2}
+                placeholder="הערה על התקלה"
+                aria-label="הערה על התקלה"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted focus:border-orange focus:outline-none"
+              />
+              <Button
+                type="button"
+                fullWidth
+                className="mt-2"
+                disabled={!tenantNote.trim()}
+                onClick={() => {
+                  commitTicketUpdate(ticket.id, {
+                    status: ticket.status,
+                    note: tenantNote.trim(),
+                    professionalId: ticket.assignedProfessionalId,
+                  });
+                  setTenantNote("");
+                }}
+              >
+                הוספת הערה
+              </Button>
+            </div>
+          )}
+
+          {!readOnly && (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-navy">עדכון הקריאה</p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(Object.keys(statusMeta) as TicketStatus[]).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setDraftStatus(s)}
+                    className={
+                      "rounded-lg border py-1.5 text-xs font-semibold transition-colors " +
+                      (draftStatus === s
+                        ? "border-navy bg-navy text-white"
+                        : "border-border bg-surface text-text-muted hover:bg-surface-muted")
+                    }
+                  >
+                    {statusMeta[s].label}
+                  </button>
+                ))}
               </div>
-            </>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={2}
+                placeholder="הודעה לדייר"
+                aria-label="הודעה לדייר"
+                className="mt-2 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted focus:border-orange focus:outline-none"
+              />
+              <label className="mb-1.5 mt-2 block text-xs font-semibold text-navy" htmlFor={`pro-${ticket.id}`}>
+                איש מקצוע
+              </label>
+              <select
+                id={`pro-${ticket.id}`}
+                value={draftProfessionalId}
+                onChange={(e) => {
+                  setDraftProfessionalId(e.target.value);
+                  setGuestName("");
+                  setGuestPhone("");
+                }}
+                className="w-full rounded-lg border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
+              >
+                <option value="">ללא איש מקצוע</option>
+                {professionals.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.fullName} · {p.trade}
+                    {p.phone ? ` · ${p.phone}` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="mb-1.5 mt-2 text-xs font-semibold text-navy">איש מקצוע חד-פעמי</p>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  placeholder="שם"
+                  aria-label="שם איש מקצוע חד-פעמי"
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
+                />
+                <input
+                  value={guestPhone}
+                  onChange={(e) => setGuestPhone(e.target.value)}
+                  placeholder="טלפון"
+                  aria-label="טלפון איש מקצוע חד-פעמי"
+                  dir="ltr"
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-orange focus:outline-none"
+                />
+              </div>
+              <p className="mt-2 text-[0.7rem] text-text-muted">נשמר רק בלחיצה על עדכון. יציאה מהקריאה בלי לחיצה לא שומרת.</p>
+              <Button
+                type="button"
+                fullWidth
+                className="mt-2"
+                disabled={!dirty}
+                onClick={() => {
+                  commitTicketUpdate(ticket.id, {
+                    status: draftStatus,
+                    note: note.trim() || undefined,
+                    professionalId: guestReady ? undefined : draftProfessionalId,
+                    guest: guestReady
+                      ? { fullName: guestName.trim(), phone: guestPhone.trim(), trade: ticket.category }
+                      : undefined,
+                  });
+                  setNote("");
+                  setGuestName("");
+                  setGuestPhone("");
+                }}
+              >
+                עדכון
+              </Button>
+            </div>
           )}
         </div>
       )}

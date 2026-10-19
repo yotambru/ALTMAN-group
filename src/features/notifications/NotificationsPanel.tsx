@@ -15,6 +15,7 @@ import {
 import { Modal } from "@/components/ui/Modal";
 import { isNotificationForAudience, sortNotificationsNewestFirst } from "@/lib/notifications";
 import { useData } from "@/lib/store";
+import { ticketSubjectFor } from "@/lib/ticket-subject";
 import { formatDateDots } from "@/lib/utils";
 import type { AppNotification, NotificationKind, Role } from "@/types";
 
@@ -29,6 +30,7 @@ const kindIcon: Record<NotificationKind, typeof Bell> = {
   critical: AlertTriangle,
   chat: MessageSquareText,
   withdrawal: Banknote,
+  session: Bell,
 };
 
 interface NotificationsPanelProps {
@@ -42,7 +44,7 @@ interface NotificationsPanelProps {
 
 /** Notification center scoped to the current user / role. */
 export function NotificationsPanel({ open, onClose, forUserId, forRole, onOpen }: NotificationsPanelProps) {
-  const { notifications, markNotificationRead, markAllNotificationsRead } = useData();
+  const { notifications, tickets, properties, tenants, users, markNotificationRead, markAllNotificationsRead } = useData();
 
   const mine = sortNotificationsNewestFirst(
     notifications.filter((n) => !n.read && isNotificationForAudience(n, forUserId, forRole)),
@@ -63,6 +65,15 @@ export function NotificationsPanel({ open, onClose, forUserId, forRole, onOpen }
         {mine.length === 0 && <p className="py-6 text-center text-sm text-text-muted">אין התראות.</p>}
         {mine.map((n) => {
           const Icon = kindIcon[n.kind];
+          const place =
+            n.kind === "maintenance" && n.relatedId
+              ? ticketSubjectFor(
+                  tickets.find((ticket) => ticket.id === n.relatedId),
+                  properties,
+                  tenants,
+                  users,
+                )
+              : "";
           return (
             <button
               key={n.id}
@@ -83,6 +94,7 @@ export function NotificationsPanel({ open, onClose, forUserId, forRole, onOpen }
               <div className="min-w-0 flex-1">
                 <p className="font-bold text-navy">{n.title}</p>
                 <p className="text-sm text-text-muted">{n.body}</p>
+                {place ? <p className="text-pretty text-xs text-navy">{place}</p> : null}
                 <p className="mt-1 text-[0.7rem] text-text-muted">{formatDateDots(n.createdAt)}</p>
               </div>
             </button>

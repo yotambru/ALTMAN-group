@@ -57,8 +57,7 @@ export function paymentStatusForDate(
   const day = iso.slice(0, 10);
   if (!day) return "upcoming";
   if (day > today) return "upcoming";
-  if (day === today) return "due";
-  return "overdue";
+  return "paid";
 }
 
 export function livePaymentStatus(payment: Payment, today: string = localTodayIso()): PaymentStatus {
@@ -67,7 +66,6 @@ export function livePaymentStatus(payment: Payment, today: string = localTodayIs
   const day = paymentClearanceDate(payment);
   if (!day) return "upcoming";
   if (day > today) return "upcoming";
-  if (day === today) return "due";
   return "paid";
 }
 
@@ -239,32 +237,62 @@ export function upcomingCheckPayments(
     .sort((a, b) => paymentClearanceDate(a).localeCompare(paymentClearanceDate(b)));
 }
 
-function addDaysIso(iso: string, days: number): string {
-  const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
-  const date = new Date(year, (month ?? 1) - 1, (day ?? 1) + days);
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-/** Recently auto-cleared checks that can be reported as bounced. */
-export function reportableClearedCheckPayments(
+/** Cleared checks still on file: past the clearance date, not reported bounced. Newest first. */
+export function clearedCheckPayments(
   payments: Payment[],
   leaseIds: Iterable<string>,
   today: string = localTodayIso(),
-  withinDays = 90,
 ): Payment[] {
   const allowed = new Set(leaseIds);
-  const from = addDaysIso(today, -withinDays);
   return payments
     .filter((payment) => allowed.has(payment.leaseId) && isCheckPayment(payment))
     .filter((payment) => !payment.checkReturned && livePaymentStatus(payment, today) === "paid")
-    .filter((payment) => {
-      const day = paymentClearanceDate(payment);
-      return day && day <= today && day >= from;
-    })
     .sort((a, b) => paymentClearanceDate(b).localeCompare(paymentClearanceDate(a)));
+}
+
+/** One rental year of consecutive cleared checks, after which those rows are removed. */
+export const CLEARED_CHECKS_PER_YEAR = 12;
+
+/**
+ * Cleared check rows to drop: each complete run of 12 consecutive clearances
+ * for the same apartment. A bounced or still-open check breaks the run and is kept.
+ * Only the oldest complete years are removed; a partial year stays visible.
+ */
+export function retiredClearedCheckIds(
+  payments: Payment[],
+  propertyIdByLease: ReadonlyMap<string, string>,
+  today: string = localTodayIso(),
+): string[] {
+  const groups = new Map<string, Payment[]>();
+  for (const payment of payments) {
+    if (!isCheckPayment(payment)) continue;
+    const propertyId = propertyIdByLease.get(payment.leaseId) || payment.leaseId;
+    const list = groups.get(propertyId);
+    if (list) list.push(payment);
+    else groups.set(propertyId, [payment]);
+  }
+
+  const drop: string[] = [];
+  for (const list of groups.values()) {
+    list.sort((a, b) => paymentClearanceDate(a).localeCompare(paymentClearanceDate(b)) || a.id.localeCompare(b.id));
+    let streak: Payment[] = [];
+    const flush = () => {
+      const years = Math.floor(streak.length / CLEARED_CHECKS_PER_YEAR);
+      for (let i = 0; i < years * CLEARED_CHECKS_PER_YEAR; i++) drop.push(streak[i].id);
+      streak = [];
+    };
+    for (const payment of list) {
+      const day = paymentClearanceDate(payment);
+      const cleared = Boolean(day) && day <= today && !payment.checkReturned && livePaymentStatus(payment, today) === "paid";
+      if (!cleared) {
+        flush();
+        continue;
+      }
+      streak.push(payment);
+    }
+    flush();
+  }
+  return drop;
 }
 
 /** Checks the landlord already reported as bounced. */

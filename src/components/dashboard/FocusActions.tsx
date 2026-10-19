@@ -9,6 +9,8 @@ export interface FocusActionItem {
   active?: boolean;
   /** @deprecated Prefer `active`. Kept for call-site compatibility. */
   highlight?: boolean;
+  /** Unread count drawn on the tile. Hidden when zero. */
+  badge?: number;
 }
 
 interface FocusActionsProps {
@@ -36,12 +38,20 @@ export function FocusActions({ items, title, className }: FocusActionsProps) {
         {items.map((item) => {
           const Icon = item.icon;
           const isActive = Boolean(item.active ?? item.highlight);
+          const badge = item.badge && item.badge > 0 ? item.badge : 0;
           return (
             <button
               key={item.label}
               type="button"
               onClick={item.onClick}
               aria-current={isActive ? "page" : undefined}
+              aria-label={
+                badge > 1
+                  ? `${item.label}, ${badge} הודעות שלא נקראו`
+                  : badge === 1
+                    ? `${item.label}, הודעה אחת שלא נקראה`
+                    : undefined
+              }
               className={cn(
                 "liquid-glass-card flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3 text-center backdrop-blur-[22px] backdrop-saturate-150 transition-all lg:gap-2 lg:px-2 lg:py-4",
                 isActive
@@ -49,10 +59,17 @@ export function FocusActions({ items, title, className }: FocusActionsProps) {
                   : "hover:shadow-lg",
               )}
             >
-              <Icon
-                className={cn("h-6 w-6", isActive ? "text-orange" : "text-navy")}
-                strokeWidth={1.8}
-              />
+              <span className="relative">
+                <Icon
+                  className={cn("h-6 w-6", isActive ? "text-orange" : "text-navy")}
+                  strokeWidth={1.8}
+                />
+                {badge > 0 && (
+                  <span className="absolute -end-2.5 -top-2 grid h-5 min-w-5 place-items-center rounded-full bg-orange px-1 text-[0.625rem] font-bold text-white">
+                    {badge > 9 ? "9+" : badge}
+                  </span>
+                )}
+              </span>
               <span
                 className={cn(
                   "text-[0.65rem] font-bold leading-tight lg:text-xs",

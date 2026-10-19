@@ -112,9 +112,9 @@ export function rentsForLeasePeriods(
     const end = period.endDate.slice(0, 10);
     const exact = sorted.find((adj) => adj.date.slice(0, 10) === start);
     if (exact) return exact.monthlyRent;
+    // A saved schedule does not copy the last rent onto periods that have no own amount.
+    if (sorted.length) return 0;
     if (index === 0 && starting != null) return starting;
-    if (sorted.length) return rentOnDate(starting ?? 0, sorted, start);
-    // Live rent belongs only to the period that contains today — never copied onto period 1.
     const isCurrent =
       start <= today && (!end || today <= end || (index === periods.length - 1 && today >= start));
     return isCurrent ? lease.monthlyRent : 0;

@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { ExternalLink, FileText, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Portal } from "@/components/ui/Portal";
+import { unpackSignature } from "@/lib/document-signing";
 import { useSignedUrl } from "@/lib/supabase/files";
+import { formatDateDots } from "@/lib/utils";
 import type { AppDocument } from "@/types";
 
 interface DocumentPreviewDialogProps {
@@ -31,6 +33,37 @@ function isImageSource(url: string, doc?: AppDocument | null): boolean {
   return false;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    const map: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+    return map[char] ?? char;
+  });
+}
+
+function openDocumentWindow(
+  fileUrl: string,
+  title: string,
+  signer: string,
+  signatureUrl: string | undefined,
+  signedAt?: string,
+) {
+  if (!signer && !signatureUrl) {
+    window.open(fileUrl, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const win = window.open("", "_blank", "noopener,noreferrer");
+  if (!win) {
+    window.open(fileUrl, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const when = signedAt ? formatDateDots(signedAt) : "";
+  const image = signatureUrl
+    ? `<img alt="" src="${escapeHtml(signatureUrl)}" style="height:72px;background:#fff;border-radius:8px;" />`
+    : "";
+  win.document.write(`<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body style="margin:0;font-family:Assistant,Arial,sans-serif;background:#f6f7fb;color:#14285a;"><div style="display:flex;gap:16px;align-items:center;padding:16px 20px;background:#fff;border-bottom:1px solid #e6e8ef;">${image}<div><strong>${escapeHtml(title)}</strong><div style="font-size:13px;color:#667;">נחתם ע״י ${escapeHtml(signer || "חתימה")}${when ? ` · ${escapeHtml(when)}` : ""} · הזהות אומתה</div></div></div><iframe src="${escapeHtml(fileUrl)}" style="width:100%;height:calc(100vh - 88px);border:0;"></iframe></body></html>`);
+  win.document.close();
+}
+
 function isPdfSource(url: string, doc?: AppDocument | null): boolean {
   if (url.startsWith("data:application/pdf")) return true;
   return PDF_EXT.test(url) || PDF_EXT.test(doc?.name ?? "");
@@ -49,6 +82,8 @@ export function DocumentFilePreview({
 }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const url = useSignedUrl(doc?.fileDataUrl);
+  const signature = unpackSignature(doc?.signedByName);
+  const signatureSrc = useSignedUrl(signature.imageUrl);
   const heading = doc?.name ?? "מסמך";
   const imageFailed = Boolean(url && failedUrl === url);
   const showImage = Boolean(url && !imageFailed && isImageSource(url, doc));
@@ -91,11 +126,25 @@ export function DocumentFilePreview({
         </div>
       )}
 
+      {(signature.name || signatureSrc) && (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-muted p-3">
+          {signatureSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={signatureSrc} alt="" className="h-12 max-w-32 rounded bg-white object-contain" />
+          ) : null}
+          <p className="text-xs text-text-muted">
+            נחתם ע״י {signature.name || "חתימה"}
+            {doc?.signedAt ? ` · ${formatDateDots(doc.signedAt)}` : ""}
+            {" · "}הזהות אומתה
+          </p>
+        </div>
+      )}
+
       {url && (
         <Button
           variant="outline"
           fullWidth
-          onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
+          onClick={() => openDocumentWindow(url, heading, signature.name, signatureSrc, doc?.signedAt)}
         >
           <ExternalLink className="h-4 w-4" />
           פתיחה בחלון חדש

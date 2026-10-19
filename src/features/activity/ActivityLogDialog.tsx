@@ -4,32 +4,40 @@ import { History } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { useData } from "@/lib/store";
 import { roleLabels } from "@/lib/permissions";
+import { formatDateDots, isValidIsoDate } from "@/lib/utils";
 
 interface ActivityLogDialogProps {
   open: boolean;
   onClose: () => void;
 }
 
+function formatLogWhen(iso: string): string {
+  if (!isValidIsoDate(iso)) return "—";
+  const time = new Date(iso).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+  return `${formatDateDots(iso)} · ${time}`;
+}
+
 /** Audit trail of key actions performed in the system (הרשאות ויומן פעילות). */
 export function ActivityLogDialog({ open, onClose }: ActivityLogDialogProps) {
   const { activityLog } = useData();
+  const rows = [...activityLog].sort((a, b) => (b.at || "").localeCompare(a.at || ""));
 
   return (
-    <Modal open={open} onClose={onClose} title="יומן פעילות" description={`${activityLog.length} פעולות תועדו`}>
+    <Modal open={open} onClose={onClose} title="יומן פעילות" description={`${rows.length} פעולות תועדו`}>
       <div className="space-y-2">
-        {activityLog.length === 0 && (
+        {rows.length === 0 && (
           <p className="py-6 text-center text-sm text-text-muted">עדיין לא תועדו פעולות.</p>
         )}
-        {activityLog.map((e) => (
+        {rows.map((e) => (
           <div key={e.id} className="flex items-start gap-3 rounded-xl border border-border p-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-navy/5 text-navy">
               <History className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-navy">{e.action}</p>
-              {e.details && <p className="truncate text-xs text-text-muted">{e.details}</p>}
+              {e.details && <p className="text-pretty text-xs text-text-muted">{e.details}</p>}
               <p className="mt-0.5 text-[0.7rem] text-text-muted">
-                {e.userName} · {roleLabels[e.role]} · {new Date(e.at).toLocaleString("he-IL")}
+                {e.userName} · {roleLabels[e.role]} · {formatLogWhen(e.at)}
               </p>
             </div>
           </div>

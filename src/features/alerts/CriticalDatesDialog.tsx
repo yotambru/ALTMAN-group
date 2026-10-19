@@ -1,10 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { AlertTriangle, CalendarClock } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { SearchField } from "@/components/dashboard/ClientRow";
 import { useData } from "@/lib/store";
 import { getCriticalDates } from "@/lib/alerts";
+import { matchesPlaceQuery } from "@/lib/portfolio";
 import { formatDateDots } from "@/lib/utils";
 
 interface CriticalDatesDialogProps {
@@ -15,9 +18,14 @@ interface CriticalDatesDialogProps {
 
 /** Critical dates within 90 days: lease end, option, insurance, bank-guarantee renewal. */
 export function CriticalDatesDialog({ open, onClose, landlordId }: CriticalDatesDialogProps) {
-  const { leases, properties } = useData();
+  const { leases, properties, tenants } = useData();
+  const [query, setQuery] = useState("");
   const scoped = landlordId ? leases.filter((l) => l.landlordId === landlordId) : leases;
-  const dates = getCriticalDates(scoped, properties);
+  const dates = getCriticalDates(scoped, properties).filter((date) => {
+    const property = properties.find((item) => item.id === date.propertyId);
+    const tenant = tenants.find((item) => item.id === property?.tenantId);
+    return matchesPlaceQuery(query, property, [date.label, tenant?.fullName, date.address]);
+  });
 
   return (
     <Modal
@@ -25,7 +33,11 @@ export function CriticalDatesDialog({ open, onClose, landlordId }: CriticalDates
       onClose={onClose}
       title="התראות קריטיות"
       description="סיום חוזה, ערבות בנקאית, אופציה וביטוח — ב־90 הימים הקרובים"
-    >      <div className="space-y-2">
+    >
+      <div className="mb-3">
+        <SearchField value={query} onChange={setQuery} placeholder="חיפוש לפי שם, רחוב, דירה או עיר…" />
+      </div>
+      <div className="space-y-2">
         {dates.length === 0 && (
           <p className="py-6 text-center text-sm text-text-muted">אין מועדים קריטיים בטווח הקרוב.</p>
         )}
@@ -46,7 +58,7 @@ export function CriticalDatesDialog({ open, onClose, landlordId }: CriticalDates
                   בעוד {d.daysLeft} ימים
                 </StatusBadge>
               </div>
-              <p className="truncate text-xs text-text-muted">{d.address}</p>
+              <p className="text-pretty text-xs text-text-muted">{d.address}</p>
               <p className="mt-0.5 text-[0.7rem] text-text-muted">{formatDateDots(d.date)}</p>
             </div>
           </div>

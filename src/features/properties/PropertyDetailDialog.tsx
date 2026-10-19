@@ -37,6 +37,7 @@ import { can } from "@/lib/permissions";
 import { normalizeEmail } from "@/lib/auth";
 import { cn, fileToDataUrl, formatCurrency, formatDateDots, isValidIsoDate } from "@/lib/utils";
 import { currentMonthlyRent, PROPERTY_STATUS_LABELS, propertyAddressLabel, propertyDisplayValue } from "@/lib/portfolio";
+import { ticketSubjectFor } from "@/lib/ticket-subject";
 import { resolveLeasePeriods, rentsForLeasePeriods } from "@/lib/lease-periods";
 import { formatPropertyKeys } from "@/lib/property-keys";
 import { livePaymentStatus, paymentClearanceDate, upcomingCheckPayments } from "@/lib/check-schedule";
@@ -572,9 +573,10 @@ export function PropertyDetailDialog({
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-navy">{t.title}</p>
-                    {t.createdAt && (
-                      <p className="text-[0.7rem] text-text-muted">נפתחה: {formatDateDots(t.createdAt)}</p>
-                    )}
+                    <p className="text-pretty text-[0.7rem] text-text-muted">
+                      {ticketSubjectFor(t, [property], tenants, users)}
+                      {t.createdAt ? ` · נפתחה ${formatDateDots(t.createdAt)}` : ""}
+                    </p>
                   </div>
                   <StatusBadge tone={t.status === "in_progress" ? "warning" : "danger"}>
                     {t.status === "in_progress" ? "בביצוע" : "דחוף"}
@@ -591,13 +593,6 @@ export function PropertyDetailDialog({
             <p className="text-sm text-text-muted">
               משכיר: <span className="font-semibold text-navy">{landlord.fullName}</span>
             </p>
-          )}
-          {property.managementCompanyPhone && (
-            <Line
-              icon={<Phone className="h-4 w-4" />}
-              label="טלפון חברת ניהול"
-              value={property.managementCompanyPhone}
-            />
           )}
           {lease && (
             <div className="rounded-2xl bg-surface-muted p-3">
@@ -808,7 +803,7 @@ function Line({
         {icon}
         {label}
       </span>
-      <span className={"shrink-0 font-semibold " + valueClass}>{value}</span>
+      <span className={"min-w-0 flex-1 text-end text-pretty font-semibold " + valueClass}>{value}</span>
     </div>
   );
 }

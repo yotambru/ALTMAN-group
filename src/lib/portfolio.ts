@@ -34,13 +34,14 @@ export const PROPERTY_STATUS_TONES: Record<PropertyStatus, StatusTone> = {
   issue: "danger",
 };
 
-/** User-facing address with apartment number when present: `ספיר 21 דירה 5, כפר סבא`. */
+/** User-facing address with apartment and city: `ספיר 21, דירה 5, כפר סבא`. */
 export function propertyAddressLabel(
   property: Pick<Property, "address" | "city" | "apartmentNumber">,
 ): string {
   const apt = property.apartmentNumber?.trim();
   const city = property.city?.trim();
-  const base = apt ? `${property.address} דירה ${apt}` : property.address;
+  const street = property.address?.trim() || "";
+  const base = apt ? `${street}, דירה ${apt}` : street;
   return city ? `${base}, ${city}` : base;
 }
 
@@ -60,6 +61,29 @@ export function sortPropertiesByLocation<T extends Pick<Property, "city" | "addr
   items: T[],
 ): T[] {
   return [...items].sort(comparePropertiesByLocation);
+}
+
+/** Search blob: street, house number, apartment ("דירה 7"), city, and extra names. */
+export function matchesPlaceQuery(
+  query: string,
+  property: Pick<Property, "address" | "city" | "apartmentNumber"> | undefined,
+  extra: Array<string | undefined | null> = [],
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const apt = property?.apartmentNumber?.trim();
+  const hay = [
+    property ? propertyAddressLabel(property) : "",
+    property?.address,
+    property?.city,
+    apt,
+    apt ? `דירה ${apt}` : "",
+    ...extra,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q);
 }
 
 /** Occupancy = share of properties that currently have a tenant. */

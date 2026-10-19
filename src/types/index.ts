@@ -317,7 +317,8 @@ export type NotificationKind =
   | "reminder"
   | "critical"
   | "chat"
-  | "withdrawal";
+  | "withdrawal"
+  | "session";
 
 /* ---------- Immediate rent withdrawal (משיכה מיידית) ---------- */
 
@@ -413,6 +414,8 @@ export interface ChatThread {
   /** The two participant user ids. */
   participantIds: [string, string];
   title: string;
+  /** Per participant: ISO time of the latest message they have seen. */
+  readAt?: Record<string, string>;
 }
 
 /* ---------- Professionals ---------- */

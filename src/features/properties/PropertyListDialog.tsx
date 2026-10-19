@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeft, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PropertyImage } from "@/components/brand/PropertyImage";
+import { SearchField } from "@/components/dashboard/ClientRow";
 import { PropertyStatusFilter } from "@/components/dashboard/PropertyStatusFilter";
+import { useData } from "@/lib/store";
 import { formatCurrency } from "@/lib/utils";
-import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES, propertyAddressLabel, propertyDisplayValue, sortPropertiesByLocation } from "@/lib/portfolio";
+import { PROPERTY_STATUS_LABELS, PROPERTY_STATUS_TONES, matchesPlaceQuery, propertyAddressLabel, propertyDisplayValue, sortPropertiesByLocation } from "@/lib/portfolio";
 import type { Property, PropertyStatus } from "@/types";
 
 interface PropertyListDialogProps {
@@ -28,8 +30,20 @@ export function PropertyListDialog({
   onSelect,
   onDelete,
 }: PropertyListDialogProps) {
+  const { tenants, landlords } = useData();
   const [statusFilter, setStatusFilter] = useState<PropertyStatus | "all">("all");
-  const ordered = sortPropertiesByLocation(properties);
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (open) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- clear the search when the dialog closes */
+    setQuery("");
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [open]);
+  const ordered = sortPropertiesByLocation(properties).filter((property) => {
+    const tenant = tenants.find((item) => item.id === property.tenantId);
+    const landlord = landlords.find((item) => item.id === property.landlordId);
+    return matchesPlaceQuery(query, property, [tenant?.fullName, landlord?.fullName]);
+  });
 
   const counts: Partial<Record<PropertyStatus | "all", number>> = { all: ordered.length };
   for (const p of ordered) counts[p.status] = (counts[p.status] ?? 0) + 1;
@@ -44,7 +58,12 @@ export function PropertyListDialog({
       title={title}
       description={`${visible.length} נכסים`}
     >
-      <div className="mb-3">
+      <div className="mb-3 space-y-3">
+        <SearchField
+          value={query}
+          onChange={setQuery}
+          placeholder="חיפוש לפי שם, רחוב, מספר בית, דירה או עיר…"
+        />
         <PropertyStatusFilter value={statusFilter} onChange={setStatusFilter} counts={counts} />
       </div>
       <div className="space-y-2">
@@ -62,7 +81,7 @@ export function PropertyListDialog({
               rounded="rounded-lg"
             />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-navy">
+              <p className="text-pretty text-sm font-bold text-navy">
                 {propertyAddressLabel(property)}
               </p>
               <p className="truncate text-xs text-text-muted">

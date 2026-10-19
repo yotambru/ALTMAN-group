@@ -4,6 +4,7 @@ import { Bell, ChevronLeft } from "lucide-react";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { isNotificationForAudience, sortNotificationsNewestFirst } from "@/lib/notifications";
 import { useData } from "@/lib/store";
+import { ticketSubjectFor } from "@/lib/ticket-subject";
 import type { AppNotification, Role } from "@/types";
 
 interface NotificationsTabProps {
@@ -15,7 +16,7 @@ interface NotificationsTabProps {
 
 /** Inline notifications list for the unified bottom-nav "הודעות" tab. */
 export function NotificationsTab({ forUserId, forRole, onOpen, onBack }: NotificationsTabProps) {
-  const { notifications, markNotificationRead, markAllNotificationsRead } = useData();
+  const { notifications, tickets, properties, tenants, users, markNotificationRead, markAllNotificationsRead } = useData();
 
   const mine = sortNotificationsNewestFirst(
     notifications.filter((n) => !n.read && isNotificationForAudience(n, forUserId, forRole)),
@@ -41,7 +42,17 @@ export function NotificationsTab({ forUserId, forRole, onOpen, onBack }: Notific
       {mine.length === 0 && (
         <p className="py-6 text-center text-sm text-text-muted">אין הודעות.</p>
       )}
-      {mine.map((n) => (
+      {mine.map((n) => {
+        const place =
+          n.kind === "maintenance" && n.relatedId
+            ? ticketSubjectFor(
+                tickets.find((ticket) => ticket.id === n.relatedId),
+                properties,
+                tenants,
+                users,
+              )
+            : "";
+        return (
         <button
           key={n.id}
           type="button"
@@ -57,10 +68,12 @@ export function NotificationsTab({ forUserId, forRole, onOpen, onBack }: Notific
           <div className="min-w-0 flex-1">
             <p className="font-bold text-navy">{n.title}</p>
             <p className="text-sm text-text-muted">{n.body}</p>
+            {place ? <p className="text-pretty text-xs text-navy">{place}</p> : null}
           </div>
           <ChevronLeft className="mt-1 h-4 w-4 shrink-0 text-text-muted" />
         </button>
-      ))}
+        );
+      })}
     </div>
   );
 }

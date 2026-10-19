@@ -21,7 +21,8 @@ import { accountDisplayName, normalizeEmail } from "@/lib/auth";
 import { registerPersistFlush } from "@/lib/persist-flush";
 import { generateId, formatCurrency } from "@/lib/utils";
 import { localTodayIso } from "@/lib/lease-periods";
-import { paymentClearanceDate, paymentStatusForDate, resolveCheckSchedule } from "@/lib/check-schedule";
+import { criticalReminderNotifications } from "@/lib/alerts";
+import { paymentClearanceDate, paymentStatusForDate, resolveCheckSchedule, retiredClearedCheckIds } from "@/lib/check-schedule";
 import { inferDocumentFolder } from "@/lib/document-folders";
 import { isAwaitingSignature } from "@/lib/document-signing";
 import { storage } from "@/lib/storage";
@@ -358,11 +359,29 @@ interface DataContextValue extends DataState {
   /** Replace uncleared check rows for a lease (keeps confirmed / paid rows). */
   replaceLeaseChecks: (leaseId: string, checks: CheckScheduleEntry[]) => void;
   addExpense: (e: Omit<Expense, "id">) => Expense;
+  /** Remove an expense and its invoice file. The linked ticket stays in the calls list. */
+  deleteExpense: (id: string) => void;
+  /** Remove an invoice file and any expense that points at it. The ticket stays. */
+  deleteInvoiceDocument: (documentId: string) => void;
 
   // tickets
   addTicket: (t: Omit<MaintenanceTicket, "id" | "createdAt" | "status" | "updates"> & { status?: TicketStatus }) => MaintenanceTicket;
   setTicketStatus: (id: string, status: TicketStatus, note?: string) => void;
   assignTicket: (id: string, professionalId: string, scheduledAt?: string) => void;
+  /**
+   * One explicit save for a service call: status, the note to the tenant,
+   * and the assigned professional are written together. A one-off professional
+   * is created in the same write. Nothing is persisted before this runs.
+   */
+  commitTicketUpdate: (
+    id: string,
+    draft: {
+      status: TicketStatus;
+      note?: string;
+      professionalId?: string;
+      guest?: { fullName: string; phone: string; trade?: string };
+    },
+  ) => void;
   /** Upload / replace an invoice document linked to a maintenance ticket. */
   attachTicketInvoice: (ticketId: string, file: { name: string; dataUrl: string }) => AppDocument | null;
 
@@ -398,6 +417,8 @@ interface DataContextValue extends DataState {
   // chat
   ensureThread: (a: string, b: string, title: string) => string;
   sendMessage: (threadId: string, from: Actor, text: string) => void;
+  /** Record that this user has seen messages in the thread up to `at`. */
+  markThreadRead: (threadId: string, userId: string, at: string) => void;
 
   // onboarding
   setUtilityStatus: (tenantId: string, utility: UtilityKind, status: OnboardingItemStatus, proofDocId?: string) => void;
@@ -651,6 +672,37 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }),
     [],
   );
+
+  useEffect(() => {
+    if (!ready) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- drop a finished rental year of cleared checks */
+    setState((current) => {
+      const propertyByLease = new Map(current.leases.map((lease) => [lease.id, lease.propertyId]));
+      const ids = retiredClearedCheckIds(current.payments, propertyByLease);
+      if (ids.length === 0) return current;
+      const drop = new Set(ids);
+      return {
+        ...current,
+        payments: current.payments.filter((pay) => !drop.has(pay.id)),
+        activityLog: [
+          makeLog("מחיקת צ׳קים שנפרעו", "payment", undefined, `${ids.length} צ׳קים אחרי שנת שכירות`),
+          ...current.activityLog,
+        ],
+      };
+    });
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [ready, state.payments, state.leases, makeLog]);
+
+  useEffect(() => {
+    if (!ready) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- create 90-day reminders without opening a form */
+    setState((current) => {
+      const added = criticalReminderNotifications(current);
+      if (added.length === 0) return current;
+      return { ...current, notifications: [...added, ...current.notifications] };
+    });
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [ready, state.leases, state.properties, state.users, state.tenants]);
 
   const log = useCallback(
     (action: string, entity?: string, entityId?: string, details?: string) => {
@@ -1262,6 +1314,47 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [makeLog],
   );
 
+  const deleteExpense = useCallback<DataContextValue["deleteExpense"]>(
+    (id) => {
+      setState((p) => {
+        const expense = (p.expenses ?? []).find((item) => item.id === id);
+        if (!expense) return p;
+        const docId = expense.invoiceDocId;
+        return {
+          ...p,
+          expenses: (p.expenses ?? []).filter((item) => item.id !== id),
+          documents: docId ? p.documents.filter((doc) => doc.id !== docId) : p.documents,
+          tickets: docId
+            ? p.tickets.map((ticket) =>
+                ticket.invoiceDocId === docId ? { ...ticket, invoiceDocId: undefined } : ticket,
+              )
+            : p.tickets,
+          activityLog: [makeLog("מחיקת הוצאה", "expense", id, expense.description), ...p.activityLog],
+        };
+      });
+    },
+    [makeLog],
+  );
+
+  const deleteInvoiceDocument = useCallback<DataContextValue["deleteInvoiceDocument"]>(
+    (documentId) => {
+      setState((p) => {
+        const doc = p.documents.find((item) => item.id === documentId);
+        if (!doc) return p;
+        return {
+          ...p,
+          documents: p.documents.filter((item) => item.id !== documentId),
+          expenses: (p.expenses ?? []).filter((item) => item.invoiceDocId !== documentId),
+          tickets: p.tickets.map((ticket) =>
+            ticket.invoiceDocId === documentId ? { ...ticket, invoiceDocId: undefined } : ticket,
+          ),
+          activityLog: [makeLog("מחיקת חשבונית", "document", documentId, doc.name), ...p.activityLog],
+        };
+      });
+    },
+    [makeLog],
+  );
+
   const updateUser = useCallback<DataContextValue["updateUser"]>(
     (id, patch) => {
       setState((p) => ({
@@ -1662,6 +1755,93 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [makeLog],
   );
 
+  const commitTicketUpdate = useCallback<DataContextValue["commitTicketUpdate"]>(
+    (id, draft) => {
+      const note = draft.note?.trim() || undefined;
+      const guestName = draft.guest?.fullName.trim() ?? "";
+      const guestPhone = draft.guest?.phone.trim() ?? "";
+      const hasGuest = Boolean(guestName && guestPhone);
+      setState((p) => {
+        const ticket = p.tickets.find((t) => t.id === id);
+        if (!ticket) return p;
+        const nextProfessionalId = hasGuest ? generateId("pr") : draft.professionalId?.trim() || undefined;
+        const professionalChanged = (nextProfessionalId ?? "") !== (ticket.assignedProfessionalId ?? "");
+        const statusChanged = draft.status !== ticket.status;
+        if (!statusChanged && !professionalChanged && !note) return p;
+
+        const at = new Date().toISOString();
+        const created: Professional | undefined = hasGuest
+          ? {
+              id: nextProfessionalId!,
+              fullName: guestName,
+              phone: guestPhone,
+              trade: draft.guest?.trade?.trim() || ticket.category,
+              active: true,
+            }
+          : undefined;
+        const professional = created ?? p.professionals.find((pro) => pro.id === nextProfessionalId);
+        const opener =
+          p.users.find((u) => u.id === ticket.createdById) ??
+          p.users.find((u) => u.role === "tenant" && u.tenantId === ticket.createdById);
+        const summary = [
+          note || `${ticket.title} — ${statusLabelHe(draft.status)}`,
+          professional ? `${professional.fullName} ${professional.phone}`.trim() : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const notifications: AppNotification[] = [];
+        if (opener) {
+          notifications.push({
+            id: generateId("n"),
+            kind: "maintenance",
+            title: "עדכון בקריאת שירות",
+            body: summary,
+            createdAt: at,
+            read: false,
+            forUserId: opener.id,
+            relatedId: ticket.id,
+          });
+        }
+        if (professionalChanged && nextProfessionalId) {
+          const recipientId = p.users.find((u) => u.professionalId === nextProfessionalId)?.id;
+          if (recipientId && recipientId !== opener?.id) {
+            notifications.push({
+              id: generateId("n"),
+              kind: "maintenance",
+              title: "קריאה חדשה שויכה אליך",
+              body: `${ticket.title} שויכה לטיפולך.`,
+              createdAt: at,
+              read: false,
+              forUserId: recipientId,
+              relatedId: ticket.id,
+            });
+          }
+        }
+        return {
+          ...p,
+          professionals: created ? [created, ...p.professionals] : p.professionals,
+          tickets: p.tickets.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  status: draft.status,
+                  assignedProfessionalId: nextProfessionalId,
+                  updates: [...(t.updates ?? []), { at, byUserId: actorRef.current.id, status: draft.status, note }],
+                }
+              : t,
+          ),
+          notifications: notifications.length ? [...notifications, ...p.notifications] : p.notifications,
+          activityLog: [
+            makeLog("עדכון קריאת שירות", "ticket", id, statusLabelHe(draft.status)),
+            ...(created ? [makeLog("הוספת בעל מקצוע", "professional", created.id, created.fullName)] : []),
+            ...p.activityLog,
+          ],
+        };
+      });
+    },
+    [makeLog],
+  );
+
   const attachTicketInvoice = useCallback<DataContextValue["attachTicketInvoice"]>(
     (ticketId, file) => {
       const ticket = state.tickets.find((t) => t.id === ticketId);
@@ -1952,6 +2132,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           ...others,
         ],
       };
+    });
+  }, []);
+
+  const markThreadRead = useCallback<DataContextValue["markThreadRead"]>((threadId, userId, at) => {
+    if (!threadId || !userId || !at) return;
+    setState((p) => {
+      let changed = false;
+      const chatThreads = p.chatThreads.map((thread) => {
+        if (thread.id !== threadId) return thread;
+        const seenAt = thread.readAt?.[userId];
+        if (seenAt && seenAt >= at) return thread;
+        changed = true;
+        return { ...thread, readAt: { ...thread.readAt, [userId]: at } };
+      });
+      return changed ? { ...p, chatThreads } : p;
     });
   }, []);
 
@@ -2311,9 +2506,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     updatePayment,
     replaceLeaseChecks,
     addExpense,
+    deleteExpense,
+    deleteInvoiceDocument,
     addTicket,
     setTicketStatus,
     assignTicket,
+    commitTicketUpdate,
     attachTicketInvoice,
     addDocument,
     updateDocument,
@@ -2326,6 +2524,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setTaskStatus,
     ensureThread,
     sendMessage,
+    markThreadRead,
     setUtilityStatus,
     setInsuranceStatus,
     approveOnboarding,

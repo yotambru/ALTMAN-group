@@ -13,7 +13,8 @@ import {
   compareOnboardingsForTracker,
   pendingOnboardingCount,
 } from "@/lib/alerts";
-import { propertyAddressLabel } from "@/lib/portfolio";
+import { matchesPlaceQuery, propertyAddressLabel } from "@/lib/portfolio";
+import { SearchField } from "@/components/dashboard/ClientRow";
 import { cn } from "@/lib/utils";
 import type { AppDocument, TenantOnboarding, UtilityKind } from "@/types";
 
@@ -43,6 +44,7 @@ export function UtilitiesTrackerDialog({ open, onClose }: UtilitiesTrackerDialog
 
   const [preview, setPreview] = useState<{ title: string; doc?: AppDocument } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const handleClose = () => {
     setPreview(null);
@@ -134,6 +136,7 @@ export function UtilitiesTrackerDialog({ open, onClose }: UtilitiesTrackerDialog
         description="ארנונה · מים · חשמל · גז · ועד בית · ביטוח"
       >
         <div className="space-y-3">
+          <SearchField value={query} onChange={setQuery} placeholder="חיפוש לפי שם, רחוב, דירה או עיר…" />
           <p className="text-sm text-text-muted">
             כברירת מחדל כל שוכר חסום עד להעלאת המסמכים. אפשר לשחרר או לחסום ידנית.
           </p>
@@ -149,7 +152,7 @@ export function UtilitiesTrackerDialog({ open, onClose }: UtilitiesTrackerDialog
             </button>
           )}
 
-          {rows.map(({ ob, tenant, property, tenantUsers }) => {
+          {rows.filter(({ tenant, property }) => matchesPlaceQuery(query, property, [tenant.fullName, tenant.phone])).map(({ ob, tenant, property, tenantUsers }) => {
             const pending = pendingOnboardingCount(ob);
             const awaiting = awaitingManagementApproval(ob);
             return (
