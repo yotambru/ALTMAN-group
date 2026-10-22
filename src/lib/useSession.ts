@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { storage, type Session } from "@/lib/storage";
 import { loadSessionUser, signOutSession } from "@/lib/auth";
+import { releaseManagerDevice } from "@/lib/manager-devices";
 import { routeByRole } from "@/lib/permissions";
 import { useData } from "@/lib/store";
 import { isLoginRole, type Role, type User } from "@/types";
@@ -89,9 +90,13 @@ export function useSession(allowed: Role | Role[]): {
 
   const logout = () => {
     storage.clearSession();
-    void signOutSession().finally(() => {
-      router.push("/");
-    });
+    void releaseManagerDevice()
+      .catch(() => undefined)
+      .finally(() => {
+        void signOutSession().finally(() => {
+          router.push("/");
+        });
+      });
   };
 
   return { session, user, ready, logout };

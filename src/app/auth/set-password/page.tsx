@@ -77,15 +77,7 @@ export default function AuthSetPasswordPage() {
       setError("הסיסמה נשמרה, אך לא נמצא פרופיל. פנו למשרד.");
       return;
     }
-    if (profile.role === "manager") {
-      const gate = await claimManagerDevice(profile.id);
-      if (!gate.ok) {
-        await getSupabase()?.auth.signOut();
-        setSubmitting(false);
-        setError(gate.error);
-        return;
-      }
-    }
+    if (profile.role === "manager") await claimManagerDevice(profile.id);
     storage.setSession({
       role: profile.role,
       userId: profile.id,
